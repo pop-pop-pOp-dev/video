@@ -1,0 +1,13 @@
+# NC-RTED observation interface
+
+This is the implementation boundary for sections 3–4 of `EXPERIMENT_SPEC.md`, not a replacement research plan or a claim of completed detector integration.
+
+The existing `external/ReactVAU-paper/llava/model/multimodal_encoder/siglip_encoder.py` directly resizes RGB images to 384×384 with bicubic interpolation, rescales by 1/255 and normalizes by mean/std 0.5. It does not crop or letterbox. The actual tower returns its current frozen feature implementation; caches must bind its source hash, weight hash, preprocessing and dtype, rather than assuming the nominal configuration selects a particular layer. The new branch must reuse the actual unchanged features and pass numerical parity checks.
+
+`causal_frame_indices` maps a global 2 FPS clock to the most recent actual frame at or before each tick. Only unique frames in `(query−8, query]` are kept, at most sixteen. Low-rate inputs do not manufacture repeated observations. `temporal_cells` assigns actual timestamps to four two-second cells; missing cells stay masked. Tracking and relation construction must use these causal observations, with no future interpolation.
+
+Detector xyxy boxes are expressed in normalized original-image coordinates. Direct resize maps them to 384-pixel coordinates. The patch convolution has kernel/stride 14 and valid padding, producing 27×27 row-major patches that cover 378 pixels. Region pooling weights each patch by its area overlap with the mapped box. In particular, a box wholly in the uncovered bottom/right six-pixel strip has no visual patch support and returns an invalid mask; it must not be assigned a fabricated feature. Pooling accumulates in FP32 and returns the frozen patch dtype.
+
+Background context conservatively uses patches with no area overlap with any valid detection. A default minimum 10% uncovered patches is an implementation constant to bind before outcome inspection. Insufficient background is an explicit failed-context state, not normal evidence. Whole-frame student context is a separate input. The relative geometry helper preserves signed center displacement and relative log size, with IoU as an additional value; swapping pair direction changes the signed fields and global coordinate translation leaves the representation unchanged.
+
+Still required before acceptance: exact RT-DETR-R50 implementation/revision and preprocessing binding; detector/ROI real-frame parity; deterministic forward-only tracker and at most sixteen person-involving candidate pairs; per-cell start/end and signed process-feature assembly; static reference matching and constrained DTW; legal-source manifests; full Slow wiring and gradient/capacity checks. None of these pending items is certified by the helper tests.

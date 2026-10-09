@@ -1,0 +1,11 @@
+# NC-RTED code contract
+
+`RelationTimeEvidence` consumes causal frozen observations shaped `[batch, observed_blocks, candidate<=16, time=4, feature]`.  It has a two-layer, width-384 shared temporal encoder.  Relationship IDs do not enter the model, so a joint candidate/mask/teacher permutation changes outputs only by that permutation.  The supplied observed timestamps are used per block; no total video duration or later frames are accepted.
+
+The module emits one quality and a masked relation-time distribution per block, then uses a fixed sixteen-query cross-attention resampler across every supplied block.  This means caption callers must supply all observed blocks, including early blocks; there is no last-window/top-k path.  The position distribution biases resampler attention through `log(pi_hat)`.  `a_hat` multiplies resampler values and the final 384-to-language projection has no bias, so quality changes the tokens consumed by Slow instead of only an auxiliary output.
+
+The integration point is after the frozen `mm_projector.mlp(memory_tokens)` and before ReactVAU `prepare_inputs_labels_for_LLM`.  `inject(..., enabled=False)` and `inject` with no valid candidates return the original visual embedding tensor directly.  Otherwise it concatenates sixteen new language-hidden embeddings after, never within or modifying, the original embeddings.  Existing memory, projector, Fast, SigLIP, trigger, and fusion paths remain frozen.  The only projected language-space weights here belong to the new module; Slow LoRA remains unmerged and is loaded with the project-specific key normalization path.
+
+`auxiliary_loss` implements FP32 Bernoulli quality KL plus quality-weighted masked position KL.  A returns zero, U and F use quality plus position, and S uses quality only.  Invalid auxiliary samples are zeroed while denominating by every batch/block element.  The A/U/S/F architecture and parameter names are identical; group selection changes targets/loss use only.
+
+This is an implementation contract, not deployment, capacity, checkpoint-loading, manifest, or formal-experiment acceptance.  Device readiness, frozen manifests, inherited-weight audit, exact loader wiring, cache equivalence, and all formal runs remain pending independent review.

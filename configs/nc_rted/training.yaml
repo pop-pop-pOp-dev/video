@@ -1,0 +1,28 @@
+# Candidate recipe: freeze only after independent review and real capacity checks.
+formal_acceptance: false
+groups: [A, U, S, F]
+seeds: [17, 42, 2026]
+samples: 8000
+detection_samples: 6000
+caption_samples: 2000
+microbatch: 1
+accumulation: 8
+updates: 1000
+forward_dtype: bfloat16
+master_parameter_dtype: float32
+gradient_accumulation_dtype: float32
+optimizer_moment_dtype: float32
+optimizer: AdamW
+new_lr: 0.0001
+lora_lr: 0.000005
+weight_decay: 0.01
+warmup_updates: 50
+# k is one-based; all 1000 counted updates have a positive learning rate.
+warmup_lr_multiplier: k / 50
+decay_lr_multiplier: (1001 - k) / 950
+gradient_clip: 1.0
+auxiliary_weight: 0.1
+checkpoint_interval: 50
+rolling_checkpoints: 2
+checkpoint_schema: nc_rted_checkpoint_v2
+selection: final_only

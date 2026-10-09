@@ -1,0 +1,16 @@
+# Frozen only after inherited-model and capacity acceptance.
+relation_time:
+  candidates_max: 16
+  time_cells: 4
+  encoder_width: 384
+  temporal_layers: 2
+  resampler_queries: 16
+  language_hidden_size: 3584
+  assembled_feature_dim: 4620
+  process_feature_dim: 3473
+  feature_schema: docs/NC_RTED_FEATURE_CONTRACT.md
+  observed_timestamp_shape: B,N,E,4
+  observed_time_encoding: log1p(seconds)/log1p(3600), sin(seconds/8), cos(seconds/8)
+  insertion: after_mm_projector_mlp_before_prepare_inputs_labels_for_LLM
+  quality_gate: multiply_resampler_values_before_bias_free_language_projection
+  relation_index_embedding: false

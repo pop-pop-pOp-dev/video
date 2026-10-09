@@ -1,0 +1,88 @@
+# NC-RTED Production Runtime Contract
+
+`scripts/nc_rted_train.py` accepts only a JSON manifest with schema
+`nc_rted_production_runtime/v1` and a separate SHA-256 passed through
+`--config-sha256`. The manifest cannot self-attest its own digest.
+
+The manifest binds absolute paths and SHA-256 values for the config inputs,
+train annotations/provenance, an explicit ReactVAU source-file manifest,
+base/tokenizer trees, exactly `config.json`, `adapter_config.json`,
+`adapter_model.safetensors`, and `non_lora_trainables.bin` from the export,
+approved Stage2 resolver/config, Fast snapshot, media catalog, RT-DETR/SigLIP
+snapshots, and teacher store. Directory values use the stable tree digest:
+sorted relative filename, NUL, file SHA-256, newline. Symlinks are rejected.
+The file-binding preflight requires the source manifest to cover every Python source file below
+the inherited `llava/`, `eval_utils/`, and top-level `vad/` trees, including
+Qwen loading, the multimodal memory manager, VAD `detect_utils`, and
+`vad.get_prompt`. A placeholder source-manifest entry is insufficient. Before
+the evaluator imports its early top-level `detect_utils`, the runtime exposes
+only the bound `eval_utils/vad` directory. Preloaded modules named `llava`,
+`eval_utils`, `vad`, or `detect_utils` must resolve under that bound
+root; their loaded file must be present in the manifest with its current hash,
+and package namespace paths must also remain under the bound root. Another
+checkout already present in `sys.modules` is rejected. These source hashes are
+checked before inherited imports and then retained as the assembly freeze;
+per-sample operation checks only module path membership and does not rehash the
+inherited source tree.
+
+The `sampling` object is exact: `local_num_frames=1`, `frames_upbound=64`,
+`frames_lowbound=4`, `sample_type=dynamic_fps1`, `time_msg=short_online_v2`,
+`model_max_length=8192`, `vision_chunk_size=32`, and `projector=original`.
+The runtime rejects drift before importing ReactVAU or model libraries.
+
+The catalog binds the original full training annotations for the fixed catalog,
+plus a separately hash-bound JSON containing exactly its 2,000 caption rows,
+its YAML loader declaration, and the original PG-score JSON. The YAML must name
+the subset and PG files. This lets the original `LazySupervisedDataset` process
+only the selected caption rows while retaining the full original annotation
+identity for catalog construction.
+
+The runtime temporarily sets `REACTVAU_STAGE2_CACHE_CONFIG` to an already
+hash-bound resolver config or materialized-media catalog while the original
+loader performs its first-three-file check, then restores the prior process
+environment. It never relies on ambient environment state to bypass that check.
+
+Stage2 resolver mode requires `accepted_status=APPROVED_FOR_EXECUTION` in both
+the manifest and hash-bound cache config. Materialized mode instead maps the
+original relative media path to immutable catalog media and leases the
+hash-verified file descriptor. Assembly constructs a local fail-closed Stage2
+subclass without changing the imported `LazySupervisedDataset`, so caption
+access always uses the original `_get_item`, original preprocessing/tokenizer/PG
+scores, and the immutable Stage2 cache resolver.
+
+For a committed teacher store, `teacher.artifact` names its directory and
+`teacher.sha256` is the digest of its committed `index.json`; the store reader
+then verifies every indexed chunk. A teacher pipeline JSON instead binds its
+own file digest directly.
+
+The media catalog maps detection keys and caption aliases to the same bound
+media hash. It feeds `CausalMediaObserver`; labels, answers, and teacher data
+are absent from this boundary. Detection uses only the supplied frozen Fast
+snapshot and per-dataset protocol. Teacher records are validated during assembly before model loading. They
+remain outside the public-media provider inputs.
+
+Before model construction, every selected detection task joins its
+`(dataset, media_key)` to both the Fast snapshot and observer media catalog.
+The media SHA-256, FPS, frame count, dimensions, selected query index, and its
+final-frame endpoint must agree. This prevents frozen Fast memory and relation
+evidence from being composed from different videos with the same key.
+
+`--dry-run` validates file bindings and manifest shape only. It does not load a
+model, allocate a GPU, decode media, parse the full catalog, write checkpoints,
+or generate any cache. Assembly validates catalog, teacher coverage, the exact
+caption subset, and formal-admission/source cross-links before model loading.
+
+Diagnostic manifests require a `diagnostic:` run ID, isolated checkpoint root,
+and positive `diagnostic_updates`. Formal runs require a non-diagnostic run ID
+and `--admission` plus `--admission-sha256`; the admission is intentionally not
+named inside the hash-bound runtime config. It contains `PASS`, execution
+authorization, and exactly engineering checks `1` through `10` all set to
+`PASS`, and can bind the final config digest in its run identity without a
+self-referential two-file hash cycle. At execution,
+`TrainingWorker` independently verifies that admission against the full fixed
+recipe, checkpoint identity, complete task count, and source-file hashes.
+
+The inherited vision tower is loaded from the bound SigLip snapshot before the
+adapter is constructed, moved to the original projector parameter dtype even on
+CPU, frozen, and put in eval mode. The sample provider restores eval mode after
+the incremental trainer calls `train()` on its bridge.

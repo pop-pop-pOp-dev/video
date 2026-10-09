@@ -1,0 +1,769 @@
+{
+  "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
+  "created_at": "2026-10-09T16:08:13.320976+00:00",
+  "source_commit": "4751c2db38ab6dd005feed524763230872153c5c",
+  "formal_execution_allowed": false,
+  "scientific_results": "not_available",
+  "validation": {
+    "cpu_report": {
+      "status": "PASS",
+      "stats": {
+        "warnings": 24,
+        "passed": 217
+      },
+      "torch": "2.4.1+cu121",
+      "scope": "complete NC-RTED CPU suite plus inherited cold-process imports",
+      "environment_correction": "uninstalled source checkout explicitly on PYTHONPATH for child process; v10 parent-only sys.path failed child import, no source changed",
+      "formal_acceptance": false
+    },
+    "runtime_review_status": "PASS_STATIC",
+    "editorial_correction": {
+      "path": "docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md",
+      "reviewed_sha256": "f156230184368d1b636e7016eba28229dd76108b8f3587a584f437531cd06765",
+      "published_sha256": "44b04cf138f169925ed17193cf954ea133fc0c3e7adf94dbf75f1a38dd906dbc",
+      "change": "Documentation-only correction of teacher validation ordering; implementation unchanged",
+      "old": "Teachers are read from the committed store\nonly after all public-media providers are assembled.",
+      "new": "Teacher records are validated during assembly before model loading. They\nremain outside the public-media provider inputs."
+    },
+    "review_scope": "static supplied-source runtime composition; not full-spec or GPU acceptance"
+  },
+  "remaining": [
+    "actual detector assets",
+    "full media and teacher readiness",
+    "real longest-input GPU and cache equivalence",
+    "blind prediction workers and process lifecycle acceptance",
+    "full specification freeze and formal experiments"
+  ],
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "74b791acda9d6db6c1ad3db2036c854aa17e56477b6e0361e0839eba24a93a27",
+      "bytes": 194
+    },
+    {
+      "path": "README.md",
+      "sha256": "99808a01e799639fc79607be469e9ca3713ccde6f0bff8fa0aad2171998bf972",
+      "bytes": 3870
+    },
+    {
+      "path": "THIRD_PARTY.md",
+      "sha256": "33b2b24c74ca96456cfae5703ca54533c98091497420fce347f0957eb2dd599f",
+      "bytes": 569
+    },
+    {
+      "path": "configs/nc_rted/environment_4090_reference.json",
+      "sha256": "ed1118070bdabe1d37d519c635bcee3c813ebb52c15ffebbf695e7fb60991cb8",
+      "bytes": 643
+    },
+    {
+      "path": "configs/nc_rted/model.yaml",
+      "sha256": "378af354306a7b25391c8517dfdb082b032820b0f89f228b214801be26d43e9a",
+      "bytes": 624
+    },
+    {
+      "path": "configs/nc_rted/training.yaml",
+      "sha256": "aebba036380bc47d7b007554234c106df8312f6c6e800b33283870add9f75b08",
+      "bytes": 760
+    },
+    {
+      "path": "docs/EXPERIMENT_SPEC.md",
+      "sha256": "6c1a5fe8da3220f156000341fd01b3f1c6f7d1916e089d4ce3f1127fcd349bcf",
+      "bytes": 26209
+    },
+    {
+      "path": "docs/NC_RTED_CAPTION_PROVIDER_CONTRACT.md",
+      "sha256": "a45354a2496632190a09c04860d3f84b6ece1a3df9eb5f233a082083c665a858",
+      "bytes": 4372
+    },
+    {
+      "path": "docs/NC_RTED_CODE_CONTRACT.md",
+      "sha256": "8652debbe1bde3451e9c3571fbbf888c26d31624c155086b35f482fc0a4a864c",
+      "bytes": 2263
+    },
+    {
+      "path": "docs/NC_RTED_CODE_DESIGN.md",
+      "sha256": "6252a87670194f83a7a3f239068a45ff81c5a50768e970020bb4d8e9782427e1",
+      "bytes": 20673
+    },
+    {
+      "path": "docs/NC_RTED_DETECTION_PROVIDER_CONTRACT.md",
+      "sha256": "75c2c115091ec2c9eb220338e75875dacbf58ad5476427a4b35f2bfc95be2f21",
+      "bytes": 3317
+    },
+    {
+      "path": "docs/NC_RTED_DETECTOR_CACHE_CONTRACT.md",
+      "sha256": "3fa8ae9470f4d265851ec4e825971aef9857b1fa5daee3a0c80f103f00a2373f",
+      "bytes": 3192
+    },
+    {
+      "path": "docs/NC_RTED_FEATURE_CONTRACT.md",
+      "sha256": "6e3415d353ead27e26cb9b374754e036f4a90772bef36a012ab199f37c1f1cf1",
+      "bytes": 3277
+    },
+    {
+      "path": "docs/NC_RTED_IMPLEMENTATION_HANDOFF.md",
+      "sha256": "c1379708f54345ec59b33bf30badc716d6d3856a6581a2be221944c3b82a3b21",
+      "bytes": 2741
+    },
+    {
+      "path": "docs/NC_RTED_MEDIA_OBSERVER_CONTRACT.md",
+      "sha256": "284bf6231276c438e5cf8c62516ca237debed9561cf49d5a86192351604f8e64",
+      "bytes": 5181
+    },
+    {
+      "path": "docs/NC_RTED_OBSERVATION_CONTRACT.md",
+      "sha256": "b0d816fde5d5aa2bf68b1a99406960697157d64fa14d7e165e1f1bf363388290",
+      "bytes": 2763
+    },
+    {
+      "path": "docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md",
+      "sha256": "44b04cf138f169925ed17193cf954ea133fc0c3e7adf94dbf75f1a38dd906dbc",
+      "bytes": 5566
+    },
+    {
+      "path": "docs/NC_RTED_RETRIEVAL_CONTRACT.md",
+      "sha256": "545db921d7c1e6b3fc4d2c45f932759d913d8414d25008d162605da147c7c28b",
+      "bytes": 3173
+    },
+    {
+      "path": "docs/NC_RTED_STATISTICS_CONTRACT.md",
+      "sha256": "9b37d61e7983d0dfd3c8795b04f0d2938fe3c7450070265a6cad87ec7f94d666",
+      "bytes": 3045
+    },
+    {
+      "path": "docs/NC_RTED_TASK_INPUT_CONTRACT.md",
+      "sha256": "c277dd6c99bb7170a1bafc2ab94d5e78a693565824095ca7c8e05dd266de5d9b",
+      "bytes": 3389
+    },
+    {
+      "path": "docs/NC_RTED_TEACHER_PIPELINE_CONTRACT.md",
+      "sha256": "d848831403c9b449b9af8d625c6e8bbec1cbd6a63c26fb4670148a163e03d953",
+      "bytes": 4808
+    },
+    {
+      "path": "docs/NC_RTED_TRACKING_CONTRACT.md",
+      "sha256": "4d2fae9683df03b117454a514086bb1b9260761192a80748fc97e00acb34c2ab",
+      "bytes": 1886
+    },
+    {
+      "path": "external/ReactVAU-paper/LICENSE",
+      "sha256": "46f679504a567e2acc18d24ddf1b3db3dc1b242365ec8e2a579706e1805a7559",
+      "bytes": 4153
+    },
+    {
+      "path": "external/ReactVAU-paper/README.md",
+      "sha256": "10918fbc2129bea6ac4c3a24e7ba780faa3fe985a1b8ec87fb50de52beeaafd4",
+      "bytes": 19570
+    },
+    {
+      "path": "external/ReactVAU-paper/eval_utils/hivau/eval_ans_hivau.py",
+      "sha256": "a1e41c198f1d3685f512ca299c936eedbe157d451984b8c68145fedbdf47a0c4",
+      "bytes": 2438
+    },
+    {
+      "path": "external/ReactVAU-paper/eval_utils/hivau/eval_reactvau_hivau.py",
+      "sha256": "71135248f644fc89d5418768bd9fa04972ed9ce9a92e5d0304c6051522879a89",
+      "bytes": 52508
+    },
+    {
+      "path": "external/ReactVAU-paper/eval_utils/hivau/hivau_utils.py",
+      "sha256": "9201fd72b353e1f38ad13026c6d2b9f2d85c749eb39023af1ec081fac0d4e2cc",
+      "bytes": 11495
+    },
+    {
+      "path": "external/ReactVAU-paper/eval_utils/hivau/reactvau_inference.py",
+      "sha256": "0be6e03846f343f318c60bbcf3997d5f5f375e5b851f90d6ff9d97859131e0a5",
+      "bytes": 33376
+    },
+    {
+      "path": "external/ReactVAU-paper/eval_utils/hivau/run_reactvau_vau.py",
+      "sha256": "258be5ba13b44c6ca11cdb94fa4a5ab412b589e5f2fa74c2e0a0235ed4f6bc88",
+      "bytes": 10176
+    },
+    {
+      "path": "external/ReactVAU-paper/eval_utils/hivau/transform_metric.py",
+      "sha256": "2aaf8482483d492e03451ce47d9cdc825c3d859f7e5760f3cf8ab4d7216caaf9",
+      "bytes": 7102
+    },
+    {
+      "path": "external/ReactVAU-paper/eval_utils/vad/detect_utils.py",
+      "sha256": "32b68d22746d4dc152283fc499f7eccc47e58e9832a80031c24a1ebfd5cdd106",
+      "bytes": 10516
+    },
+    {
+      "path": "external/ReactVAU-paper/eval_utils/vad/eval_paligemma_detection.py",
+      "sha256": "9b99e2c4d269d27a1454dfab30512e5a257f33fbfef826856f5664a0c542ec49",
+      "bytes": 43101
+    },
+    {
+      "path": "external/ReactVAU-paper/eval_utils/vad/eval_reactvau_detection.py",
+      "sha256": "64657577a97a35f6b28d434d164da65d809a25f34f19d5bdad03133a12e889eb",
+      "bytes": 84072
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/__init__.py",
+      "sha256": "8aced7eeb5c36ffd36bec4b6d38a30359efe0e2ca692664b27d9e8d35bba0a5d",
+      "bytes": 218
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/constants.py",
+      "sha256": "2c5a8a659b3c5c1c70360808ae901511db67da8fbe331e1329cd754f6f3a0879",
+      "bytes": 293
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/conversation.py",
+      "sha256": "aae43b46aedf4862ea8eb1432ac0ae87c0aa4f332c508dfe07bf403bbf2c73f2",
+      "bytes": 22577
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/dist_utils.py",
+      "sha256": "bcfe992ea132ad6ebd2017980f7fb88296fd22c3304955057e62eb101d3392b5",
+      "bytes": 2716
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/mm_utils.py",
+      "sha256": "197323ac8f7ca6f056ab265989a3e24f1da65e77835ec35beb9439136300c492",
+      "bytes": 22905
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/__init__.py",
+      "sha256": "28d6b4d79e87eaa96c939d5aa16ba121e8456a97c500ac913857c22b5fb75f85",
+      "bytes": 440
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/apply_delta.py",
+      "sha256": "d8fe7f8d7f89b03b22ca2b0165d0c572d88e312e4f3d57bc77192b2ba33bd7d4",
+      "bytes": 1932
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/builder.py",
+      "sha256": "9250112af3f4cff4928476e083029f1ae89e359c3bc31b167fd484ef60c12842",
+      "bytes": 25399
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/consolidate.py",
+      "sha256": "7382809f80ea8b27381215a6a7a79e7f1a1c3595f2ff696cab2be51014ede20b",
+      "bytes": 915
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/language_model/llava_qwen.py",
+      "sha256": "5abe6148532e3e66d8e602b226656db55633350eda2e235966fc3b276f159a2e",
+      "bytes": 8992
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/llava_arch.py",
+      "sha256": "787dc95b802bb100f8115c8ba1a64936fa5544767721ece99efd3233f96360d6",
+      "bytes": 79041
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/make_delta.py",
+      "sha256": "9cc84e226715680c476e89f64cc0f25f0e3e3e245620779e0541f0939196758c",
+      "bytes": 2251
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/builder.py",
+      "sha256": "5f1a5b8de7786ead12c87d65dc4f095706ee71491c9a17b464e6a6333a5edc91",
+      "bytes": 1621
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/clip_encoder.py",
+      "sha256": "1ca15402531773b2f81acc6bbc54078e72b48805903f41960bc23d08310c5fd5",
+      "bytes": 7275
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/__init__.py",
+      "sha256": "1f21db16f8c826674cd1196de7e98d70035eba3be03c196a9cb471d533c0ec98",
+      "bytes": 61
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/flash_attention_class.py",
+      "sha256": "88e2853b0545d8f3dfe832d787e9d8193211b20cc4b39c118f0b9b3c583e1247",
+      "bytes": 3377
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/pos_embed.py",
+      "sha256": "d0dbe1f563306c22e5a25042034356a2b0a733a6cba2d613d7baaf44848c4226",
+      "bytes": 13735
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/vit_scale_clean.py",
+      "sha256": "315936c8eac45890b7f78df8c27e5b234a915454dbf329d7ed79f7c06c217c80",
+      "bytes": 26044
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2_encoder.py",
+      "sha256": "fcf6b76cf18add3203c39ed985477235bb0769f7404d5ee10c57b7f36151a815",
+      "bytes": 8091
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/siglip_encoder.py",
+      "sha256": "3e2c73fe3a2214eacaa6aa65ecdf6ad0bb44a2d63d3675fdddd954a65b2c497f",
+      "bytes": 26271
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/umt/vit.py",
+      "sha256": "27b6f57c14119dde43238662a5a1c1507ce63ca2e27cb8389c463bbfeb0c3bbd",
+      "bytes": 17981
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/umt_encoder.py",
+      "sha256": "5418bf363981e966a01a1de20aa62b1d6d5cfdfa553ebaf4a305efb43d19f314",
+      "bytes": 7834
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_projector/builder.py",
+      "sha256": "63a05fe44d7b9298b207a244e9597284a0950a840ff32cdd40f2edeefa042c40",
+      "bytes": 2399
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_projector/memory_manager.py",
+      "sha256": "d0e5129eb5a6d66c36a4c338307bb1d9fdcf010daddfa1c586cbc5662dee527e",
+      "bytes": 26863
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_projector/projector_FSTW_PEMF.py",
+      "sha256": "84ed9a6ef3455d21a9812ba0a87477b047ae66b29d175ab360750a1a5ec403a4",
+      "bytes": 14045
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_projector/tome16_mlp.py",
+      "sha256": "31088b67599aedb8047d4268658dbe9a288290bafc517c3fac7b590e5cbe344c",
+      "bytes": 11587
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/multimodal_projector/tome64_mlp.py",
+      "sha256": "a02d5eaa648cef7e2794095b0aa99ea983801a8073c1a28034b234b59c9e0cc4",
+      "bytes": 11587
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/model/utils.py",
+      "sha256": "a7f596b827dcae1d9563b474c5af353273fc7a5dcaa52d230e9833adef89f2bb",
+      "bytes": 927
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/serialize_utils.py",
+      "sha256": "b9c27f5d1c895c3a0b7687c126321a87b93547673def624d36a591aa38b42336",
+      "bytes": 6440
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/train/llava_trainer.py",
+      "sha256": "fc9b49d2994dce30e0d75f2c35c9afe9978b326a610f4557d227ad408c5aec2f",
+      "bytes": 25159
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/train/llava_trainer_eval.py",
+      "sha256": "ecbd445d1c8fcd14280e5b77109deb74b4fc58b8de8131348d02bffb281c65ea",
+      "bytes": 3439
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/train/reactvau_stage2_cache_adapter.py",
+      "sha256": "439ab5a5568b3765183df96362526b5d7c7a5fcd708faee367bef0ad2846f5fd",
+      "bytes": 2209
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/train/train.py",
+      "sha256": "33837188c7e0d9059300f96a295c6a2fb68b0d71d555f84b594140720b88eb71",
+      "bytes": 83941
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/train/train_mem.py",
+      "sha256": "72d7f83ac802410fa33db57e3b4dfca5247f235091154e4126f261b2d41ac862",
+      "bytes": 156
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/train/train_mem_stage2_cache.py",
+      "sha256": "60e5a183d2212bd579214da2ba7fe87a96f58d0bb574ebd6c9c59f4655500c7b",
+      "bytes": 1644
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/train/train_mem_stage2_capacity_two_step.py",
+      "sha256": "64193bf176957331197813d0f524559b044ac8061b2548f1aa2f179ee04156b4",
+      "bytes": 14217
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/train/train_mem_stage2_capacity_zero3_two_step.py",
+      "sha256": "d31febac868ccc4f6f36df386b0648184366dfd81c1d2c5a0d927db5f4ff2496",
+      "bytes": 6574
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/train/train_mem_stage2_full_seeded.py",
+      "sha256": "2229d45f1206395bec8374ed912857cc49ec9e25fe8ff790d3bc39135c5d4491",
+      "bytes": 1191
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/train/train_mem_stage2_zero3_mixed_runtime_checkpoint.py",
+      "sha256": "01cf8489bf341ddea514ffe1b5626bb5545e3784dd9869705d35646d067d0125",
+      "bytes": 3562
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/utils.py",
+      "sha256": "386c702d2701f421232c3ed211749a0109fbb1b0428b1f542aad79fe61fd6ebb",
+      "bytes": 6342
+    },
+    {
+      "path": "external/ReactVAU-paper/llava/video_utils.py",
+      "sha256": "edc8a2074fceaaa6f92682dde83f94e2617d6b433842f3ae3c901be43ac8c26a",
+      "bytes": 18759
+    },
+    {
+      "path": "external/ReactVAU-paper/requirements.txt",
+      "sha256": "ce9ce1da2e80a08c6bbf8745c9bfdf28d92aa118623fb99081a768597ba1959b",
+      "bytes": 618
+    },
+    {
+      "path": "external/ReactVAU-paper/vad/generate_detection_dataset.py",
+      "sha256": "94c4c6cfd7e2a4104a9bb3462fa695265afb29ac330ff7b7996607da56c511b1",
+      "bytes": 5724
+    },
+    {
+      "path": "external/ReactVAU-paper/vad/generate_paligemma_train_data.py",
+      "sha256": "8159d3b84cc7f54503b9b237917994be5035088ffb6ebd4ef9c73aca3c277012",
+      "bytes": 37457
+    },
+    {
+      "path": "external/ReactVAU-paper/vad/get_prompt.py",
+      "sha256": "0152e8bf0b844adbcab6dfd1e32395fe56b9ee29f18514250bac79aa5f84510b",
+      "bytes": 2439
+    },
+    {
+      "path": "external/ReactVAU-paper/vad/paper_binary_loss.py",
+      "sha256": "c7cfe6543be12644d23994dd49c6ed09ac5aaed7820861af13a41a0e4abcde16",
+      "bytes": 2017
+    },
+    {
+      "path": "external/ReactVAU-paper/vad/train_paligemma_vad_384.py",
+      "sha256": "7774d9fc641c84016b0c3795f019150f4e4e6e8ea80d57bb2ecdf8d8e76c436e",
+      "bytes": 51318
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "d793048dd948ca82ae0469ec018e9bbb92f8565cc2d0e69831df672f4bb20f29",
+      "bytes": 585
+    },
+    {
+      "path": "scripts/nc_rted_build_manifests.py",
+      "sha256": "bad0e780869983b456ba9d9aa441e18c464f553d30d0ad1924b130d8ad103351",
+      "bytes": 3482
+    },
+    {
+      "path": "scripts/nc_rted_build_teacher.py",
+      "sha256": "99227112e961a7c6b01096e98d556979786cd35cd2251b691cd68b07827cf9f9",
+      "bytes": 1589
+    },
+    {
+      "path": "scripts/nc_rted_export_fast_snapshot.py",
+      "sha256": "4a7bd4c07bf3f12958636b11b7aee2415761dd56dbda89c4ab25a253df66040d",
+      "bytes": 2056
+    },
+    {
+      "path": "scripts/nc_rted_extract_observations.py",
+      "sha256": "f7188415c3a0c1f648885688bfadc74b4a9e6d1415a513747eeb875dd5ed2439",
+      "bytes": 1919
+    },
+    {
+      "path": "scripts/nc_rted_queue.py",
+      "sha256": "5ea0cb1714945b539b786ed42caddc623c3bfc05c33ac5704bc3a0acc54be799",
+      "bytes": 6389
+    },
+    {
+      "path": "scripts/nc_rted_train.py",
+      "sha256": "eb761098cdba5936a514b9e96eb940d857947ed1538afed565ec46d3e68c9a2a",
+      "bytes": 2092
+    },
+    {
+      "path": "src/nc_rted/__init__.py",
+      "sha256": "dcd449ed05511a3f3e6618a9a66930b3944fa0453c668975f718365042768d86",
+      "bytes": 38
+    },
+    {
+      "path": "src/nc_rted/alignment.py",
+      "sha256": "b0bbf851dc28fef91ae66ee580c3b86947057e1981928b50fd331a2ba64f7649",
+      "bytes": 5878
+    },
+    {
+      "path": "src/nc_rted/batches.py",
+      "sha256": "a83536b277abb8f4b7eaad983cdcaeb97efb08e894fab5df629a9c57a41c92b3",
+      "bytes": 3754
+    },
+    {
+      "path": "src/nc_rted/bridge.py",
+      "sha256": "da3f1900b7e4c3e6d653cc5f37a90bfe1825667fc5cf7ea766247dc472779b29",
+      "bytes": 9390
+    },
+    {
+      "path": "src/nc_rted/caption_provider.py",
+      "sha256": "96baeb35b367121ac6a41f2839cde23a77151f167754aa90739b31c072853eac",
+      "bytes": 11959
+    },
+    {
+      "path": "src/nc_rted/caption_sampling.py",
+      "sha256": "07f3db2306c91f4b27defd72c14862456736d3296ecd336be849f224854513c8",
+      "bytes": 4871
+    },
+    {
+      "path": "src/nc_rted/detection_media.py",
+      "sha256": "b7cf0547982af1b9161fcc1d8bbe364ad698230c175d6bdb2233d477029c2b8a",
+      "bytes": 8481
+    },
+    {
+      "path": "src/nc_rted/detection_provider.py",
+      "sha256": "e49985973bd213716c6ae6a6ed7ceeff263ef3821954e14a28bfd696c6870d88",
+      "bytes": 11324
+    },
+    {
+      "path": "src/nc_rted/detector.py",
+      "sha256": "8381feb23de6c5bd139b7cf314c5ccb22bf46e75ec98b996276e75f68579ed94",
+      "bytes": 19075
+    },
+    {
+      "path": "src/nc_rted/fast_snapshot.py",
+      "sha256": "f986cbe88a10a7cc747fa114ef99d4c84b1c2904874fcd6263785661c1eb4023",
+      "bytes": 7065
+    },
+    {
+      "path": "src/nc_rted/features.py",
+      "sha256": "6753b7e96f785db6a35a0982c22bedb78f7a3016ad3f6856c6ecf09525b703ea",
+      "bytes": 14099
+    },
+    {
+      "path": "src/nc_rted/inherited_memory.py",
+      "sha256": "eaf9853d6f96b2108bf7bc1c7da71d69a6039f4d12a05b54031990aae9306f9e",
+      "bytes": 3408
+    },
+    {
+      "path": "src/nc_rted/loading.py",
+      "sha256": "7b65855f80a4b0292d6d012ec78e396bd43e6ba92f1b72beb9ea5f1d85d9f3be",
+      "bytes": 7905
+    },
+    {
+      "path": "src/nc_rted/manifests.py",
+      "sha256": "0a4d01e338f7c1a5845115f31519ced052ae44c67f22fa5d35c0c2693c474b69",
+      "bytes": 18732
+    },
+    {
+      "path": "src/nc_rted/media_observer.py",
+      "sha256": "2ce1e722d8638e3d5fb2e98f66ae82118aa8d397dee4856b2cd38ce660f73f26",
+      "bytes": 12562
+    },
+    {
+      "path": "src/nc_rted/model.py",
+      "sha256": "f2eb65cde18b9d055092cc6838e5690ba87430dccc7a8f02f300b09523898efb",
+      "bytes": 11448
+    },
+    {
+      "path": "src/nc_rted/observation.py",
+      "sha256": "abeb8fddc3c9d2ca8a752375bf861cacdde5b73d0aa8e0f9fd0d281b7267e444",
+      "bytes": 6830
+    },
+    {
+      "path": "src/nc_rted/observation_cache.py",
+      "sha256": "bf67dd23819684fc3c96306be022bd1e30e8c7fe3f0a34d1db525e46fd20a919",
+      "bytes": 6103
+    },
+    {
+      "path": "src/nc_rted/production_runtime.py",
+      "sha256": "f78713b551f7c1cb1efc0ffe5d077baa23998be0f7bb1248bb20c05aafa5add5",
+      "bytes": 33114
+    },
+    {
+      "path": "src/nc_rted/queue.py",
+      "sha256": "39820ecb7f727b226b6cd4c21b7786b4bc44c24dee0126c2553db80119ae56cf",
+      "bytes": 20749
+    },
+    {
+      "path": "src/nc_rted/recovery.py",
+      "sha256": "6ddc99337b1b6b8b70105842de5595ec373e9ddd7d51b92cf3c07d9415ad28d3",
+      "bytes": 17482
+    },
+    {
+      "path": "src/nc_rted/retrieval.py",
+      "sha256": "e5c91538b42d7600675f29fc62c489ef384440ba22e9ad687ffacc901edac339",
+      "bytes": 13700
+    },
+    {
+      "path": "src/nc_rted/statistics.py",
+      "sha256": "870890df59a2a460b1946d4a40f378d8d7b8d0e496043ba08d62f9efddd3cec5",
+      "bytes": 12029
+    },
+    {
+      "path": "src/nc_rted/task_inputs.py",
+      "sha256": "4fc06dc12cf4d0e83eef19be17d9855014aaedd00571ac09d6edc44f5b798c7b",
+      "bytes": 15283
+    },
+    {
+      "path": "src/nc_rted/teacher.py",
+      "sha256": "080358488db723dc02417c3347d243bb3080d3d71eebf8eb83d575c6b3921324",
+      "bytes": 4996
+    },
+    {
+      "path": "src/nc_rted/teacher_pipeline.py",
+      "sha256": "e8667ef12fce29e873cd9e8051f6245a2e754c350415b42d0228907ab73e6014",
+      "bytes": 20631
+    },
+    {
+      "path": "src/nc_rted/teacher_records.py",
+      "sha256": "0c3c4b6f721fc320d34154e708c9016825b85f7b458bf5b9851a49e112e62116",
+      "bytes": 11387
+    },
+    {
+      "path": "src/nc_rted/teacher_store.py",
+      "sha256": "585f4749da873982d3f67f0ab1d41d0d355c420c03e48a6da9d0da83716d9b1f",
+      "bytes": 12228
+    },
+    {
+      "path": "src/nc_rted/tracking.py",
+      "sha256": "4093e11c54998030aa2894f6a4133b1cfb0d2b809df28cdd295b750d5a8d8ebc",
+      "bytes": 9795
+    },
+    {
+      "path": "src/nc_rted/train_worker.py",
+      "sha256": "219a85265d49f42fb33edfb18407ca29ceff7e9b04c38f4b57833b04a5e67e46",
+      "bytes": 9592
+    },
+    {
+      "path": "src/nc_rted/training.py",
+      "sha256": "c1277c0131a6e9a7edc52cfcfc6c10273f09cf6885b5593b3859f9105d52dc9c",
+      "bytes": 8996
+    },
+    {
+      "path": "tests/test_nc_rted_alignment.py",
+      "sha256": "71794dba6be1b0f9c6e69421191a3989aa7790b2571af7dccf162ebd39d43aaa",
+      "bytes": 2469
+    },
+    {
+      "path": "tests/test_nc_rted_batches.py",
+      "sha256": "437b616004bf49c8a40652987c3f69d9bc92a93477160a8873fc6e6a63546072",
+      "bytes": 2247
+    },
+    {
+      "path": "tests/test_nc_rted_bridge.py",
+      "sha256": "91670c8e37abff9c9f912eff057dc916532ac7f5aca7d269f5a8e819b0568732",
+      "bytes": 7527
+    },
+    {
+      "path": "tests/test_nc_rted_caption_provider.py",
+      "sha256": "3161bb9f2f970579fe84bddd5ee29355b7888f8c0c626e58f8ede89d52c1a575",
+      "bytes": 8688
+    },
+    {
+      "path": "tests/test_nc_rted_caption_sampling.py",
+      "sha256": "9dec33aa15bf374c283232362b1e5fd7d61bc486e1d1ca2597e522c9501e8570",
+      "bytes": 2479
+    },
+    {
+      "path": "tests/test_nc_rted_detection_media.py",
+      "sha256": "b7960683bf322be5f1eca93690c0f29bb76d16d6d0fb7acf0a3f0328d87d6bc3",
+      "bytes": 6012
+    },
+    {
+      "path": "tests/test_nc_rted_detection_provider.py",
+      "sha256": "73199ec90e35fcac99440f21188202f951b63ad09cd02975f41cec795da54e9f",
+      "bytes": 6319
+    },
+    {
+      "path": "tests/test_nc_rted_detector.py",
+      "sha256": "8fb7e179c259218968ed8b37d8f4d203ee0b6d0ba4921d3498a448203e5110cc",
+      "bytes": 6408
+    },
+    {
+      "path": "tests/test_nc_rted_fast_snapshot.py",
+      "sha256": "5a5ce4d08809a9ce733c40fb566f5c474917c1aa984f6ac8b66b403cae413830",
+      "bytes": 4675
+    },
+    {
+      "path": "tests/test_nc_rted_features.py",
+      "sha256": "4ad94347d6cd5a0608f7e50530daec040c6611e2b20a6b1bbcbcb5b26ed060b6",
+      "bytes": 6282
+    },
+    {
+      "path": "tests/test_nc_rted_loading.py",
+      "sha256": "286542db1e168444ba02ebb182d9e4f79ca6f0df75fefbd703ecd745a7245fca",
+      "bytes": 2490
+    },
+    {
+      "path": "tests/test_nc_rted_manifests.py",
+      "sha256": "4ad9c18bf2d3ea854c204078aa94a6b8ad962399a0e27e83163fd42c82b0af56",
+      "bytes": 6974
+    },
+    {
+      "path": "tests/test_nc_rted_media_observer.py",
+      "sha256": "590c70a58a58108b56e02f64de31eb82e7ea32d4e55d9756021472ac4b823032",
+      "bytes": 13706
+    },
+    {
+      "path": "tests/test_nc_rted_model.py",
+      "sha256": "72b6faecc85e04f398577adc78d9861c19c9c85ad7be5f556c8e678af6870af6",
+      "bytes": 7962
+    },
+    {
+      "path": "tests/test_nc_rted_observation.py",
+      "sha256": "92153dee962ce51e039bae85da481314fd12123d42a05781bc3149c998e222fe",
+      "bytes": 3021
+    },
+    {
+      "path": "tests/test_nc_rted_observation_cache.py",
+      "sha256": "2a7eb6e475adfb98ef0e6300f9197286f7ba4ed94b3f688df4928e8f2be9146a",
+      "bytes": 3685
+    },
+    {
+      "path": "tests/test_nc_rted_production_runtime.py",
+      "sha256": "fc514e09d0fdbbfae5c85f2677299606a8d9a721ba4900d30c68963acdd3b0bb",
+      "bytes": 19102
+    },
+    {
+      "path": "tests/test_nc_rted_queue.py",
+      "sha256": "3236dd32ad544b1979874b1ff7e84bc404583374bde06f363d9c79368f20d7e4",
+      "bytes": 6658
+    },
+    {
+      "path": "tests/test_nc_rted_recovery.py",
+      "sha256": "f16cc0325cce6e86bbe3e93d774099e30cba7003dab3355fb733cd8cb724407b",
+      "bytes": 10553
+    },
+    {
+      "path": "tests/test_nc_rted_retrieval.py",
+      "sha256": "a64ee0e608665f939a0904f2d7a2ec9eb2243e9a5c7a11491c0438a78275ecb1",
+      "bytes": 5714
+    },
+    {
+      "path": "tests/test_nc_rted_statistics.py",
+      "sha256": "b71608802067e9f802e02f0f86f6d5595a165076354b8ca7c9232584bb202115",
+      "bytes": 4892
+    },
+    {
+      "path": "tests/test_nc_rted_task_inputs.py",
+      "sha256": "076f934ebc2ccca43b5d08ef125f6af15011f02416c4c77319f8e465752f35cd",
+      "bytes": 5795
+    },
+    {
+      "path": "tests/test_nc_rted_teacher.py",
+      "sha256": "fee878d7e524f49afb3b6cf6c39eb470d828e916ba25cf1d75b3b991ddb7ee9e",
+      "bytes": 1904
+    },
+    {
+      "path": "tests/test_nc_rted_teacher_pipeline.py",
+      "sha256": "48d199d111d4ee9fe7c4fbeedce3eb8f971aab0eced70d5e0591a566de6e4fb1",
+      "bytes": 5945
+    },
+    {
+      "path": "tests/test_nc_rted_teacher_records.py",
+      "sha256": "ef74ae255727c49884b8ffe3fa6f6990d626298c411b1bfc6cfd720dfa585f30",
+      "bytes": 4377
+    },
+    {
+      "path": "tests/test_nc_rted_teacher_store.py",
+      "sha256": "8cbd79bdeec0684d3891d169872cc6449f523c7386efbcec15a7196837dbaa4f",
+      "bytes": 5124
+    },
+    {
+      "path": "tests/test_nc_rted_tracking.py",
+      "sha256": "955081ef4dc2fa2e4469f551489b6f6a4e5dd0e04691ea616646f5b617595416",
+      "bytes": 2923
+    },
+    {
+      "path": "tests/test_nc_rted_train_worker.py",
+      "sha256": "f46145bb03fb2ebec845967923a38ee81b195e00bff9a92958c95ec4423ef9ae",
+      "bytes": 2301
+    }
+  ]
+}

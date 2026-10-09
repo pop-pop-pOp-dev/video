@@ -9,7 +9,7 @@ import pytest
 import torch
 from torch import nn
 
-from nc_rted.recovery import CheckpointStore, RecoveryError
+from nc_rted.recovery import CheckpointStore, RecoveryError, validate_checkpoint_payload
 from nc_rted.training import IncrementalTrainer, Recipe, sample_order, seed_run
 
 
@@ -196,6 +196,33 @@ def test_fp32_partial_gradient_cannot_be_checkpointed(tmp_path):
     master=next(iter(trainer.master_parameters.values()))
     master.grad=torch.ones_like(master)
     with pytest.raises(RecoveryError,match='partial accumulation'):store.save(trainer)
+
+
+def test_payload_validator_rejects_fabricated_null_optimizer_rng_and_order(tmp_path):
+    trainer=make(); store=CheckpointStore(tmp_path,identity(),min_free_bytes=0)
+    trainer.run(objective(trainer,[]),save=store.save,stop_after=1)
+    checkpoint=store.latest(); manifest=json.loads((checkpoint/'manifest.json').read_text())
+    state=torch.load(checkpoint/'state.pt',map_location='cpu',weights_only=True)
+    state['training']['order']=[None]; state['training']['order_sha256']='0'*64
+    state['optimizer']['param_groups']=[{'params':[None]}]; state['rng']={'python':0,'torch':torch.tensor(0),'numpy':{},'cuda':[]}
+    bad=tmp_path/'bad.pt'; torch.save(state,bad)
+    with pytest.raises(RecoveryError): validate_checkpoint_payload(bad,manifest)
+
+
+@pytest.mark.parametrize('corrupt', ['optimizer', 'rng', 'order'])
+def test_payload_validator_rejects_each_fabricated_state_component(tmp_path, corrupt):
+    trainer=make(); store=CheckpointStore(tmp_path,identity(),min_free_bytes=0)
+    trainer.run(objective(trainer,[]),save=store.save,stop_after=1)
+    checkpoint=store.latest(); manifest=json.loads((checkpoint/'manifest.json').read_text())
+    state=torch.load(checkpoint/'state.pt',map_location='cpu',weights_only=True)
+    if corrupt == 'optimizer':
+        next(iter(state['optimizer']['state'].values()))['exp_avg']=None
+    elif corrupt == 'rng':
+        state['rng']['torch']=torch.tensor(0)
+    else:
+        state['training']['order']=[None]
+    bad=tmp_path/f'bad-{corrupt}.pt'; torch.save(state,bad)
+    with pytest.raises(RecoveryError): validate_checkpoint_payload(bad,manifest)
 
 
 def test_mid_update_and_failed_callbacks_cannot_publish_advanced_rng(tmp_path):

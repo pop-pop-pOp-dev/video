@@ -8,8 +8,6 @@ import shutil
 import sqlite3
 import time
 import uuid
-import socket
-import signal
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -25,7 +23,11 @@ def canonical_hash(value: object) -> str:
 
 
 class QueueError(RuntimeError): pass
+class ArtifactReadUncertain(QueueError): pass
 class LeaseLost(QueueError): pass
+class HardLimit(QueueError):
+    """A structured, evidence-backed condition allowed to stop a child."""
+    def __init__(self, code: str): self.code=code; super().__init__(code)
 
 
 class JobQueue:
@@ -51,7 +53,7 @@ class JobQueue:
               attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 3,
               not_before REAL NOT NULL DEFAULT 0, lease_owner TEXT, lease_token TEXT,
               lease_expires REAL, heartbeat REAL, pid INTEGER, process_starttime TEXT,
-              output_path TEXT, output_checksum TEXT, failure TEXT,
+              output_path TEXT, output_checksum TEXT, failure TEXT, protective_stop_code TEXT,
               progress_at REAL, progress_counter INTEGER,
               created_at REAL NOT NULL, updated_at REAL NOT NULL
             );
@@ -63,7 +65,7 @@ class JobQueue:
             for statement in ("ALTER TABLE evidence ADD COLUMN schema_name TEXT NOT NULL DEFAULT ''", "ALTER TABLE evidence ADD COLUMN input_code_hash TEXT NOT NULL DEFAULT ''", "ALTER TABLE evidence ADD COLUMN accepted INTEGER NOT NULL DEFAULT 0"):
                 try: db.execute(statement)
                 except sqlite3.OperationalError: pass
-            for statement in ("ALTER TABLE jobs ADD COLUMN progress_at REAL", "ALTER TABLE jobs ADD COLUMN progress_counter INTEGER"):
+            for statement in ("ALTER TABLE jobs ADD COLUMN progress_at REAL", "ALTER TABLE jobs ADD COLUMN progress_counter INTEGER", "ALTER TABLE jobs ADD COLUMN protective_stop_code TEXT"):
                 try: db.execute(statement)
                 except sqlite3.OperationalError: pass
 
@@ -113,7 +115,8 @@ class JobQueue:
         binding = payload.get("required_input_code_hash")
         if binding and any(db.execute("SELECT input_code_hash FROM evidence WHERE name=?", (name,)).fetchone()[0] != binding for name in requirements): return "evidence code-hash binding mismatch"
         min_free = int(payload.get("min_free_bytes", 0))
-        if min_free and shutil.disk_usage(self.path.parent).free < min_free:
+        volume=Path(payload.get("data_volume",self.path.parent))
+        if min_free and shutil.disk_usage(volume).free < min_free:
             return "disk budget guard: less than required free space"
         deadline = payload.get("deadline_utc_epoch")
         if deadline and time.time() >= deadline: return "deadline guard reached"
@@ -121,8 +124,17 @@ class JobQueue:
             return "no audited concrete executable command"
         if row["kind"] not in {"manual_gate", "audit"} and not payload.get("expected_outputs"):
             return "no declared output validator/checksum contract"
+        if row["kind"] == "prediction":
+            contracts=payload.get("expected_outputs", [])
+            if not any(item.get("artifact_type") == "prediction" and item.get("semantic") == "prediction" for item in contracts):
+                return "prediction job lacks required prediction provenance contract"
         if row["kind"] not in {"manual_gate", "audit"} and payload.get("physical_gpu") is None:
             return "no physical CUDA device binding"
+        if row["kind"] == "formal_train" and payload.get("command"):
+            # Queue-side payload fields cannot attest current hardware or an
+            # exclusive lease. Formal launch stays closed until wired to an
+            # accepted, hash-bound resource attestation service.
+            return "formal device qualification is not wired to attested hardware"
         return None
 
     def claim(self, owner: str, lease_seconds=120):
@@ -148,35 +160,70 @@ class JobQueue:
                     result = dict(row); result.update(status=RUNNING, lease_token=token, attempts=row["attempts"] + 1); return result
         return None
 
-    def heartbeat(self, job_key, token, lease_seconds=120, pid=None, process_starttime=None):
+    def heartbeat(self, job_key, token, lease_seconds=120, pid=None, process_starttime=None, owner=None):
         now = time.time()
         with self.connect() as db:
-            changed = db.execute("UPDATE jobs SET heartbeat=?,lease_expires=?,pid=COALESCE(?,pid),process_starttime=COALESCE(?,process_starttime),updated_at=? WHERE job_key=? AND status=? AND lease_token=?", (now, now + lease_seconds, pid, process_starttime, now, job_key, RUNNING, token)).rowcount
+            query="UPDATE jobs SET heartbeat=?,lease_expires=?,pid=COALESCE(?,pid),process_starttime=COALESCE(?,process_starttime),updated_at=? WHERE job_key=? AND status=? AND lease_token=?"
+            args=[now, now + lease_seconds, pid, process_starttime, now, job_key, RUNNING, token]
+            if owner is not None: query += " AND lease_owner=?"; args.append(owner)
+            changed = db.execute(query, args).rowcount
         if not changed: raise LeaseLost(job_key)
 
-    def record_progress(self, job_key, token, counter: int):
-        """Progress is separate from liveness; callers must report real checkpoints/media commits."""
+    def take_supervision(self, job_key, token, owner, lease_seconds=120):
+        """Fence a displaced controller by atomically replacing lease_owner."""
         now=time.time()
         with self.connect() as db:
-            previous=db.execute("SELECT progress_counter FROM jobs WHERE job_key=? AND status=? AND lease_token=?",(job_key,RUNNING,token)).fetchone()
-            if previous is None: raise LeaseLost(job_key)
-            if previous["progress_counter"] is not None and counter <= previous["progress_counter"]: return False
-            changed=db.execute("UPDATE jobs SET progress_at=?,progress_counter=?,updated_at=? WHERE job_key=? AND status=? AND lease_token=?",(now,counter,now,job_key,RUNNING,token)).rowcount
+            changed=db.execute("UPDATE jobs SET lease_owner=?,heartbeat=?,lease_expires=?,updated_at=? WHERE job_key=? AND status=? AND lease_token=?",(owner,now,now+lease_seconds,now,job_key,RUNNING,token)).rowcount
         if not changed: raise LeaseLost(job_key)
+
+    def record_progress(self, job_key, token, counter: int, owner=None):
+        """Progress is separate from liveness; callers must report real checkpoints/media commits."""
+        now=time.time()
+        with self.connect() as db, self.transaction(db):
+            query="SELECT progress_counter FROM jobs WHERE job_key=? AND status=? AND lease_token=?"; args=[job_key,RUNNING,token]
+            if owner is not None: query += " AND lease_owner=?"; args.append(owner)
+            row=db.execute(query,args).fetchone()
+            if row is None: raise LeaseLost(job_key)
+            if row["progress_counter"] is not None and counter <= row["progress_counter"]: return False
+            db.execute("UPDATE jobs SET progress_at=?,progress_counter=?,updated_at=? WHERE job_key=? AND status=? AND lease_token=? AND (progress_counter IS NULL OR progress_counter<?)",(now,counter,now,job_key,RUNNING,token,counter))
         return True
 
-    def protected_live(self, job_key, token, detail):
+    def protected_live(self, job_key, token, detail, owner=None):
         """Leave an uncertain/live child reserved; it must never be retried."""
         with self.connect() as db:
-            changed=db.execute("UPDATE jobs SET failure=?,updated_at=? WHERE job_key=? AND status=? AND lease_token=?",(detail,time.time(),job_key,RUNNING,token)).rowcount
+            query="UPDATE jobs SET failure=?,updated_at=? WHERE job_key=? AND status=? AND lease_token=?"; args=[detail,time.time(),job_key,RUNNING,token]
+            if owner is not None: query += " AND lease_owner=?"; args.append(owner)
+            changed=db.execute(query,args).rowcount
         if not changed: raise LeaseLost(job_key)
 
-    def start_attempt_journal(self, job_key, token, pid, process_starttime, gpu_identity, journal_path):
-        path=Path(journal_path); path.parent.mkdir(parents=True,exist_ok=True)
-        record={"job_key":job_key,"lease_token":token,"pid":pid,"process_starttime":process_starttime,"gpu_identity":gpu_identity,"state":"RUNNING","updated_at":time.time()}
-        path.write_text(json.dumps(record,sort_keys=True)+"\n")
-        with path.open("rb") as handle: os.fsync(handle.fileno())
-        with self.connect() as db: db.execute("INSERT OR REPLACE INTO attempt_journal VALUES(?,?,?,?,?,?,?,?)",(token,job_key,pid,process_starttime,gpu_identity,str(path),"RUNNING",time.time()))
+    def record_protective_stop(self, job_key, token, code, owner=None):
+        with self.connect() as db:
+            query="UPDATE jobs SET protective_stop_code=?,updated_at=? WHERE job_key=? AND status=? AND lease_token=?"; args=[code,time.time(),job_key,RUNNING,token]
+            if owner is not None: query += " AND lease_owner=?"; args.append(owner)
+            changed=db.execute(query,args).rowcount
+        if not changed: raise LeaseLost(job_key)
+
+    def start_attempt_journal(self, job_key, token, pid, process_starttime, gpu_identity, journal_path, state="RUNNING", member_identities=None):
+        """Persist intent before launch, then replace it with the observed PID."""
+        record={"job_key":job_key,"lease_token":token,"pid":pid,"process_starttime":process_starttime,"gpu_identity":gpu_identity,"state":state,"member_identities":member_identities or {},"updated_at":time.time()}
+        from .worker_runtime import write_journal
+        path=Path(journal_path); write_journal(path,record)
+        with self.connect() as db: db.execute("INSERT OR REPLACE INTO attempt_journal VALUES(?,?,?,?,?,?,?,?)",(token,job_key,pid,process_starttime,gpu_identity,str(path),state,time.time()))
+
+    def update_attempt_journal(self, job_key, token, pid, process_starttime, gpu_identity, journal_path, state="RUNNING", member_identities=None):
+        self.start_attempt_journal(job_key, token, pid, process_starttime, gpu_identity, journal_path, state, member_identities)
+
+    def release_unstarted(self, job_key, token, detail):
+        """Undo a resource-preflight claim before a child or journal exists."""
+        now = time.time()
+        with self.connect() as db, self.transaction(db):
+            row = db.execute("SELECT * FROM jobs WHERE job_key=?", (job_key,)).fetchone()
+            if not row or row["status"] != RUNNING or row["lease_token"] != token or row["pid"] is not None:
+                raise LeaseLost(job_key)
+            journal = db.execute("SELECT 1 FROM attempt_journal WHERE lease_token=?", (token,)).fetchone()
+            if journal: raise QueueError("cannot release a journaled attempt")
+            db.execute("DELETE FROM attempts WHERE job_id=? AND lease_token=?", (row["id"], token))
+            db.execute("UPDATE jobs SET status=?,attempts=attempts-1,lease_owner=NULL,lease_token=NULL,lease_expires=NULL,failure=?,updated_at=? WHERE id=?", (PENDING, detail, now, row["id"]))
 
     def runtime_guard(self, job_key, token):
         """Check hard limits while a child runs; progress timeout is intentionally external."""
@@ -184,23 +231,26 @@ class JobQueue:
             row=db.execute("SELECT * FROM jobs WHERE job_key=? AND lease_token=? AND status=?",(job_key,token,RUNNING)).fetchone()
             if not row: raise LeaseLost(job_key)
             payload=json.loads(row["payload"]); now=time.time()
-            if payload.get("deadline_utc_epoch") and now >= payload["deadline_utc_epoch"]: raise QueueError("deadline hard limit")
+            if payload.get("deadline_utc_epoch") and now >= payload["deadline_utc_epoch"]: raise HardLimit("deadline")
             volume=Path(payload.get("data_volume",self.path.parent))
-            if payload.get("min_free_bytes") and shutil.disk_usage(volume).free < int(payload["min_free_bytes"]): raise QueueError("disk hard limit")
+            if payload.get("min_free_bytes") and shutil.disk_usage(volume).free < int(payload["min_free_bytes"]): raise HardLimit("disk")
             attempt=db.execute("SELECT started_at FROM attempts WHERE job_id=? AND lease_token=?",(row["id"],token)).fetchone()
-            if payload.get("run_budget_seconds") and attempt and now-attempt["started_at"] > payload["run_budget_seconds"]: raise QueueError("budget hard limit")
+            if payload.get("run_budget_seconds") and attempt and now-attempt["started_at"] > payload["run_budget_seconds"]: raise HardLimit("budget")
 
-    def commit(self, job_key, token, temporary_output, output_path):
+    def commit(self, job_key, token, temporary_output, output_path, owner=None):
         temporary_output, output_path = Path(temporary_output), Path(output_path)
-        if not temporary_output.is_file(): raise QueueError("missing temporary output")
+        if not temporary_output.is_file() and not output_path.is_file(): raise QueueError("missing temporary output")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        checksum = hashlib.sha256(temporary_output.read_bytes()).hexdigest()
-        with temporary_output.open("rb") as handle: os.fsync(handle.fileno())
+        source = temporary_output if temporary_output.is_file() else output_path
+        checksum = hashlib.sha256(source.read_bytes()).hexdigest()
+        with source.open("rb") as handle: os.fsync(handle.fileno())
         now = time.time()
         with self.connect() as db, self.transaction(db):
             row = db.execute("SELECT * FROM jobs WHERE job_key=?", (job_key,)).fetchone()
-            if not row or row["status"] != RUNNING or row["lease_token"] != token: raise LeaseLost(job_key)
-            os.replace(temporary_output, output_path)
+            if not row or row["status"] != RUNNING or row["lease_token"] != token or (owner is not None and row["lease_owner"] != owner): raise LeaseLost(job_key)
+            if row["protective_stop_code"]:
+                raise HardLimit(row["protective_stop_code"])
+            if temporary_output.is_file(): os.replace(temporary_output, output_path)
             directory_fd = os.open(output_path.parent, os.O_DIRECTORY); os.fsync(directory_fd); os.close(directory_fd)
             db.execute("UPDATE jobs SET status=?,output_path=?,output_checksum=?,lease_owner=NULL,lease_token=NULL,lease_expires=NULL,updated_at=? WHERE id=?", (SUCCEEDED, str(output_path), checksum, now, row["id"]))
             db.execute("UPDATE attempts SET ended_at=?,outcome=? WHERE job_id=? AND lease_token=?", (now, SUCCEEDED, row["id"], token))
@@ -215,21 +265,70 @@ class JobQueue:
             path=Path(expected["path"])
             if str(path) != actual.get("path") or not path.is_file(): raise QueueError("artifact path mismatch")
             if expected.get("checksum") and expected["checksum"] != actual.get("checksum"): raise QueueError("artifact checksum mismatch")
-            fields=expected.get("required_json_keys", [])
-            if fields:
+            fields=expected.get("required_json_keys", []); semantic=expected.get("semantic")
+            if expected.get("artifact_type") == "prediction" and semantic != "prediction":
+                raise QueueError("prediction artifact requires semantic provenance contract")
+            if fields or semantic:
                 try: document=json.loads(path.read_text())
-                except (OSError,json.JSONDecodeError) as exc: raise QueueError("required JSON artifact invalid") from exc
+                except OSError as exc: raise ArtifactReadUncertain("required JSON artifact unreadable") from exc
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc: raise QueueError("required JSON artifact invalid") from exc
+                if not isinstance(document,dict): raise QueueError("required JSON artifact must be an object")
                 if not all(field in document for field in fields): raise QueueError("artifact schema keys missing")
+            if semantic == "formal_training":
+                checkpoint = document.get("schema") == "nc_rted_checkpoint_v2"
+                if not checkpoint or not (document.get("final") is True and document.get("completed_updates") == 1000 and document.get("identity") == expected.get("run_identity")):
+                    raise QueueError("formal training artifact identity/update contract failed")
+                payload = path.parent / "state.pt"
+                root=path.parent.resolve()
+                try:
+                    valid_payload = (not payload.is_symlink() and payload.is_file() and payload.resolve().parent == root and
+                                     document.get("payload_bytes") == payload.stat().st_size and
+                                     document.get("payload_sha256") == hashlib.sha256(payload.read_bytes()).hexdigest())
+                except OSError as exc:
+                    raise ArtifactReadUncertain("formal checkpoint payload unreadable") from exc
+                if (path.is_symlink() or path.name != "manifest.json" or path.parent.name != "final" or not valid_payload):
+                    raise QueueError("formal checkpoint payload contract failed")
+                try:
+                    from .recovery import CheckpointReadUncertain, validate_checkpoint_payload
+                    validate_checkpoint_payload(payload, document)
+                except OSError as exc:
+                    raise ArtifactReadUncertain("formal checkpoint payload unreadable") from exc
+                except CheckpointReadUncertain as exc:
+                    raise ArtifactReadUncertain("formal checkpoint payload unreadable") from exc
+                except Exception as exc:
+                    raise QueueError("formal checkpoint payload structure failed") from exc
+            elif semantic == "prediction":
+                ids, denominator=document.get("prediction_ids"), expected.get("denominator")
+                if (not isinstance(ids,list) or not all(isinstance(item,str) and item for item in ids) or not isinstance(denominator,int) or len(ids) != denominator or len(set(ids)) != denominator):
+                    raise QueueError("prediction artifact ID denominator contract failed")
+                official = expected.get("official_ids")
+                bindings=(expected.get("model_hash"), expected.get("input_hash"), document.get("model_hash"), document.get("input_hash"))
+                valid_hash=lambda value: isinstance(value,str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+                if (not all(valid_hash(value) for value in bindings) or
+                        not isinstance(official, list) or not all(isinstance(item,str) and item for item in official) or len(set(official)) != len(official) or set(ids) != set(official) or
+                        bindings[0] != bindings[2] or bindings[1] != bindings[3]):
+                    raise QueueError("prediction artifact provenance/official-ID contract failed")
+            elif semantic is not None: raise QueueError("unknown semantic artifact contract")
 
-    def fail(self, job_key, token, detail):
+    def running_attempts(self):
+        with self.connect() as db:
+            return [dict(row) for row in db.execute("SELECT j.*,q.payload,q.input_hash,q.lease_owner,q.status,q.attempts,q.kind,q.failure,q.protective_stop_code FROM attempt_journal j JOIN jobs q ON q.job_key=j.job_key AND q.lease_token=j.lease_token WHERE q.status=? AND j.state IN ('RUNNING','LAUNCHING')",(RUNNING,))]
+
+    def attempt_started_at(self, job_key, token):
+        with self.connect() as db:
+            row=db.execute("SELECT a.started_at FROM attempts a JOIN jobs j ON j.id=a.job_id WHERE j.job_key=? AND a.lease_token=?",(job_key,token)).fetchone()
+        return row["started_at"] if row else None
+
+    def fail(self, job_key, token, detail, owner=None, code="transient"):
         now = time.time()
         with self.connect() as db, self.transaction(db):
             row = db.execute("SELECT * FROM jobs WHERE job_key=?", (job_key,)).fetchone()
-            if not row or row["status"] != RUNNING or row["lease_token"] != token: raise LeaseLost(job_key)
-            protective = any(marker in detail.lower() for marker in ("nan", "integrity", "leakage", "weight mismatch", "budget", "disk hard limit"))
+            if not row or row["status"] != RUNNING or row["lease_token"] != token or (owner is not None and row["lease_owner"] != owner): raise LeaseLost(job_key)
+            code = row["protective_stop_code"] or code
+            protective = code in {"deadline", "disk", "budget", "nan", "integrity", "leakage", "weight_mismatch"}
             if protective or row["attempts"] >= row["max_attempts"]: status, next_time = BLOCKED, now
             else: status, next_time = RETRY_WAIT, now + RETRY_DELAYS[row["attempts"] - 1]
-            db.execute("UPDATE jobs SET status=?,not_before=?,failure=?,lease_owner=NULL,lease_token=NULL,lease_expires=NULL,updated_at=? WHERE id=?", (status, next_time, detail, now, row["id"]))
+            db.execute("UPDATE jobs SET status=?,not_before=?,failure=?,lease_owner=NULL,lease_token=NULL,lease_expires=NULL,pid=NULL,process_starttime=NULL,progress_at=NULL,progress_counter=NULL,updated_at=? WHERE id=?", (status, next_time, detail, now, row["id"]))
             db.execute("UPDATE attempts SET ended_at=?,outcome=?,detail=? WHERE job_id=? AND lease_token=?", (now, status, detail, row["id"], token))
             db.execute("UPDATE attempt_journal SET state=?,updated_at=? WHERE lease_token=?", (status,now,token))
 
@@ -239,21 +338,31 @@ class JobQueue:
             rows = db.execute("SELECT * FROM jobs WHERE status=? AND lease_expires<?", (RUNNING, now)).fetchall()
             for row in rows:
                 if self._process_may_live(row): continue
-                status = BLOCKED if row["attempts"] >= row["max_attempts"] else RETRY_WAIT
+                journal=db.execute("SELECT journal_path FROM attempt_journal WHERE lease_token=? AND state IN ('RUNNING','LAUNCHING')",(row["lease_token"],)).fetchone()
+                # Preserve a durable completion record for the worker's
+                # reconciliation path; expiry must not discard its lease.
+                if journal and any((Path(journal["journal_path"]).parent / name).is_file() for name in ("producer_completion.json", "result.tmp", "result.json")):
+                    continue
+                # A hard-limit decision is durable policy, not controller
+                # diagnostics.  Once the child identity is conclusively gone,
+                # it must win over ordinary lease-expiry retry handling.
+                stop = row["protective_stop_code"]
+                status = BLOCKED if stop or row["attempts"] >= row["max_attempts"] else RETRY_WAIT
                 delay = 0 if status == BLOCKED else RETRY_DELAYS[row["attempts"] - 1]
-                db.execute("UPDATE jobs SET status=?,not_before=?,failure=?,lease_owner=NULL,lease_token=NULL,lease_expires=NULL,updated_at=? WHERE id=?", (status, now + delay, "lease expired; process left untouched", now, row["id"]))
+                detail = f"hard limit: {stop}" if stop else "lease expired; process left untouched"
+                db.execute("UPDATE jobs SET status=?,not_before=?,failure=?,lease_owner=NULL,lease_token=NULL,lease_expires=NULL,pid=NULL,process_starttime=NULL,progress_at=NULL,progress_counter=NULL,updated_at=? WHERE id=?", (status, now + delay, detail, now, row["id"]))
+                db.execute("UPDATE attempts SET ended_at=?,outcome=?,detail=? WHERE job_id=? AND lease_token=?",(now,status,detail,row["id"],row["lease_token"]))
+                db.execute("UPDATE attempt_journal SET state=?,updated_at=? WHERE lease_token=?",(status,now,row["lease_token"]))
                 changed += 1
         return changed
 
     @staticmethod
     def _process_may_live(row):
-        if not row["pid"]: return True
+        from .worker_runtime import attempt_state
         host = (row["lease_owner"] or "").split(":", 1)[0]
-        if host and host != socket.gethostname(): return True
-        try:
-            fields=Path(f"/proc/{row['pid']}/stat").read_text().split()
-            return fields[2] != "Z" and fields[21] == str(row["process_starttime"])
-        except OSError: return False
+        # Foreign ownership, prelaunch intent, PID reuse, and descendants must
+        # remain reserved. Only a verified local gone/zombie-only group expires.
+        return attempt_state(row["pid"], row["process_starttime"], host) not in {"gone"}
 
     def complete_gate(self, job_key):
         with self.connect() as db, self.transaction(db):
@@ -275,7 +384,7 @@ class JobQueue:
 
     def status(self):
         with self.connect() as db:
-            return [dict(row) for row in db.execute("SELECT job_key,kind,status,attempts,output_checksum,failure,pid,process_starttime FROM jobs ORDER BY id")]
+            return [dict(row) for row in db.execute("SELECT job_key,kind,status,attempts,output_checksum,failure,pid,process_starttime,progress_at,progress_counter FROM jobs ORDER BY id")]
 
     def register_matrix(self):
         self.add_job("prepare.resource_preflight", "audit", {"evidence": ["resource_feasibility"]})

@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -25,6 +26,34 @@ def test_concurrent_claim_has_single_lease(tmp_path):
     claimed = [result for result in results if result]
     assert len(claimed) == 1 and claimed[0]["status"] == RUNNING
 
+def test_supervision_transfer_fences_displaced_controller(tmp_path):
+    queue=JobQueue(tmp_path/'queue.sqlite'); add_ready(queue)
+    job=queue.claim('first'); queue.take_supervision('job',job['lease_token'],'second')
+    with pytest.raises(LeaseLost): queue.heartbeat('job',job['lease_token'],owner='first')
+    queue.heartbeat('job',job['lease_token'],owner='second')
+
+def test_protective_stop_is_dedicated_from_mutable_diagnostic_text(tmp_path):
+    queue=JobQueue(tmp_path/'queue.sqlite'); add_ready(queue); job=queue.claim('owner')
+    queue.record_protective_stop('job',job['lease_token'],'deadline')
+    queue.protected_live('job',job['lease_token'],'later diagnostic')
+    with queue.connect() as db:
+        row=db.execute("SELECT protective_stop_code,failure FROM jobs WHERE job_key='job'").fetchone()
+    assert row['protective_stop_code']=='deadline' and row['failure']=='later diagnostic'
+
+
+def test_expired_protective_stop_blocks_only_after_identity_is_gone(tmp_path):
+    import socket
+    queue=JobQueue(tmp_path/'queue.sqlite'); add_ready(queue); job=queue.claim(f'{socket.gethostname()}:owner',lease_seconds=.001)
+    queue.heartbeat('job',job['lease_token'],lease_seconds=.001,pid=999999,process_starttime='0')
+    queue.record_protective_stop('job',job['lease_token'],'deadline')
+    time.sleep(.01); assert queue.recover_expired()==1
+    assert queue.status()[0]['status']==BLOCKED
+    queue=JobQueue(tmp_path/'uncertain.sqlite'); add_ready(queue); job=queue.claim(f'{socket.gethostname()}:owner',lease_seconds=.001)
+    queue.heartbeat('job',job['lease_token'],lease_seconds=.001,pid=os.getpid(),process_starttime='wrong')
+    queue.record_protective_stop('job',job['lease_token'],'deadline')
+    time.sleep(.01); assert queue.recover_expired()==0
+    assert queue.status()[0]['status']==RUNNING
+
 
 def test_stale_owner_cannot_commit(tmp_path):
     queue = JobQueue(tmp_path / "queue.sqlite"); add_ready(queue)
@@ -46,7 +75,7 @@ def test_recovery_is_idempotent_and_never_kills_process(tmp_path):
     import socket
     job = queue.claim(f"{socket.gethostname()}:worker", lease_seconds=0.001); queue.heartbeat("job", job["lease_token"], lease_seconds=0.001, pid=999999, process_starttime="x")
     time.sleep(.01); assert queue.recover_expired() == 1; assert queue.recover_expired() == 0
-    row = queue.status()[0]; assert row["status"] == RETRY_WAIT and row["pid"] == 999999
+    row = queue.status()[0]; assert row["status"] == RETRY_WAIT and row["pid"] is None
 
 
 def test_live_local_child_is_never_retried_after_observation_expiry(tmp_path):
@@ -104,7 +133,7 @@ def test_three_retries_use_all_three_backoffs_and_integrity_blocks(tmp_path):
         with queue.connect() as db: db.execute("UPDATE jobs SET not_before=0 WHERE job_key='job'")
     job=queue.claim('worker'); queue.fail('job',job['lease_token'],'temporary io')
     assert queue.status()[0]['status']==BLOCKED
-    queue=JobQueue(tmp_path/'integrity.sqlite'); add_ready(queue); job=queue.claim('worker'); queue.fail('job',job['lease_token'],'NaN gradient')
+    queue=JobQueue(tmp_path/'integrity.sqlite'); add_ready(queue); job=queue.claim('worker'); queue.fail('job',job['lease_token'],'NaN gradient',code='nan')
     assert queue.status()[0]['status']==BLOCKED
 
 
@@ -113,3 +142,24 @@ def test_matrix_is_registered_but_formal_work_is_not_claimable(tmp_path):
     rows = queue.status(); assert len(rows) == 28
     assert sum(row["kind"] == "formal_train" for row in rows) == 12
     assert queue.claim("worker") is None
+
+def test_formal_command_is_closed_without_attested_resource_wiring(tmp_path):
+    queue=JobQueue(tmp_path/'queue.sqlite')
+    queue.add_job('formal','formal_train',{'command':['true'],'physical_gpu':0,'expected_outputs':[{'path':'/dev/null'}], 'resource_qualification':{'accepted':True,'gpu_uuid':'untrusted'}})
+    assert queue.claim('worker') is None
+    assert 'not wired' in queue.status()[0]['failure']
+
+def test_semantic_artifact_contracts_require_final_identity_and_prediction_denominator(tmp_path):
+    train=tmp_path/'train.json'; train.write_text(json.dumps({'status':'FORMAL_TRAINING_COMPLETE','completed_updates':1000,'run_identity':{'run':'x'}}))
+    queue=JobQueue(tmp_path/'queue.sqlite'); checksum=__import__('hashlib').sha256(train.read_bytes()).hexdigest()
+    with pytest.raises(Exception): queue.validate_artifacts([{'path':str(train),'artifact_type':'report','checksum':checksum,'semantic':'formal_training','run_identity':{'run':'x'}}],[{'path':str(train),'checksum':checksum}])
+    final=tmp_path/'final'; final.mkdir(); state=final/'state.pt'; state.write_bytes(b'checkpoint')
+    manifest=final/'manifest.json'; manifest.write_text(json.dumps({'schema':'nc_rted_checkpoint_v2','identity':{'run':'x'},'final':True,'completed_updates':1000,'cursor':1,'payload_bytes':state.stat().st_size,'payload_sha256':__import__('hashlib').sha256(state.read_bytes()).hexdigest()}))
+    checksum=__import__('hashlib').sha256(manifest.read_bytes()).hexdigest()
+    with pytest.raises(Exception): queue.validate_artifacts([{'path':str(manifest),'artifact_type':'checkpoint','checksum':checksum,'semantic':'formal_training','run_identity':{'run':'x'}}],[{'path':str(manifest),'checksum':checksum}])
+    model='a'*64; input_hash='b'*64
+    prediction=tmp_path/'prediction.json'; prediction.write_text(json.dumps({'prediction_ids':['a','b'],'model_hash':model,'input_hash':input_hash})); checksum=__import__('hashlib').sha256(prediction.read_bytes()).hexdigest()
+    contract={'path':str(prediction),'artifact_type':'prediction','checksum':checksum,'semantic':'prediction','denominator':2,'official_ids':['a','b'],'model_hash':model,'input_hash':input_hash}
+    queue.validate_artifacts([contract],[{'path':str(prediction),'checksum':checksum}])
+    with pytest.raises(Exception): queue.validate_artifacts([{**contract,'model_hash':''}],[{'path':str(prediction),'checksum':checksum}])
+    with pytest.raises(Exception): queue.validate_artifacts([{'path':str(prediction),'artifact_type':'prediction','semantic':'prediction','denominator':3}],[{'path':str(prediction),'checksum':checksum}])

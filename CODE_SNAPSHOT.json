@@ -1,23 +1,25 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "created_at": "2026-10-09T19:53:59.546708+00:00",
-  "source_commit": "c20890f171913c1465225c8933e210f4ae19b7c9",
+  "created_at": "2026-10-09T20:46:17.445937+00:00",
+  "source_commit": "32e0bd5dfc3a63c6a8d16c5dfe913887e51f835c",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
   "validation": {
-    "cpu_passed": 268,
-    "cpu_report_sha256": "1a83ac9a9bf1c8a68837f4084e451b931fe903eac54dca7c5550193a6c880c08",
-    "extraction_review_status": "PASS_STATIC",
-    "review_scope": "supplied-source extraction only; no complete experiment acceptance",
-    "training_media_pts_passed": 2413,
-    "prior_real_observer_nonempty_windows_exact": 12
+    "cpu_passed": 303,
+    "cpu_report_sha256": "c6ccdb3b5a9619490f343a44f1505c3a908fb8a3c2c4cf7ea562adbc4fb1d9cb",
+    "queue_review_status": "PASS_STATIC",
+    "queue_review_sha256": "ddbf18ad868e7a2a476f3f19ef8eabe8b94890d400f1f75295cfb3fb3674f16a",
+    "review_scope": "controlled local nonformal lifecycle only; formal admission closed",
+    "inherited_vision_observer_diagnostic_windows": 12
   },
   "remaining": [
-    "full real crossfit teacher coverage",
+    "final Stage2 vision runtime provenance acceptance",
+    "deterministic inherited memory/Slow probability and text parity",
+    "full real crossfit teachers",
     "caption materialization and storage admission",
-    "longest-input GPU/Slow output equivalence and PRO6000 verification",
-    "complete blind prediction and queue lifecycle/resource admission",
-    "full freeze and 12 training / 13 full evaluation matrix"
+    "longest-input GPU and PRO6000 verification",
+    "complete blind prediction and formal resource admission",
+    "full freeze and 12 training / 13 evaluations"
   ],
   "files": [
     {
@@ -27,8 +29,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "243aa2d86da527c4163f584f4069f7536815b16106dbaa66b4d84f30b1c061fc",
-      "bytes": 4110
+      "sha256": "a24bd01101a6fcff982531e0aba95165b2a8b6cf578c3b2aeeca9e92f9f68e18",
+      "bytes": 4959
     },
     {
       "path": "THIRD_PARTY.md",
@@ -114,6 +116,11 @@
       "path": "docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md",
       "sha256": "44b04cf138f169925ed17193cf954ea133fc0c3e7adf94dbf75f1a38dd906dbc",
       "bytes": 5566
+    },
+    {
+      "path": "docs/NC_RTED_QUEUE_CONTRACT.md",
+      "sha256": "ab15d348fe581cc669a7735e433e9def4e6f001b6c7994098f5f167e3589119b",
+      "bytes": 3824
     },
     {
       "path": "docs/NC_RTED_RETRIEVAL_CONTRACT.md",
@@ -462,8 +469,8 @@
     },
     {
       "path": "scripts/nc_rted_queue.py",
-      "sha256": "5ea0cb1714945b539b786ed42caddc623c3bfc05c33ac5704bc3a0acc54be799",
-      "bytes": 6389
+      "sha256": "5ef40211718d0e46ec60815c178985a98ddfa853886f9568735f3d14db392763",
+      "bytes": 30599
     },
     {
       "path": "scripts/nc_rted_train.py",
@@ -572,13 +579,13 @@
     },
     {
       "path": "src/nc_rted/queue.py",
-      "sha256": "39820ecb7f727b226b6cd4c21b7786b4bc44c24dee0126c2553db80119ae56cf",
-      "bytes": 20749
+      "sha256": "2f064cdc486e189df9baabc4f3b3a07c10e9e96260870afbc5ebc4624f0e6d07",
+      "bytes": 30311
     },
     {
       "path": "src/nc_rted/recovery.py",
-      "sha256": "6ddc99337b1b6b8b70105842de5595ec373e9ddd7d51b92cf3c07d9415ad28d3",
-      "bytes": 17482
+      "sha256": "6ab9b943f562caed058bea265d58064a032f1300a3d7442e38b726da6919d03c",
+      "bytes": 26762
     },
     {
       "path": "src/nc_rted/retrieval.py",
@@ -634,6 +641,11 @@
       "path": "src/nc_rted/training.py",
       "sha256": "c1277c0131a6e9a7edc52cfcfc6c10273f09cf6885b5593b3859f9105d52dc9c",
       "bytes": 8996
+    },
+    {
+      "path": "src/nc_rted/worker_runtime.py",
+      "sha256": "55b1e0c0bc180c998915b61b192349d69fac3afd1ad771ee3ac5ef744d567c2f",
+      "bytes": 6859
     },
     {
       "path": "tests/test_nc_rted_alignment.py",
@@ -737,13 +749,18 @@
     },
     {
       "path": "tests/test_nc_rted_queue.py",
-      "sha256": "3236dd32ad544b1979874b1ff7e84bc404583374bde06f363d9c79368f20d7e4",
-      "bytes": 6658
+      "sha256": "6324ccfae2af2fc6c1c6aff67c86d4b251adeaee9d67935b6e5213ffbe0f840c",
+      "bytes": 11091
+    },
+    {
+      "path": "tests/test_nc_rted_queue_lifecycle.py",
+      "sha256": "3e38a87096f8bc06fd8a590cdc2c6d47179ce2a890024c6fd1aee4c6c818e0e7",
+      "bytes": 22959
     },
     {
       "path": "tests/test_nc_rted_recovery.py",
-      "sha256": "f16cc0325cce6e86bbe3e93d774099e30cba7003dab3355fb733cd8cb724407b",
-      "bytes": 10553
+      "sha256": "30ebf1290153fb382a739ba260365c9fa5200d74873fc3cd014bb2a44b644028",
+      "bytes": 12181
     },
     {
       "path": "tests/test_nc_rted_retrieval.py",
@@ -794,6 +811,11 @@
       "path": "tests/test_nc_rted_train_worker.py",
       "sha256": "f46145bb03fb2ebec845967923a38ee81b195e00bff9a92958c95ec4423ef9ae",
       "bytes": 2301
+    },
+    {
+      "path": "tests/test_nc_rted_worker_runtime.py",
+      "sha256": "9a8058d2b183fae9a1a1a6c05a0cffeeb419fa9609eff53a1ca02f4a5f9fa470",
+      "bytes": 1836
     }
   ]
 }

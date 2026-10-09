@@ -241,9 +241,12 @@ class ObservationJournal:
         return commit
 
 
-def extract_windows(truths, observer, journal: ObservationJournal, *, max_new_windows=None, admission=None):
+def extract_windows(truths, observer, journal: ObservationJournal, *, max_new_windows=None, admission=None,
+                    before_finish=None):
     if max_new_windows is not None and (type(max_new_windows) is not int or max_new_windows<1):
         raise ExtractionError("max_new_windows must be a positive preparation bound")
+    if before_finish is not None and not callable(before_finish):
+        raise ExtractionError("before_finish must be callable")
     requested=tuple(f"detection:{t.dataset}:{t.key}:{t.query_index}" for t in truths)
     if tuple(sorted(requested)) != journal.ids:
         raise ExtractionError("extraction truth set differs from journal denominator")
@@ -267,7 +270,9 @@ def extract_windows(truths, observer, journal: ObservationJournal, *, max_new_wi
                          "completed_this_pass":computed+reused,"total":len(journal.ids),"last_window":window_id},
                          reserved_free_bytes=journal.reserve)
         complete=computed+reused==len(journal.ids)
-        if complete:journal.finish()
+        if complete:
+            if before_finish is not None:before_finish()
+            journal.finish()
         result={"status":"COMPLETE_OBSERVATIONS_NOT_TEACHERS" if complete else "PARTIAL_RESUMABLE_OBSERVATIONS",
                 "computed":computed,"reused":reused,"total":len(journal.ids),"rejections_this_pass":rejections}
         atomic_json(journal.root/"last_pass.json",result,reserved_free_bytes=journal.reserve)

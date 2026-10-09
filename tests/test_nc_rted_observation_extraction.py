@@ -145,19 +145,117 @@ def test_active_writer_rejects_removed_run_binding_before_seal(tmp_path):
 def test_snapshot_substitution_after_preflight_is_rejected(tmp_path,changed):
     import runpy
     check=runpy.run_path(str(Path(__file__).resolve().parents[1]/"scripts/nc_rted_prepare_observations.py"))["validate_loaded_models"]
-    cfg={"detector_snapshot":str(tmp_path/'detector'),"siglip_snapshot":str(tmp_path/'siglip'),
-         "siglip_sha256":{"config.json":"c"*64,"model.safetensors":"d"*64},
+    cfg={"detector_snapshot":str(tmp_path/'detector'),"derived_final_stage2_siglip":{
+             "snapshot":str(tmp_path/'derived-siglip'),"parent_export":str(tmp_path/'parent.bin'),
+             "parent_export_sha256":"e"*64,"raw_config_sha256":"c"*64},
          "reactvau_python_sha256":{"llava/model/multimodal_encoder/siglip_encoder.py":"1"*64}}
     expected={"revision":"fixed","files":{"model.safetensors":"a"*64}}
     detector={"snapshot":cfg['detector_snapshot'],"provenance":expected,"files":dict(expected['files'])}
-    siglip={"snapshot":cfg['siglip_snapshot'],"config_sha256":"c"*64,"weights_sha256":"d"*64,"tower_source_sha256":"1"*64}
-    check(cfg,expected,detector,siglip)
+    derived={"snapshot":cfg["derived_final_stage2_siglip"]["snapshot"],"config_sha256":"c"*64,
+             "weights_sha256":"d"*64,"parent_export_sha256":"e"*64,
+             "source_key_prefix":"base_model.model.model.vision_tower.vision_tower.","tensor_count":421,
+             "provenance_digest":"f"*64}
+    siglip={"snapshot":derived["snapshot"],"config_sha256":"c"*64,"weights_sha256":"d"*64,
+            "tower_source_sha256":"1"*64,"numerical_policy_identity":"9"*64,
+            "derived_final_stage2_vision":{"parent_export_sha256":"e"*64,
+                "source_key_prefix":derived["source_key_prefix"],"tensor_count":421,
+                "provenance_digest":"f"*64,"loaded_tower_path":str(Path(derived["snapshot"]).resolve())}}
+    check(cfg,expected,detector,siglip,derived,"9"*64)
     if changed=="detector_provenance":detector['provenance']={**expected,"revision":"replacement"}
     elif changed=="detector_files":detector['files']={"model.safetensors":"b"*64}
     elif changed=="siglip_config":siglip['config_sha256']="e"*64
     elif changed=="siglip_weights":siglip['weights_sha256']="f"*64
     else:siglip['tower_source_sha256']="2"*64
-    with pytest.raises(ValueError,match="verified preparation snapshot"):check(cfg,expected,detector,siglip)
+    with pytest.raises(ValueError,match="verified preparation snapshot"):check(cfg,expected,detector,siglip,derived,"9"*64)
+
+
+def test_old_raw_extraction_schema_is_rejected_before_model_preflight(tmp_path):
+    import hashlib,runpy
+    driver=runpy.run_path(str(Path(__file__).resolve().parents[1]/"scripts/nc_rted_prepare_observations.py"))
+    config=tmp_path/'raw-v1.json';config.write_text(json.dumps({"schema":"nc_rted_observation_extraction/v1"}))
+    with pytest.raises(ValueError,match="unsupported extraction configuration"):
+        driver['validate_config'](config,hashlib.sha256(config.read_bytes()).hexdigest())
+
+
+def test_derived_final_stage2_config_requires_exact_provenance_inputs():
+    import runpy
+    parse=runpy.run_path(str(Path(__file__).resolve().parents[1]/"scripts/nc_rted_prepare_observations.py"))["derived_final_stage2_config"]
+    with pytest.raises(ValueError,match="required"):
+        parse({"derived_final_stage2_siglip":{"snapshot":"derived"}})
+    config={"derived_final_stage2_siglip":{"snapshot":"derived","parent_export":"parent.bin",
+            "parent_export_sha256":"a"*64,"raw_config_sha256":"b"*64}}
+    assert parse(config)==config["derived_final_stage2_siglip"]
+
+
+def test_derived_policy_precedes_provenance_binding_and_failure_stops_binding(monkeypatch):
+    import runpy
+    import nc_rted.numerics as numerics
+    import nc_rted.frozen_vision as frozen_vision
+    driver=runpy.run_path(str(Path(__file__).resolve().parents[1]/"scripts/nc_rted_prepare_observations.py"))
+    events=[]
+    class Policy:
+        def identity(self): return "policy-id"
+    class Binding:
+        snapshot=Path('/derived');config_sha256='a'*64;weights_sha256='b'*64
+        parent_export_sha256='c'*64;source_key_prefix='prefix.';source_key_map={"weight":"prefix.weight"}
+    monkeypatch.setattr(numerics,'configure_deterministic_algorithms',lambda:events.append('policy') or Policy())
+    monkeypatch.setattr(frozen_vision,'bind_derived_final_stage2_vision',lambda *args,**kwargs:events.append(('binding',args,kwargs)) or Binding())
+    monkeypatch.setattr(frozen_vision,'provenance_digest',lambda binding:'digest')
+    cfg={"derived_final_stage2_siglip":{"snapshot":"derived","parent_export":"parent.bin",
+         "parent_export_sha256":"c"*64,"raw_config_sha256":"a"*64}}
+    policy,binding,identity=driver['prepare_derived_final_stage2_vision'](cfg)
+    assert policy.identity()=="policy-id" and binding.snapshot==Path('/derived')
+    assert events[0]=='policy' and events[1][0]=='binding'
+    assert identity["provenance_digest"]=='digest'
+    monkeypatch.setattr(numerics,'configure_deterministic_algorithms',lambda:(_ for _ in ()).throw(RuntimeError('policy failed')))
+    events.clear()
+    with pytest.raises(RuntimeError,match='policy failed'):
+        driver['prepare_derived_final_stage2_vision'](cfg)
+    assert events==[]
+
+
+def test_derived_adapter_receives_parent_binding_and_policy_identity():
+    import runpy
+    driver=runpy.run_path(str(Path(__file__).resolve().parents[1]/"scripts/nc_rted_prepare_observations.py"))
+    captured={}
+    class Adapter:
+        def __init__(self,*args,**kwargs):captured['args']=args;captured['kwargs']=kwargs
+    class Policy:
+        def identity(self):return 'policy-id'
+    binding=type('Binding',(),{'snapshot':Path('/derived')})()
+    derived={"parent_export":"/parent.bin","parent_export_sha256":"a"*64,"raw_config_sha256":"b"*64}
+    adapter=driver['construct_derived_siglip_adapter'](Adapter,object(),binding,derived,Policy())
+    assert isinstance(adapter,Adapter)
+    assert captured['args'][1]==Path('/derived')
+    assert captured['kwargs']=={"expected_parent_export_sha256":"a"*64,"expected_parent_export":"/parent.bin",
+                                "expected_raw_config_sha256":"b"*64,"numerical_policy_identity":"policy-id"}
+
+
+def test_active_numerical_policy_is_rechecked_before_model_work_and_sealing(monkeypatch):
+    import os,runpy
+    from nc_rted.numerics import deterministic_policy
+    check=runpy.run_path(str(Path(__file__).resolve().parents[1]/"scripts/nc_rted_prepare_observations.py"))["assert_active_numerical_policy"]
+    policy=deterministic_policy()
+    class Torch:
+        enabled=True;warn_only=False
+        @classmethod
+        def are_deterministic_algorithms_enabled(cls):return cls.enabled
+        @classmethod
+        def is_deterministic_algorithms_warn_only_enabled(cls):return cls.warn_only
+    monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG",policy.cublas_workspace_config)
+    check(policy,Torch)
+    Torch.enabled=False
+    with pytest.raises(ValueError,match="policy changed"):check(policy,Torch)
+    Torch.enabled=True;monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG",":16:8")
+    with pytest.raises(ValueError,match="policy changed"):check(policy,Torch)
+    assert os.environ["CUBLAS_WORKSPACE_CONFIG"]==":16:8"
+
+
+def test_before_finish_callback_blocks_sealing_when_policy_changes(tmp_path):
+    truths=(truth(0),);journal=ObservationJournal(tmp_path,{},(window_id(truths[0]),),reserved_free_bytes=0)
+    with pytest.raises(RuntimeError,match="policy changed"):
+        extract_windows(truths,Observer(),journal,before_finish=lambda:(_ for _ in ()).throw(RuntimeError("policy changed")))
+    assert not (tmp_path/"commit.json").exists()
 
 
 def test_inherited_source_replacement_between_preflight_and_import_fails(tmp_path):

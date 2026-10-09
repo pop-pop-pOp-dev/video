@@ -9,9 +9,18 @@ permission enters the teacher record after observation.
 JSON inputs and PTS rows are parsed from the exact bytes whose hashes were
 checked, so a path replacement cannot substitute unbound records.
 
-The original frozen SigLIP BF16 tower and pinned RT-DETR snapshot supply the
-accepted singleton/contiguous-layout observer. Exact Python source closures,
-model snapshots, runtime identities and CPU thread count bind the output run.
+The final-Stage2 derived SigLIP BF16 tower and pinned RT-DETR snapshot supply
+the accepted singleton/contiguous-layout observer. Extraction configuration is
+`nc_rted_observation_extraction/v2`: it requires the derived snapshot, the
+exact parent export path and SHA-256, and the original SigLIP configuration
+SHA-256. Before any CUDA access or model construction, the worker establishes
+the mandatory deterministic-algorithms policy and validates every derived
+SigLIP tensor against that parent export. The inherited adapter repeats the
+derived binding after loading, so a raw snapshot path, a substituted derived
+snapshot, or a same-path rewrite cannot establish an observation run.
+
+Exact Python source closures, model snapshots, derived provenance, numerical
+policy identity, runtime identities and CPU thread count bind the output run.
 No Slow model or trainable module is loaded. Frame caching is bounded and the
 20 GiB free-space floor remains mandatory.
 Constructed adapter identities must also match the detector provenance/files
@@ -43,6 +52,13 @@ nor teacher calibration. Resume continues the same config and output identity.
 This prepares frozen observations only. Crossfit teacher construction, real
 support coverage, U/S/F target checks, and formal code/data freeze remain later
 requirements. A complete observation store alone is not formal admission.
+
+The journal is a cooperative local preparation protocol. Its integrity checks
+bind the selected input files, run configuration, and committed teacher-store
+structure for the supported writer/resume flow on trusted local storage. It
+does not defend against a hostile same-process caller that fabricates private
+admission state or an actor able to replace every local file and its integrity
+metadata; those capabilities are outside this extraction contract.
 
 Local observation and inherited modules are imported from captured verified Python
 source bytes, bypassing timestamp bytecode caches. Their source identities are

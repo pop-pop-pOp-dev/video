@@ -1,12 +1,12 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "created_at": "2026-10-09T21:22:45.891482+00:00",
-  "source_commit": "9e550e8455005eb2e28ec35f899f43bc86e45826",
+  "created_at": "2026-10-09T21:38:36.790787+00:00",
+  "source_commit": "391368c62efc8bfe9e13d4135b081863e757b04a",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
   "validation": {
-    "cpu_passed": 340,
-    "cpu_report_sha256": "7b795236863d04123c79c6753d29dc5c325409f474cd57aa9d89edaf9769b1f6",
+    "cpu_passed": 346,
+    "cpu_report_sha256": "b3dcb5af6926e41241b3664b4425fd06c7fbb6180ad823fa28cdb37561d7997a",
     "vision_review": "PASS_STATIC",
     "vision_review_sha256": "df3ca1642a1013abfd6f4992b8537a91882fc1625f32875c407a394cb180d810",
     "vision_review_source_packet_sha256": "d5a04c1302d5b16765747864f06dad03f38db01aa227160e150cc9932f2932f9",
@@ -19,14 +19,28 @@
       "tests/test_nc_rted_production_runtime.py"
     ],
     "short_real_forward_backward": "PASS_DIAGNOSTIC_ACTUAL_INHERITED_TOWER",
-    "short_real_report_sha256": "846ed0ddba28c8c091cd908b9cd7ce9bf28afa514cd8d18b73b0d2fa1aa81561"
+    "short_real_report_sha256": "846ed0ddba28c8c091cd908b9cd7ce9bf28afa514cd8d18b73b0d2fa1aa81561",
+    "extraction_review": "PASS_STATIC",
+    "extraction_review_sha256": "988f5c964b35959441b21139991371826e8e712e7d7b7b28710899560a4057a1",
+    "extraction_review_accepted_file_sha256": {
+      "scripts/nc_rted_prepare_observations.py": "5ef4a89aa7163d719406036bd6f8f173784012d5c71eaf0b1ce09273656f85bf",
+      "src/nc_rted/observation_extraction.py": "fb2c1dc085c03eeb5f44cfdfa211ec0901ffefd9b2adf01792684f62445fc1b4",
+      "tests/test_nc_rted_observation_extraction.py": "5e43ad9777407a1af29da7c5e860a049cd78c91629dbe9a6273d16054572145c",
+      "docs/NC_RTED_OBSERVATION_EXTRACTION_CONTRACT.md": "bcb6a99a3137b49bc872948fcb49fdf4d862666cb10b51cdd50b0967809b3aa5"
+    },
+    "short_detection_greedy_parity": "PASS",
+    "short_detection_greedy_report_sha256": "dc03bfa479fc440c0633aee3441d39132feecf414e9b8ee3145a07386ba8ec27",
+    "derived_v2_bounded_real_observations": 17,
+    "derived_v2_resume_reused": 16,
+    "derived_v2_resume_computed": 1,
+    "derived_v2_real_milestone_sha256": "e28b270fcf1087e27f7128373a2d41976484f9c556e36127ca4b20bb116e25bf"
   },
   "remaining": [
     "complete production assemble and optimizer update/save/reload",
-    "full deterministic Slow text parity",
+    "complete caption and longest-input parity",
     "full real crossfit teachers",
     "caption materialization and storage admission",
-    "longest-input GPU and PRO6000 verification",
+    "PRO6000 verification",
     "complete blind prediction and formal resource admission",
     "full freeze and 12 training / 13 evaluations"
   ],
@@ -38,8 +52,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "aecb018c7940e618cea54d548e27a00a00e38de69f8346a791116eafcb821dfc",
-      "bytes": 5888
+      "sha256": "62b7d5a44d23c7e46c65418661a7380d9dcd896398d47cadd598be74dd3060cc",
+      "bytes": 6462
     },
     {
       "path": "THIRD_PARTY.md",
@@ -123,8 +137,8 @@
     },
     {
       "path": "docs/NC_RTED_OBSERVATION_EXTRACTION_CONTRACT.md",
-      "sha256": "79c9fc10a84d479fb498e53686651b51ae63100ce794c2407f5949b643a3ef8d",
-      "bytes": 5119
+      "sha256": "bcb6a99a3137b49bc872948fcb49fdf4d862666cb10b51cdd50b0967809b3aa5",
+      "bytes": 6183
     },
     {
       "path": "docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md",
@@ -483,8 +497,8 @@
     },
     {
       "path": "scripts/nc_rted_prepare_observations.py",
-      "sha256": "768cbd1d9e9d0663acc5432a38ddc621bc2afed071047b5bd01209d96ea1f48d",
-      "bytes": 13292
+      "sha256": "5ef4a89aa7163d719406036bd6f8f173784012d5c71eaf0b1ce09273656f85bf",
+      "bytes": 18316
     },
     {
       "path": "scripts/nc_rted_queue.py",
@@ -598,8 +612,8 @@
     },
     {
       "path": "src/nc_rted/observation_extraction.py",
-      "sha256": "1027a0e0560483acd94c0d874472b94021abeb7515716d7c3b80c83222d716c4",
-      "bytes": 15179
+      "sha256": "fb2c1dc085c03eeb5f44cfdfa211ec0901ffefd9b2adf01792684f62445fc1b4",
+      "bytes": 15419
     },
     {
       "path": "src/nc_rted/production_runtime.py",
@@ -783,8 +797,8 @@
     },
     {
       "path": "tests/test_nc_rted_observation_extraction.py",
-      "sha256": "d45572012f951124c6e1ed4e96008eda70b728a5400ade1839f8797a93d1456a",
-      "bytes": 20795
+      "sha256": "5e43ad9777407a1af29da7c5e860a049cd78c91629dbe9a6273d16054572145c",
+      "bytes": 26672
     },
     {
       "path": "tests/test_nc_rted_production_runtime.py",

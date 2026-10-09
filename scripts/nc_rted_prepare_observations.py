@@ -47,7 +47,7 @@ SOURCE_FILES=("__init__.py","observation_extraction.py","media_observer.py","det
  "detection_media.py","detection_provider.py","caption_provider.py","caption_sampling.py",
  "observation_cache.py","storage_lock.py","features.py","tracking.py","observation.py","batches.py",
  "bridge.py","model.py","task_inputs.py","teacher_records.py","teacher_store.py",
- "teacher_pipeline.py","teacher.py","alignment.py","retrieval.py","inherited_memory.py")
+ "teacher_pipeline.py","teacher_cache.py","teacher.py","alignment.py","retrieval.py","inherited_memory.py")
 
 
 def source_signature(path):

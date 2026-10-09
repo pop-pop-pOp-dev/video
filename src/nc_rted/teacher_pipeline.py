@@ -18,11 +18,35 @@ from .alignment import constrained_alignment, fit_reference_scale, process_cost_
 from .features import PROCESS_BLOCK_SLICES, PROCESS_FEATURE_DIM
 from .retrieval import StaticPair, pair_compatible
 from .teacher import calibrated_teacher, strength_matched_quality, stable_window_hash
+from .teacher_cache import (BoundedTeacherCache, derived_key, normal_scale_key,
+                            ordered_reference_key, pair_payload_key,
+                            single_reference_alignment_key, window_payload_key,
+                            window_teacher_distances_key)
 
 
 PIPELINE_SCHEMA = "nc_rted_teacher_pipeline/v1"
 CELL_COUNT = 4
 PAIR_LIMIT = 16
+
+
+@dataclass
+class TeacherCacheContext:
+    """Per-build bounded reuse; omitted context preserves the original path."""
+    alignment: BoundedTeacherCache
+    window: BoundedTeacherCache
+    static: BoundedTeacherCache
+
+    @classmethod
+    def create(cls) -> "TeacherCacheContext":
+        # Fixed release allocation: 40 + 16 + 8 MiB, total entry cap 100,000.
+        return cls(BoundedTeacherCache(40 << 20, 62_500), BoundedTeacherCache(16 << 20, 25_000),
+                   BoundedTeacherCache(8 << 20, 12_500))
+
+    def window_key(self, window: "WindowRecord") -> str:
+        return window_payload_key(window)
+
+    def pair_key(self, window: "WindowRecord", index: int, pair: "PairRecord") -> str:
+        return pair_payload_key(self.window_key(window), index, pair)
 
 
 class PipelineError(ValueError):
@@ -90,14 +114,20 @@ def parse_frozen_records(document: dict) -> tuple[WindowRecord, ...]:
     for row in rows:
         pairs = []
         for pair in row.get("pairs", []):
+            class_pair = tuple(pair.get("class_pair", ()))
+            if len(class_pair) != 2 or any(type(value) is not int or not 0 <= value < 80 for value in class_pair):
+                raise PipelineError("invalid ordered COCO class pair")
+            candidate_pair_count = pair.get("candidate_pair_count")
+            if type(candidate_pair_count) is not int or not 1 <= candidate_pair_count <= PAIR_LIMIT:
+                raise PipelineError("invalid candidate pair count")
             valid = _array(pair.get("valid_cells"), (CELL_COUNT,), "pair valid cells", boolean=True)
             process = np.asarray(pair.get("process_cells"), dtype=np.float64)
             if process.shape != (CELL_COUNT, PROCESS_FEATURE_DIM):
                 raise PipelineError("invalid pair process cells")
             if not np.isfinite(process[valid]).all() or np.isfinite(process[~valid]).any():
                 raise PipelineError("valid process cells must be finite and missing cells must be NaN")
-            pairs.append(PairRecord(str(pair["pair_id"]), tuple(pair["class_pair"]), _array(pair["initial_geometry"], (5,), "initial geometry"),
-                                    int(pair["candidate_pair_count"]), valid, process))
+            pairs.append(PairRecord(str(pair["pair_id"]), class_pair, _array(pair["initial_geometry"], (5,), "initial geometry"),
+                                    candidate_pair_count, valid, process))
         if len(pairs) > PAIR_LIMIT:
             raise PipelineError("each window permits at most 16 relation pairs")
         if len({pair.pair_id for pair in pairs}) != len(pairs):
@@ -114,7 +144,13 @@ def parse_frozen_records(document: dict) -> tuple[WindowRecord, ...]:
     return tuple(output)
 
 
-def _window_static(window: WindowRecord) -> WindowStatic:
+def _window_static(window: WindowRecord, cache: TeacherCacheContext | None = None) -> WindowStatic:
+    if cache is not None:
+        def compute():
+            result = _window_static(window)
+            return (result.background, result.class_composition, result.aggregate_initial_geometry, result.support)
+        values = cache.static.get_or_compute(derived_key("window_static", cache.window_key(window)), compute)
+        return WindowStatic(*values)
     if not window.background_valid or np.linalg.norm(window.background) <= 1e-8:
         raise PipelineError("missing reliable window background")
     total_valid = sum(int(pair.valid_cells.sum()) for pair in window.pairs)
@@ -147,11 +183,11 @@ def _validate_fold_provenance(records: tuple[WindowRecord, ...]) -> None:
             mapping[value] = record.fold
 
 
-def _window_threshold(records: tuple[WindowRecord, ...]) -> float:
+def _window_threshold(records: tuple[WindowRecord, ...], cache: TeacherCacheContext | None = None) -> float:
     values = []
     for window in records:
-        descriptor = _window_static(window)
-        neighbors = [_window_distance(descriptor, _window_static(other)) for other in records
+        descriptor = _window_static(window, cache)
+        neighbors = [_window_distance(descriptor, _window_static(other, cache)) for other in records
                      if other.window_id != window.window_id and other.source_family != window.source_family
                      and other.content_alias != window.content_alias]
         if not neighbors:
@@ -163,12 +199,12 @@ def _window_threshold(records: tuple[WindowRecord, ...]) -> float:
     return float(ordered[int(np.ceil(.95 * len(ordered))) - 1])
 
 
-def _static_eligible_records(records: tuple[WindowRecord, ...]) -> tuple[tuple[WindowRecord, ...], list[dict[str, str]]]:
+def _static_eligible_records(records: tuple[WindowRecord, ...], cache: TeacherCacheContext | None = None) -> tuple[tuple[WindowRecord, ...], list[dict[str, str]]]:
     """Remove technical static failures before they can influence retrieval."""
     usable, excluded = [], []
     for window in records:
         try:
-            _window_static(window)
+            _window_static(window, cache)
         except PipelineError as error:
             excluded.append({"window_id": window.window_id, "reason": str(error)})
         else:
@@ -176,14 +212,15 @@ def _static_eligible_records(records: tuple[WindowRecord, ...]) -> tuple[tuple[W
     return tuple(usable), excluded
 
 
-def _select_window_references(target: WindowRecord, candidates: tuple[WindowRecord, ...], threshold: float) -> tuple[WindowRecord, ...]:
-    target_static = _window_static(target)
+def _select_window_references(target: WindowRecord, candidates: tuple[WindowRecord, ...], threshold: float,
+                              cache: TeacherCacheContext | None = None) -> tuple[WindowRecord, ...]:
+    target_static = _window_static(target, cache)
     ranked = []
     for candidate in candidates:
         if candidate.source_family == target.source_family or candidate.content_alias == target.content_alias:
             continue
         try:
-            distance = _window_distance(target_static, _window_static(candidate))
+            distance = _window_distance(target_static, _window_static(candidate, cache))
         except PipelineError:
             continue
         if distance <= threshold:
@@ -198,8 +235,9 @@ def _select_window_references(target: WindowRecord, candidates: tuple[WindowReco
     raise PipelineError("need three threshold-compatible distinct normal R windows")
 
 
-def _select_calibration_windows(target: WindowRecord, references: tuple[WindowRecord, ...], candidates: tuple[WindowRecord, ...], threshold: float) -> tuple[WindowRecord, ...]:
-    target_static = _window_static(target)
+def _select_calibration_windows(target: WindowRecord, references: tuple[WindowRecord, ...], candidates: tuple[WindowRecord, ...], threshold: float,
+                                cache: TeacherCacheContext | None = None) -> tuple[WindowRecord, ...]:
+    target_static = _window_static(target, cache)
     families = {target.source_family, *(item.source_family for item in references)}
     aliases = {target.content_alias, *(item.content_alias for item in references)}
     ranked = []
@@ -207,7 +245,7 @@ def _select_calibration_windows(target: WindowRecord, references: tuple[WindowRe
         if candidate.source_family in families or candidate.content_alias in aliases:
             continue
         try:
-            distance = _window_distance(target_static, _window_static(candidate))
+            distance = _window_distance(target_static, _window_static(candidate, cache))
         except PipelineError:
             continue
         if distance <= threshold:
@@ -238,7 +276,14 @@ def _fit_scales(r_records: tuple[WindowRecord, ...]) -> dict[str, object]:
         raise PipelineError(f"invalid R process scale input: {error}") from error
 
 
-def _matched_pair(query: PairRecord, reference: WindowRecord) -> PairRecord:
+def _matched_pair(query: PairRecord, reference: WindowRecord, cache: TeacherCacheContext | None = None,
+                  query_key: str | None = None) -> PairRecord:
+    if cache is not None and query_key is not None:
+        key = derived_key("matched_pair", query_key, cache.window_key(reference))
+        def compute():
+            result = _matched_pair(query, reference)
+            return next(index for index, item in enumerate(reference.pairs) if item is result)
+        return reference.pairs[cache.static.get_or_compute(key, compute)]
     query_static = StaticPair(query.pair_id, query.class_pair, query.initial_geometry, query.candidate_pair_count, int(query.valid_cells.sum()))
     matches = []
     for candidate in reference.pairs:
@@ -250,26 +295,57 @@ def _matched_pair(query: PairRecord, reference: WindowRecord) -> PairRecord:
     return min(matches)[2]
 
 
-def _pair_distances(query: PairRecord, references: tuple[WindowRecord, ...], scales: dict[str, object]) -> np.ndarray:
+def _pair_distances(query: PairRecord, references: tuple[WindowRecord, ...], scales: dict[str, object],
+                    cache: TeacherCacheContext | None = None, query_key: str | None = None,
+                    scale_key: str | None = None) -> np.ndarray:
     values = []
     for reference_window in references:
-        reference = _matched_pair(query, reference_window)
-        cost = process_cost_matrix(_process_blocks(query), _process_blocks(reference), scales, query.valid_cells, reference.valid_cells)
-        aligned = constrained_alignment(cost, query.valid_cells, reference.valid_cells)
-        if not aligned.valid:
-            raise PipelineError("no legal short-DTW alignment")
-        values.append(aligned.cell_distance)
+        reference = _matched_pair(query, reference_window, cache, query_key)
+        if cache is None:
+            cost = process_cost_matrix(_process_blocks(query), _process_blocks(reference), scales, query.valid_cells, reference.valid_cells)
+            aligned = constrained_alignment(cost, query.valid_cells, reference.valid_cells)
+            if not aligned.valid: raise PipelineError("no legal short-DTW alignment")
+            values.append(aligned.cell_distance)
+        else:
+            reference_index = next(index for index, item in enumerate(reference_window.pairs) if item is reference)
+            key = single_reference_alignment_key(scale_key, query_key, cache.window_key(reference_window),
+                                                 cache.pair_key(reference_window, reference_index, reference))
+            def compute():
+                cost = process_cost_matrix(_process_blocks(query), _process_blocks(reference), scales, query.valid_cells, reference.valid_cells)
+                aligned = constrained_alignment(cost, query.valid_cells, reference.valid_cells)
+                if not aligned.valid: raise PipelineError("no legal short-DTW alignment")
+                return aligned.cell_distance
+            values.append(cache.alignment.get_or_compute(key, compute))
     return np.asarray(values, dtype=np.float64)
 
 
 def _window_teacher_distances(window: WindowRecord, references: tuple[WindowRecord, ...], scales: dict[str, object],
-                              support: dict[str, object] | None = None) -> tuple[np.ndarray, np.ndarray]:
+                              support: dict[str, object] | None = None, cache: TeacherCacheContext | None = None,
+                              scale_key: str | None = None) -> tuple[np.ndarray, np.ndarray]:
+    if cache is not None:
+        ordered = ordered_reference_key([cache.window_key(item) for item in references])
+        key = window_teacher_distances_key(scale_key, cache.window_key(window), ordered)
+        def compute():
+            local_support = {}
+            distances, valid = _window_teacher_distances_uncached(window, references, scales, local_support, cache, scale_key)
+            return distances, valid, local_support
+        distances, valid, cached_support = cache.window.get_or_compute(key, compute)
+        if support is not None: support.update(cached_support)
+        return distances, valid
+    return _window_teacher_distances_uncached(window, references, scales, support, None, None)
+
+
+def _window_teacher_distances_uncached(window: WindowRecord, references: tuple[WindowRecord, ...], scales: dict[str, object],
+                                       support: dict[str, object] | None, cache: TeacherCacheContext | None,
+                                       scale_key: str | None) -> tuple[np.ndarray, np.ndarray]:
     distances = np.full((3, PAIR_LIMIT * CELL_COUNT), np.nan, dtype=np.float64)
     valid = np.zeros(PAIR_LIMIT * CELL_COUNT, dtype=bool)
     rejected = []
     for pair_index, pair in enumerate(window.pairs):
         try:
-            pair_distances = _pair_distances(pair, references, scales)
+            pair_distances = (_pair_distances(pair, references, scales) if cache is None else
+                              _pair_distances(pair, references, scales, cache=cache,
+                                              query_key=cache.pair_key(window, pair_index, pair), scale_key=scale_key))
         except (PipelineError, ValueError) as error:
             rejected.append({"pair_id": pair.pair_id, "reason": str(error)})
             continue
@@ -295,22 +371,24 @@ def detection_window_id(dataset: str, key: str, query_index: int) -> str:
 
 
 def _window_m(window: WindowRecord, references: tuple[WindowRecord, ...], scales: dict[str, object],
-              support: dict[str, object] | None = None) -> float:
-    distances, valid = _window_teacher_distances(window, references, scales, support)
+              support: dict[str, object] | None = None, cache: TeacherCacheContext | None = None,
+              scale_key: str | None = None) -> float:
+    distances, valid = _window_teacher_distances(window, references, scales, support, cache, scale_key)
     if not valid.any():
         raise PipelineError("window has no valid relation-time cells")
     return float(np.median(distances[:, valid], axis=0).max())
 
 
 def _calibration_maxima(target: WindowRecord, references: tuple[WindowRecord, ...], c_records: tuple[WindowRecord, ...], threshold: float,
-                         scales: dict[str, object], support: dict[str, object] | None = None) -> np.ndarray:
-    chosen = _select_calibration_windows(target, references, c_records, threshold)
+                         scales: dict[str, object], support: dict[str, object] | None = None,
+                         cache: TeacherCacheContext | None = None, scale_key: str | None = None) -> np.ndarray:
+    chosen = _select_calibration_windows(target, references, c_records, threshold, cache)
     maxima = []
     unsupported = []
     for window in chosen:
         window_support = {}
         try:
-            maxima.append(_window_m(window, references, scales, window_support))
+            maxima.append(_window_m(window, references, scales, window_support, cache, scale_key))
         except PipelineError as error:
             unsupported.append({"window_id": window.window_id, "reason": str(error), "relation_support": window_support})
     if support is not None:
@@ -321,7 +399,7 @@ def _calibration_maxima(target: WindowRecord, references: tuple[WindowRecord, ..
     return np.asarray(maxima, dtype=np.float64)
 
 
-def build_teachers(records: tuple[WindowRecord, ...]) -> dict:
+def build_teachers(records: tuple[WindowRecord, ...], *, cache: TeacherCacheContext | None = None) -> dict:
     """Construct F/S targets and rejection rows, then assign U per dataset globally."""
     _validate_fold_provenance(records)
     output, pending_u = [], []
@@ -329,11 +407,11 @@ def build_teachers(records: tuple[WindowRecord, ...]) -> dict:
         q_records = tuple(row for row in records if row.fold == fold)
         c_records = tuple(row for row in records if row.fold == (fold + 1) % 5 and row.normal_permitted)
         r_candidates = tuple(row for row in records if row.fold not in {fold, (fold + 1) % 5} and row.normal_permitted)
-        r_records, r_excluded = _static_eligible_records(r_candidates)
+        r_records, r_excluded = _static_eligible_records(r_candidates, cache)
         static_support = {"r_normal_candidate_count": len(r_candidates), "r_static_eligible_count": len(r_records),
                           "r_static_excluded": r_excluded}
         try:
-            threshold, scales = _window_threshold(r_records), _fit_scales(r_records)
+            threshold, scales = _window_threshold(r_records, cache), _fit_scales(r_records)
         except PipelineError as error:
             for row in q_records:
                 output.append({"window_id": row.window_id, "dataset": row.dataset, "aux_valid": False,
@@ -341,12 +419,14 @@ def build_teachers(records: tuple[WindowRecord, ...]) -> dict:
             continue
         for target in q_records:
             try:
-                references = _select_window_references(target, r_records, threshold)
+                references = _select_window_references(target, r_records, threshold, cache)
+                scale_identity = (normal_scale_key(fold, [cache.window_key(item) for item in r_records], scales)
+                                  if cache is not None else None)
                 relation_support, calibration_support = {}, {}
-                target_distances, target_valid = _window_teacher_distances(target, references, scales, relation_support)
+                target_distances, target_valid = _window_teacher_distances(target, references, scales, relation_support, cache, scale_identity)
                 if not target_valid.any():
                     raise PipelineError("window has no valid relation-time cells after reference matching")
-                calibration = _calibration_maxima(target, references, c_records, threshold, scales, calibration_support)
+                calibration = _calibration_maxima(target, references, c_records, threshold, scales, calibration_support, cache, scale_identity)
                 quality, positions, joint = calibrated_teacher(target_distances, calibration, target_valid)
                 maximum = float(np.median(target_distances[:, target_valid], axis=0).max())
                 row = {"window_id": target.window_id, "dataset": target.dataset, "aux_valid": True,

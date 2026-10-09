@@ -1,16 +1,20 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "created_at": "2026-10-09T20:46:17.445937+00:00",
-  "source_commit": "32e0bd5dfc3a63c6a8d16c5dfe913887e51f835c",
+  "created_at": "2026-10-09T21:05:02.081774+00:00",
+  "source_commit": "497e5e0485a3de03d5c9e73c35a4b599eafbabad",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
   "validation": {
-    "cpu_passed": 303,
-    "cpu_report_sha256": "c6ccdb3b5a9619490f343a44f1505c3a908fb8a3c2c4cf7ea562adbc4fb1d9cb",
+    "cpu_passed": 332,
+    "cpu_report_sha256": "60f49be12308d06297aeae34514abd3a7b0f01dcc07ad7eb6702ddd60639df3b",
     "queue_review_status": "PASS_STATIC",
     "queue_review_sha256": "ddbf18ad868e7a2a476f3f19ef8eabe8b94890d400f1f75295cfb3fb3674f16a",
     "review_scope": "controlled local nonformal lifecycle only; formal admission closed",
-    "inherited_vision_observer_diagnostic_windows": 12
+    "inherited_vision_observer_diagnostic_windows": 12,
+    "teacher_cache_review": "PASS",
+    "numerics_helper_review": "PASS",
+    "import_closure_review": "PASS",
+    "short_real_forward_backward": "PASS_DIAGNOSTIC_ONLY"
   },
   "remaining": [
     "final Stage2 vision runtime provenance acceptance",
@@ -29,8 +33,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "a24bd01101a6fcff982531e0aba95165b2a8b6cf578c3b2aeeca9e92f9f68e18",
-      "bytes": 4959
+      "sha256": "e5a8297840cc3aa708191b51d6b90f3c1464df1c3ef9077f587a5f0fafdceef6",
+      "bytes": 5482
     },
     {
       "path": "THIRD_PARTY.md",
@@ -101,6 +105,11 @@
       "path": "docs/NC_RTED_MEDIA_OBSERVER_CONTRACT.md",
       "sha256": "284bf6231276c438e5cf8c62516ca237debed9561cf49d5a86192351604f8e64",
       "bytes": 5181
+    },
+    {
+      "path": "docs/NC_RTED_NUMERICAL_POLICY.md",
+      "sha256": "74eda189e6d66254026b5fa03e78330da9039550875fa09e88011f7f28515adb",
+      "bytes": 1489
     },
     {
       "path": "docs/NC_RTED_OBSERVATION_CONTRACT.md",
@@ -464,8 +473,8 @@
     },
     {
       "path": "scripts/nc_rted_prepare_observations.py",
-      "sha256": "4f68bf995b934c25714ce37c2b6ddb4383e1705d710698f76bc3bb2ef722cbac",
-      "bytes": 13273
+      "sha256": "768cbd1d9e9d0663acc5432a38ddc621bc2afed071047b5bd01209d96ea1f48d",
+      "bytes": 13292
     },
     {
       "path": "scripts/nc_rted_queue.py",
@@ -558,6 +567,11 @@
       "bytes": 11448
     },
     {
+      "path": "src/nc_rted/numerics.py",
+      "sha256": "63eb0fb6a3f1f0480e49fc3ba74c4aad75266642731d252e8b1a471dd88a27f0",
+      "bytes": 2546
+    },
+    {
       "path": "src/nc_rted/observation.py",
       "sha256": "abeb8fddc3c9d2ca8a752375bf861cacdde5b73d0aa8e0f9fd0d281b7267e444",
       "bytes": 6830
@@ -613,9 +627,14 @@
       "bytes": 4996
     },
     {
+      "path": "src/nc_rted/teacher_cache.py",
+      "sha256": "a7557cec43755efb5b6358dd54327e414b76a9e423f8343aa8836c7e75393c20",
+      "bytes": 15282
+    },
+    {
       "path": "src/nc_rted/teacher_pipeline.py",
-      "sha256": "e8667ef12fce29e873cd9e8051f6245a2e754c350415b42d0228907ab73e6014",
-      "bytes": 20631
+      "sha256": "898551c09c0dc7b64b9ee79fe57f6d1cbc24e0dec973e634a912e9512e8f0228",
+      "bytes": 26195
     },
     {
       "path": "src/nc_rted/teacher_records.py",
@@ -728,6 +747,11 @@
       "bytes": 7962
     },
     {
+      "path": "tests/test_nc_rted_numerics.py",
+      "sha256": "aad9bc97003c6b9e6bd842e4aced1b139ff691b6e793834422e0f9749405b913",
+      "bytes": 2697
+    },
+    {
       "path": "tests/test_nc_rted_observation.py",
       "sha256": "92153dee962ce51e039bae85da481314fd12123d42a05781bc3149c998e222fe",
       "bytes": 3021
@@ -788,9 +812,14 @@
       "bytes": 1904
     },
     {
+      "path": "tests/test_nc_rted_teacher_cache.py",
+      "sha256": "a239e4a5ab188c2ee37ffc8c4b02f8c0cb85d358e328192b4faefec5e498d786",
+      "bytes": 14066
+    },
+    {
       "path": "tests/test_nc_rted_teacher_pipeline.py",
-      "sha256": "48d199d111d4ee9fe7c4fbeedce3eb8f971aab0eced70d5e0591a566de6e4fb1",
-      "bytes": 5945
+      "sha256": "350273dd17ea6629685415f990998f4e437b5ae59ba46ba0226aa51b73e6d459",
+      "bytes": 10736
     },
     {
       "path": "tests/test_nc_rted_teacher_records.py",

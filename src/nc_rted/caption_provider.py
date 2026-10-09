@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 import math
-from typing import Protocol
+from typing import Protocol, TYPE_CHECKING
 
 import torch
 
@@ -13,7 +13,8 @@ from .bridge import ObservationBatch
 from .batches import caption_block_endpoints
 from .inherited_memory import caption_memory_from_patches
 from .task_inputs import FrozenTaskContext, TaskInputError, TrainingCatalog
-from .train_worker import SampleMaterial
+if TYPE_CHECKING:
+    from .train_worker import SampleMaterial
 
 
 class CaptionProviderError(TaskInputError):
@@ -133,6 +134,7 @@ class Stage2CaptionProvider:
 
     @torch.no_grad()
     def __call__(self, sample_id: str) -> SampleMaterial:
+        from .train_worker import SampleMaterial
         task = self.catalog.tasks.get(sample_id)
         if task is None or task.task != "caption" or task.instruction is None:
             raise CaptionProviderError("caption provider accepts only a fixed caption sample ID")

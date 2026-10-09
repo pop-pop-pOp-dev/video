@@ -2,21 +2,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
+import shutil
+import tempfile
 from typing import Protocol
 
 import torch
 from PIL import Image
 import numpy as np
 from .observation_cache import cache_key
+from .storage_lock import allocation_lock
 
 COCO_PERSON_CLASS = 0
 RTDETR_MODEL_ID = "PekingU/rtdetr_r50vd_coco_o365"
 RTDETR_PROVENANCE_FILE = "nc_rted_provenance.json"
+_STAGING_RESERVE_BYTES = 20 * 1024 ** 3
 
 
 class DetectorError(RuntimeError): pass
@@ -58,6 +63,117 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _canonical_json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def _copy_verified(source: Path, destination: Path, expected_sha256: str) -> None:
+    """Copy one source snapshot file while binding the staged bytes to provenance."""
+    content=source.read_bytes()
+    if hashlib.sha256(content).hexdigest()!=expected_sha256:
+        raise DetectorError(f"RT-DETR source changed before staging: {source.name}")
+    with allocation_lock(destination.parent):
+        block=max(4096,os.statvfs(destination.parent).f_frsize)
+        allocation=((len(content)+block-1)//block)*block+2*block
+        if shutil.disk_usage(destination.parent).free < _STAGING_RESERVE_BYTES+allocation:
+            raise DetectorError('RT-DETR staging would violate the 20 GiB free-space reserve')
+        with destination.open("xb") as writer:
+            writer.write(content)
+            writer.flush()
+            os.fsync(writer.fileno())
+        if sha256_file(destination) != expected_sha256:
+            raise DetectorError(f"RT-DETR source changed while staging: {source.name}")
+
+
+@contextmanager
+def _bound_rtdetr_snapshot(snapshot: Path, expected_files: dict[str, str]):
+    """Stage immutable, provenance-verified RT-DETR load inputs privately.
+
+    Transformers opens paths itself, so auditing a source path and subsequently
+    giving that path to ``from_pretrained`` leaves a replacement interval.  The
+    staged directory is instead the sole path passed to Transformers.
+    """
+    required = {"config.json", "preprocessor_config.json", "model.safetensors"}
+    if not required.issubset(expected_files) or any(not isinstance(value, str) or len(value) != 64
+                                                     for value in expected_files.values()):
+        raise DetectorError("RT-DETR provenance lacks supported config, processor, or safetensors hashes")
+    model_files = {name for name in expected_files if name.endswith((".safetensors", ".bin", ".index.json"))}
+    if model_files != {"model.safetensors"}:
+        raise DetectorError("RT-DETR binding supports only one provenance-listed model.safetensors file")
+    root = Path(tempfile.gettempdir())
+    # Hold one filesystem allocation lock through model staging and release
+    # after construction removes the private snapshot. Other model loads wait;
+    # cache/journal writes use this same coordinator.
+    with allocation_lock(root):
+        staged_bytes = sum((snapshot / name).stat().st_size for name in required)
+        block=max(4096,os.statvfs(root).f_frsize)
+        if shutil.disk_usage(root).free <= _STAGING_RESERVE_BYTES + staged_bytes + 8*block:
+            raise DetectorError("RT-DETR staging would violate the 20 GiB free-space reserve")
+        with tempfile.TemporaryDirectory(prefix="nc-rted-rtdetr-", dir=root) as temporary:
+            staged = Path(temporary)
+            os.chmod(staged, 0o700)
+            for name in sorted(required):
+                _copy_verified(snapshot / name, staged / name, expected_files[name])
+            yield staged
+
+
+def _assert_staged_files(staged: Path, expected_files: dict[str, str]) -> None:
+    for name in ("config.json", "preprocessor_config.json", "model.safetensors"):
+        if sha256_file(staged / name) != expected_files[name]:
+            raise DetectorError(f"staged RT-DETR input changed: {name}")
+
+
+def _assert_rtdetr_processor_binding(processor, expected_preprocessor: dict, processor_class) -> None:
+    expected = processor_class.from_dict(expected_preprocessor).to_dict()
+    if _canonical_json(processor.to_dict()) != _canonical_json(expected):
+        raise DetectorError("loaded RT-DETR processor differs from the verified preprocessor configuration")
+
+
+def _assert_rtdetr_config_binding(config, expected_config: dict, config_class) -> None:
+    expected = config_class.from_dict(expected_config).to_dict()
+    actual = config.to_dict()
+    # from_pretrained records its local load directory here, and may infer a
+    # runtime dtype from the staged weights. Neither field is source-config
+    # semantics; the exact tensor binding below verifies the latter separately.
+    for value in (expected, actual):
+        value.pop("_name_or_path", None)
+        value.pop("torch_dtype", None)
+        value.pop("_attn_implementation_autoset", None)
+    if _canonical_json(actual) != _canonical_json(expected):
+        raise DetectorError("loaded RT-DETR configuration differs from the verified configuration")
+
+
+def _assert_rtdetr_weight_binding(model, weights: Path) -> None:
+    try:
+        from safetensors import safe_open
+    except ImportError as error:
+        raise DetectorError("safetensors is required to verify the RT-DETR weight binding") from error
+    actual = model.state_dict()
+    with safe_open(str(weights), framework="pt", device="cpu") as source:
+        expected = set(source.keys())
+        actual_keys = set(actual)
+        if expected - actual_keys:
+            raise DetectorError("loaded RT-DETR state keys differ from the verified safetensors snapshot")
+        # Transformers 4.47 exposes RT-DETR decoder heads a second time at the
+        # model root. They are aliases of the serialized decoder tensors, not
+        # independent learned state. Require every nonserialized state key to
+        # be exactly one such same-storage alias; a new buffer or parameter is
+        # not accepted merely because the serialized subset matches.
+        for name in sorted(actual_keys - expected):
+            value = actual[name]
+            aliases = [candidate for candidate in expected
+                       if actual[candidate].shape == value.shape
+                       and actual[candidate].dtype == value.dtype
+                       and actual[candidate].data_ptr() == value.data_ptr()]
+            if len(aliases) != 1:
+                raise DetectorError("loaded RT-DETR state includes an unbound nonserialized tensor")
+        for name in sorted(expected):
+            source_value = source.get_tensor(name)
+            loaded = actual[name].detach().cpu()
+            if source_value.shape != loaded.shape or source_value.dtype != loaded.dtype or not torch.equal(source_value, loaded):
+                raise DetectorError(f"loaded RT-DETR weight differs from verified safetensors snapshot: {name}")
+
+
 class FrozenRTDetr:
     """Explicit local snapshot only; uses Transformers RT-DETR postprocessing."""
     def __init__(self, snapshot: Path, device: str="cpu", score_threshold: float=.3):
@@ -75,9 +191,25 @@ class FrozenRTDetr:
             raise DetectorError("RT-DETR snapshot files do not match its pinned provenance")
         import inspect
         import transformers
-        from transformers import RTDetrForObjectDetection, RTDetrImageProcessor
-        self.processor=RTDetrImageProcessor.from_pretrained(self.snapshot,local_files_only=True)
-        self.model=RTDetrForObjectDetection.from_pretrained(self.snapshot,local_files_only=True).to(device).eval()
+        from transformers import RTDetrConfig, RTDetrForObjectDetection, RTDetrImageProcessor
+        # Never give Transformers the mutable source directory.  It may open
+        # config, processor and weights at different times, so stage every load
+        # input before the first library call and bind the constructed objects
+        # to those staged bytes afterwards.
+        with _bound_rtdetr_snapshot(self.snapshot, expected_files) as staged:
+            expected_config = json.loads((staged / "config.json").read_text())
+            expected_preprocessor = json.loads((staged / "preprocessor_config.json").read_text())
+            self.processor = RTDetrImageProcessor.from_pretrained(staged, local_files_only=True)
+            self.model = RTDetrForObjectDetection.from_pretrained(
+                staged, local_files_only=True, use_safetensors=True
+            ).to(device).eval()
+            _assert_staged_files(staged, expected_files)
+            _assert_rtdetr_processor_binding(self.processor, expected_preprocessor, RTDetrImageProcessor)
+            _assert_rtdetr_config_binding(self.model.config, expected_config, RTDetrConfig)
+            _assert_rtdetr_weight_binding(self.model, staged / "model.safetensors")
+            # The safetensors reader above reopens the staged path; check it
+            # again before allowing the temporary binding to disappear.
+            _assert_staged_files(staged, expected_files)
         labels=getattr(self.model.config,"id2label",{})
         if self.model.config.model_type != "rt_detr" or self.model.config.num_labels != 80 or str(labels.get(0," ")).lower() != "person":
             raise DetectorError("snapshot configuration is not 80-class COCO RT-DETR with person=0")
@@ -118,6 +250,32 @@ class FrozenRTDetr:
         return tuple(detections[:8])
 
 
+def _normalized_siglip_vision_config(config) -> dict:
+    if not hasattr(config, "to_dict") or not callable(config.to_dict):
+        raise DetectorError("loaded SigLip tower lacks an effective vision configuration")
+    value = dict(config.to_dict())
+    # ``from_pretrained`` may annotate the local model path and set its private
+    # attention-backend initialization marker. Neither value changes the
+    # serialized vision operator; every actual vision-config setting stays
+    # bound, including layer_norm_eps and dropout.
+    value.pop("_name_or_path", None)
+    value.pop("_attn_implementation_autoset", None)
+    return value
+
+
+def _assert_siglip_effective_vision_config(inner, expected_vision: dict) -> dict:
+    actual_config = getattr(inner, "config", None)
+    config_class = type(actual_config)
+    factory = getattr(config_class, "from_dict", None)
+    if not isinstance(expected_vision, dict) or not callable(factory):
+        raise DetectorError("loaded SigLip tower lacks a usable effective vision configuration")
+    expected = _normalized_siglip_vision_config(factory(dict(expected_vision)))
+    actual = _normalized_siglip_vision_config(actual_config)
+    if _canonical_json(actual) != _canonical_json(expected):
+        raise DetectorError("loaded SigLip effective vision configuration differs from verified snapshot")
+    return expected
+
+
 class InheritedSigLipAdapter:
     """Adapter over an already-loaded ReactVAU ``SigLipVisionTower`` instance."""
     def __init__(self, tower, snapshot: Path):
@@ -135,9 +293,11 @@ class InheritedSigLipAdapter:
         if not source.is_file() or source.name != "siglip_encoder.py":
             raise DetectorError("SigLip tower source is not the inherited encoder")
         self._source_sha256 = sha256_file(source)
-        self._config_sha256, self._weights_sha256 = sha256_file(self.snapshot/"config.json"), sha256_file(self.snapshot/"model.safetensors")
+        config_bytes = (self.snapshot / "config.json").read_bytes()
+        self._config_sha256 = hashlib.sha256(config_bytes).hexdigest()
+        self._weights_sha256 = sha256_file(self.snapshot/"model.safetensors")
         self._weights_signature = self._signature(self.snapshot/"model.safetensors")
-        config=json.loads((self.snapshot/"config.json").read_text())
+        config=json.loads(config_bytes)
         vision=config.get("vision_config",{})
         if config.get("model_type")!="siglip" or (vision.get("image_size"),vision.get("patch_size"),vision.get("hidden_size"),vision.get("num_hidden_layers")) != (384,14,1152,27):
             raise DetectorError("snapshot is not Google SigLIP SO400M patch14-384")
@@ -152,6 +312,11 @@ class InheritedSigLipAdapter:
         if (not hasattr(layers, "layers") or len(layers.layers) != 26 or
                 inner.vision_model.head.__class__.__name__ != "Identity"):
             raise DetectorError("loaded SigLip tower did not remove only final encoder layer and head")
+        # The outer ReactVAU wrapper keeps a default config even after loading.
+        # Bind the inner model config that created its layer norms, activations,
+        # and attention behavior, then separately account for the intended
+        # final-layer/head removal above.
+        self._effective_vision_config = _assert_siglip_effective_vision_config(inner, vision)
         self._processor_binding = self._processor_signature()
         if self._processor_binding[-2:] != ("channels_first", (384,384)):
             raise DetectorError("loaded SigLip channel/crop configuration differs")
@@ -213,6 +378,9 @@ class InheritedSigLipAdapter:
         if (len(self.tower.vision_tower.vision_model.encoder.layers) != 26 or
                 not isinstance(self.tower.vision_tower.vision_model.head, torch.nn.Identity)):
             raise DetectorError("loaded SigLip feature extraction changed after adapter construction")
+        if _assert_siglip_effective_vision_config(self.tower.vision_tower,
+                                                   self._effective_vision_config) != self._effective_vision_config:
+            raise DetectorError("loaded SigLip effective vision configuration changed after adapter construction")
         if self._state_signature() != self._tower_state_signature:
             raise DetectorError("loaded SigLip tower changed after adapter construction")
     @torch.inference_mode()

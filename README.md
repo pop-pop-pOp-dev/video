@@ -25,6 +25,7 @@ python -m pytest -q tests/test_nc_rted*.py
 - `train_worker.py`、`training.py`、`recovery.py`：配对种子、FP32 主参数、更新和完整恢复。
 - `statistics.py`：来源配对 bootstrap 与六比较 Holm 校正。
 - `scripts/nc_rted_train.py --help`：绑定原权重、Fast、媒体、教师和源码的训练入口；详见 [运行契约](docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md)。
+- `scripts/nc_rted_prepare_observations.py --help`：绑定来源和模型的可恢复训练观测提取；部分完成不会发布完整教师输入。
 - `scripts/nc_rted_build_teacher.py --help`、`scripts/nc_rted_export_fast_snapshot.py --help`：数据准备接口。
 - `scripts/nc_rted_queue.py --help`：事务任务队列；初始化只登记任务，不证明正式运行已获验收。
 
@@ -41,7 +42,7 @@ python scripts/nc_rted_train.py --config /absolute/path/runtime.json \
 
 `--dry-run` 仅检查文件绑定，成功状态为 `FILE_BINDINGS_PASS_SEMANTIC_NOT_RUN`，不表示真实模型或媒体流程通过。正式模式还必须提供独立的 `--admission` 与 `--admission-sha256`，且全部工程验收通过。诊断结果不能作为正式模型结果。
 
-固定训练清单为 6,000 个检测前缀和 2,000 条原始描述。Fast 快照与观察媒体必须匹配内容哈希、帧率、帧数和尺寸；原 ReactVAU 源码也须绑定完整运行依赖。真实 RT-DETR 资产、全量教师覆盖、派生媒体、最长输入 GPU 验收、完整盲预测入口及任务进程恢复仍需完成。
+固定训练清单为 6,000 个检测前缀和 2,000 条原始描述。Fast 快照与观察媒体必须匹配内容哈希、帧率、帧数和尺寸；原 ReactVAU 源码也须绑定完整运行依赖。固定 RT-DETR 资产已取得并完成真实观测测试；2,413 个训练媒体的全帧时间戳已核验。全量教师覆盖、派生媒体、最长输入 GPU 验收、完整盲预测入口及任务进程恢复仍需完成。
 
 ## 数据与依赖
 

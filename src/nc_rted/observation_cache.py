@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 import fcntl
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import pickle
 import shutil
 import tempfile
 import torch
+from .storage_lock import allocation_lock, ensure_directory, open_lock_file
 
 CACHE_SCHEMA = "nc_rted_frozen_frame_cache/v2"
 
@@ -58,8 +60,7 @@ class FrozenFrameCache:
         if type(max_bytes) is not int or max_bytes <= 0 or min_free_bytes < 0:
             raise ValueError("invalid frame-cache resource limits")
         self.root, self.max_bytes, self.min_free_bytes = Path(root), max_bytes, min_free_bytes
-        self.root.mkdir(parents=True, exist_ok=True)
-        (self.root / "locks").mkdir(exist_ok=True)
+        ensure_directory(self.root / "locks", self.min_free_bytes)
 
     def path(self, key):
         if not isinstance(key, str) or len(key) != 64 or any(char not in "0123456789abcdef" for char in key):
@@ -68,7 +69,7 @@ class FrozenFrameCache:
 
     @contextmanager
     def _lock(self):
-        with (self.root / ".cache.lock").open("a+b") as handle:
+        with open_lock_file(self.root / ".cache.lock", self.min_free_bytes) as handle:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             yield
 
@@ -80,7 +81,7 @@ class FrozenFrameCache:
         try:
             stripes = sorted({int(self.path(key).stem[:4], 16) % 256 for key in keys})
             for stripe in stripes:
-                handle = (self.root / "locks" / f"{stripe:03d}.lock").open("a+b")
+                handle = open_lock_file(self.root / "locks" / f"{stripe:03d}.lock", self.min_free_bytes)
                 handles.append(handle); fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             yield
         finally:
@@ -100,25 +101,32 @@ class FrozenFrameCache:
             except (OSError, ValueError, KeyError, EOFError, RuntimeError, pickle.UnpicklingError):
                 # Corrupt/replaced cache products are recomputable, never truth.
                 path.unlink(missing_ok=True)
-                with (self.root / "invalidations.jsonl").open("a") as log:
-                    log.write(json.dumps({"key":key,"reason":"invalid_frame_cache"}) + "\n")
+                with allocation_lock(self.root):
+                    self._reserve(3 * max(4096, os.statvfs(self.root).f_frsize))
+                    with (self.root / "invalidations.jsonl").open("a") as log:
+                        log.write(json.dumps({"key":key,"reason":"invalid_frame_cache"}) + "\n")
                 return None
 
-    def _reserve(self):
-        if shutil.disk_usage(self.root).free < self.min_free_bytes:
+    def _reserve(self,additional_bytes=0):
+        if shutil.disk_usage(self.root).free < self.min_free_bytes+additional_bytes:
             raise OSError("disk hard limit: frame cache must preserve reserve")
 
     def put(self, key, value):
         target = self.path(key)
         payload = _compact(value)
         record = {"schema":CACHE_SCHEMA,"key":key,"payload":payload,"sha256":_digest(payload)}
-        with self._lock():
-            self._reserve()
+        serialized=io.BytesIO()
+        torch.save(record,serialized)
+        content=serialized.getvalue()
+        with self._lock(), allocation_lock(self.root):
+            block=max(4096,os.statvfs(self.root).f_frsize)
+            allocation=((len(content)+block-1)//block)*block+2*block
+            self._reserve(allocation)
             descriptor, name = tempfile.mkstemp(prefix=".frame-", suffix=".tmp", dir=self.root)
             temporary = Path(name)
             try:
                 with os.fdopen(descriptor, "wb") as handle:
-                    torch.save(record, handle); handle.flush(); os.fsync(handle.fileno())
+                    handle.write(content); handle.flush(); os.fsync(handle.fileno())
                 self._reserve()
                 os.replace(temporary, target)
                 self._evict_locked()

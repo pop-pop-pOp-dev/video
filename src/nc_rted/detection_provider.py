@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from types import SimpleNamespace
-from typing import Callable, Iterable, Protocol
+from typing import Callable, Iterable, Protocol, TYPE_CHECKING
 
 import torch
 from torch import Tensor
@@ -17,7 +17,8 @@ from torch import Tensor
 from .batches import pack_observation_blocks
 from .inherited_memory import detection_memory_from_stream
 from .task_inputs import FrozenTaskContext, TaskInputError, TrainingCatalog
-from .train_worker import SampleMaterial
+if TYPE_CHECKING:
+    from .train_worker import SampleMaterial
 
 
 @dataclass(frozen=True)
@@ -168,6 +169,7 @@ class FrozenDetectionProvider:
         self.memory_factory, self.time_formatter = memory_factory, time_formatter
 
     def __call__(self, sample_id: str) -> SampleMaterial:
+        from .train_worker import SampleMaterial
         task = self.catalog.tasks[sample_id]
         if task.task != "detection" or task.query_index is None:
             raise TaskInputError("detection provider received another task")

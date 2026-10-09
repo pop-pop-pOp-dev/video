@@ -82,3 +82,16 @@ def test_production_reserve_is_checked_before_writing(tmp_path, monkeypatch):
     with pytest.raises(OSError, match='disk hard limit'):
         FrozenFrameCache(tmp_path, 10000).put(cache_key('media', 1., {}, {}), {'patches':torch.ones(4)})
     assert not list(tmp_path.glob('*.pt'))
+
+
+def test_payload_allocation_is_reserved_before_temporary_file_creation(tmp_path,monkeypatch):
+    import pytest
+    from types import SimpleNamespace
+    import nc_rted.observation_cache as module
+    cache=FrozenFrameCache(tmp_path,4<<20)
+    monkeypatch.setattr(module.shutil,'disk_usage',lambda path:SimpleNamespace(free=(20<<30)+4096))
+    def forbidden(*args,**kwargs):raise AssertionError('temporary file created before space admission')
+    monkeypatch.setattr(module.tempfile,'mkstemp',forbidden)
+    with pytest.raises(OSError,match='disk hard limit'):
+        cache.put(cache_key('media',1.,{},{}),{'patches':torch.ones(729,1152,dtype=torch.bfloat16)})
+    assert not list(tmp_path.glob('*.tmp')) and not list(tmp_path.glob('*.pt'))

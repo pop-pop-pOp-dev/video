@@ -71,7 +71,7 @@ def test_inherited_siglip_adapter_verifies_original_tower_retained_weights(tmp_p
     from safetensors.torch import save_file
     root = Path(os.environ["NC_RTED_REACTVAU_ROOT"])
     sys.path.insert(0, str(root))
-    from llava.model.multimodal_encoder.siglip_encoder import SigLipImageProcessor, SigLipVisionTower
+    from llava.model.multimodal_encoder.siglip_encoder import SigLipImageProcessor, SigLipVisionConfig, SigLipVisionTower
 
     snapshot = tmp_path / "siglip"; snapshot.mkdir()
     (snapshot / "config.json").write_text(json.dumps({"model_type":"siglip", "vision_config": {
@@ -84,6 +84,8 @@ def test_inherited_siglip_adapter_verifies_original_tower_retained_weights(tmp_p
     class Inner(torch.nn.Module):
         def __init__(self):
             super().__init__()
+            self.config = SigLipVisionConfig.from_dict({"image_size": 384, "patch_size": 14,
+                                                        "hidden_size": 1152, "num_hidden_layers": 27})
             self.vision_model = torch.nn.Module()
             self.vision_model.embeddings = torch.nn.Module()
             self.vision_model.embeddings.register_parameter("weight", torch.nn.Parameter(expected.clone()))

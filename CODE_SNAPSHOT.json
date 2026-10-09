@@ -1,25 +1,23 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "created_at": "2026-10-09T17:08:38.943630+00:00",
-  "source_commit": "f7f46d5aabbfe9de1842319e9c6b9ff59027ba0a",
+  "created_at": "2026-10-09T19:53:59.546708+00:00",
+  "source_commit": "c20890f171913c1465225c8933e210f4ae19b7c9",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
   "validation": {
-    "cpu_passed": 220,
-    "cpu_report_sha256": "4c82a6073c507f1f48dced98e3c7244374d3eee50ce40c0840e87e6b8d4ad6a7",
-    "observer_review_status": "PASS_STATIC",
-    "gpu_observer_windows": 12,
-    "nonempty_relation_windows": 12,
-    "cached_patch_and_relation_parity": "exact",
-    "slow_output_parity": "pending",
-    "review_scope": "supplied-source detector numerical changes; previous core/runtime reviews retained; no full-spec acceptance"
+    "cpu_passed": 268,
+    "cpu_report_sha256": "1a83ac9a9bf1c8a68837f4084e451b931fe903eac54dca7c5550193a6c880c08",
+    "extraction_review_status": "PASS_STATIC",
+    "review_scope": "supplied-source extraction only; no complete experiment acceptance",
+    "training_media_pts_passed": 2413,
+    "prior_real_observer_nonempty_windows_exact": 12
   },
   "remaining": [
-    "full media timing/derived-media readiness",
-    "real crossfit teacher coverage",
-    "longest-input GPU/Slow output equivalence and PRO6000/storage",
-    "blind prediction and queue lifecycle/resource admission",
-    "full freeze and formal experiments"
+    "full real crossfit teacher coverage",
+    "caption materialization and storage admission",
+    "longest-input GPU/Slow output equivalence and PRO6000 verification",
+    "complete blind prediction and queue lifecycle/resource admission",
+    "full freeze and 12 training / 13 full evaluation matrix"
   ],
   "files": [
     {
@@ -29,8 +27,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "99808a01e799639fc79607be469e9ca3713ccde6f0bff8fa0aad2171998bf972",
-      "bytes": 3870
+      "sha256": "243aa2d86da527c4163f584f4069f7536815b16106dbaa66b4d84f30b1c061fc",
+      "bytes": 4110
     },
     {
       "path": "THIRD_PARTY.md",
@@ -69,8 +67,8 @@
     },
     {
       "path": "docs/NC_RTED_CODE_DESIGN.md",
-      "sha256": "8abd017b703c2440a21768d6d277f5ee2a976d60063e9545eeec87dcca26219b",
-      "bytes": 21719
+      "sha256": "80cc1a2a3e1b1e8cb0ec20e37a3e4f87a671142732efd09f51c41382d24c62cf",
+      "bytes": 23298
     },
     {
       "path": "docs/NC_RTED_DETECTION_PROVIDER_CONTRACT.md",
@@ -106,6 +104,11 @@
       "path": "docs/NC_RTED_OBSERVATION_CONTRACT.md",
       "sha256": "b0d816fde5d5aa2bf68b1a99406960697157d64fa14d7e165e1f1bf363388290",
       "bytes": 2763
+    },
+    {
+      "path": "docs/NC_RTED_OBSERVATION_EXTRACTION_CONTRACT.md",
+      "sha256": "79c9fc10a84d479fb498e53686651b51ae63100ce794c2407f5949b643a3ef8d",
+      "bytes": 5119
     },
     {
       "path": "docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md",
@@ -453,6 +456,11 @@
       "bytes": 1919
     },
     {
+      "path": "scripts/nc_rted_prepare_observations.py",
+      "sha256": "4f68bf995b934c25714ce37c2b6ddb4383e1705d710698f76bc3bb2ef722cbac",
+      "bytes": 13273
+    },
+    {
       "path": "scripts/nc_rted_queue.py",
       "sha256": "5ea0cb1714945b539b786ed42caddc623c3bfc05c33ac5704bc3a0acc54be799",
       "bytes": 6389
@@ -484,8 +492,8 @@
     },
     {
       "path": "src/nc_rted/caption_provider.py",
-      "sha256": "96baeb35b367121ac6a41f2839cde23a77151f167754aa90739b31c072853eac",
-      "bytes": 11959
+      "sha256": "2aa47f3cab553ebfdaf519781edfdd866839bc89fe056cf117da5bf879fcf6c6",
+      "bytes": 12045
     },
     {
       "path": "src/nc_rted/caption_sampling.py",
@@ -499,13 +507,13 @@
     },
     {
       "path": "src/nc_rted/detection_provider.py",
-      "sha256": "e49985973bd213716c6ae6a6ed7ceeff263ef3821954e14a28bfd696c6870d88",
-      "bytes": 11324
+      "sha256": "ea0ba7959b654a9ad635fa1aff5995e9e8883d0d77762b10426a98feba77fd18",
+      "bytes": 11410
     },
     {
       "path": "src/nc_rted/detector.py",
-      "sha256": "0f3b17bdf57e8fe33d5c3a36652962594e81d717cfbe0eb8f922849016df4ab0",
-      "bytes": 20422
+      "sha256": "e08b0fedd1ca98d1c1a68d4134bcb030359857a81004eecd8100d36824a43274",
+      "bytes": 30126
     },
     {
       "path": "src/nc_rted/fast_snapshot.py",
@@ -549,8 +557,13 @@
     },
     {
       "path": "src/nc_rted/observation_cache.py",
-      "sha256": "bf67dd23819684fc3c96306be022bd1e30e8c7fe3f0a34d1db525e46fd20a919",
-      "bytes": 6103
+      "sha256": "f0ea5e2dfa5f883f2f3ee6d5fe4a5f5b8212ec897cae00e4e61940f781c4415a",
+      "bytes": 6641
+    },
+    {
+      "path": "src/nc_rted/observation_extraction.py",
+      "sha256": "1027a0e0560483acd94c0d874472b94021abeb7515716d7c3b80c83222d716c4",
+      "bytes": 15179
     },
     {
       "path": "src/nc_rted/production_runtime.py",
@@ -576,6 +589,11 @@
       "path": "src/nc_rted/statistics.py",
       "sha256": "870890df59a2a460b1946d4a40f378d8d7b8d0e496043ba08d62f9efddd3cec5",
       "bytes": 12029
+    },
+    {
+      "path": "src/nc_rted/storage_lock.py",
+      "sha256": "f08ac535d75f66dbcc8da7643cddc80d1e25aab6e0bf3cf50eb3452982ebfc84",
+      "bytes": 7792
     },
     {
       "path": "src/nc_rted/task_inputs.py",
@@ -654,8 +672,13 @@
     },
     {
       "path": "tests/test_nc_rted_detector.py",
-      "sha256": "08d79f976e1a1951a51d8cc89be6b1875b7b51bec2a74c2ba9f930f011f98c0f",
-      "bytes": 11210
+      "sha256": "93f8bef4e04cdcfdf84b53d95550cb39a5f0af6d797f06b764ccf3c5358af10e",
+      "bytes": 11426
+    },
+    {
+      "path": "tests/test_nc_rted_detector_binding.py",
+      "sha256": "dbf2e661752bc62c989f0c8a52306890ec8d9e8a178b97ba90c089a544188c0f",
+      "bytes": 6261
     },
     {
       "path": "tests/test_nc_rted_fast_snapshot.py",
@@ -666,6 +689,11 @@
       "path": "tests/test_nc_rted_features.py",
       "sha256": "4ad94347d6cd5a0608f7e50530daec040c6611e2b20a6b1bbcbcb5b26ed060b6",
       "bytes": 6282
+    },
+    {
+      "path": "tests/test_nc_rted_inherited_siglip_binding.py",
+      "sha256": "d54b4df43e0346dd00674e71fc1532bb49674df2ce5a57fd2f9c14305117886e",
+      "bytes": 3365
     },
     {
       "path": "tests/test_nc_rted_loading.py",
@@ -694,8 +722,13 @@
     },
     {
       "path": "tests/test_nc_rted_observation_cache.py",
-      "sha256": "2a7eb6e475adfb98ef0e6300f9197286f7ba4ed94b3f688df4928e8f2be9146a",
-      "bytes": 3685
+      "sha256": "1bb67d9af5a689f5f4f80581a3bf6ea2b82442241c9b66496793934d9c85565c",
+      "bytes": 4430
+    },
+    {
+      "path": "tests/test_nc_rted_observation_extraction.py",
+      "sha256": "d45572012f951124c6e1ed4e96008eda70b728a5400ade1839f8797a93d1456a",
+      "bytes": 20795
     },
     {
       "path": "tests/test_nc_rted_production_runtime.py",
@@ -721,6 +754,11 @@
       "path": "tests/test_nc_rted_statistics.py",
       "sha256": "b71608802067e9f802e02f0f86f6d5595a165076354b8ca7c9232584bb202115",
       "bytes": 4892
+    },
+    {
+      "path": "tests/test_nc_rted_storage_lock.py",
+      "sha256": "7562ea93338f5262451dab20c86158790a0391ba989018a5a902742af1cc209b",
+      "bytes": 13111
     },
     {
       "path": "tests/test_nc_rted_task_inputs.py",

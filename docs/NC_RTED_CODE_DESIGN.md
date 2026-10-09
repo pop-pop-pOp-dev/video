@@ -176,4 +176,20 @@ Fast、SigLIP、冻结观察及经验证的旧记忆可共享；Slow 推理独�
 
 RT-DETR 已取得固定 revision 的完整本地权重并逐文件校验。实际4090运行揭示两类公共缓存错误：严格序列化拒绝 NumPy 标量框坐标；SigLIP BF16输出随缓存未命中批量大小改变，且冷/热patch布局差异会改变区域汇聚舍入。新增观察分支统一逐帧编码与连续patch布局，并将策略、源码和设备信息绑定到缓存键；原ReactVAU任务的批量规则不变。细节与失败证据见 `NC_RTED_FROZEN_OBSERVATION_NUMERICS.md`。
 
-固定6000检测前缀的2413个训练媒体当前文件哈希全部通过，逐帧PTS/CFR全量检查正在独立CPU进程运行。2000条描述指令均能由继承Stage2索引解析到现有原始视频（666整视频、1334临时clip/event）；缺少派生view目录不等于缺原始媒体。正式使用仍需完整resolver运行、存储余量和派生媒体校验，不能仅靠路径解析放行。
+固定6000检测前缀的2413个训练媒体当前文件哈希全部通过；逐帧PTS/CFR检查已完成全部2413个媒体、14,389,436帧，无失败。2000条描述指令均能由继承Stage2索引解析到现有原始视频（666整视频、1334临时clip/event）；缺少派生view目录不等于缺原始媒体。正式使用仍需完整resolver运行、存储余量和派生媒体校验，不能仅靠路径解析放行。
+
+
+## 可恢复的训练观测准备
+
+`observation_extraction.py` 与 `nc_rted_prepare_observations.py` 在不装载 Slow 的情况下生成固定6000个检测前缀的教师输入。配置绑定源代码、模型、训练清单、媒体元数据及全量PTS报告；JSON/PTS从同一份已验证字节解析。观察器只接收媒体与查询时刻，来源折及正常参照权限在观察后由原清单附加。
+
+每个窗口使用独立原子提交的紧凑NPZ/拒绝记录，恢复时逐项校验。根索引只有在全部固定窗口完成后发布，直接引用原有payload，无须复制整库。无可靠背景或无候选显式记为辅助监督拒绝；技术失败阻止提交及恢复。若运行配置文件丢失但输出仍在，保留现场并拒绝重绑定。契约见 `NC_RTED_OBSERVATION_EXTRACTION_CONTRACT.md`。
+
+`--max-new-windows` 用于受限的准备探测，不改变6000窗口分母，也不能把部分数据交给正式教师构建。20GiB空闲下限与有限帧缓存持续生效。观测准备成功不代表正常参照支持、教师覆盖、完整训练或统计效果已经通过；这些仍须后续实测。
+
+
+Observation preparation now acquires the output writer admission before frozen
+model loading. A shared filesystem allocation lock coordinates private detector
+staging, all frame-cache directories, and journal payload/metadata writes through
+their space checks and allocations. This closes a concurrent-writer reserve race;
+it does not establish full6000 storage capacity or formal resource readiness.

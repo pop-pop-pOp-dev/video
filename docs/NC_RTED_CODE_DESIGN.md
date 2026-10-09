@@ -35,8 +35,8 @@ flowchart TD
 | 文件 | 职责 | 当前证据与剩余工作 |
 |---|---|---|
 | `src/nc_rted/loading.py` | 严格恢复旧非 LoRA、旧 LoRA、训练后的 projector，精确设置训练权限 | 真实 Stage2 CPU 加载已通过；GPU 前向尚待验收 |
-| `observation.py` | 2 FPS 因果采样、实际 SigLIP patch ROI 池化、背景有效性、相对几何 | CPU 契约与观察器/缓存测试通过；实际 RT-DETR snapshot 待取得并核验 |
-| `tracking.py` | 固定 IoU/外观/短时间隔的单向关联，人物参与的候选对 | 已接入因果媒体观察器；实际检测器运行待验收 |
+| `observation.py` | 2 FPS 因果采样、实际 SigLIP patch ROI 池化、背景有效性、相对几何 | CPU 契约与观察器/缓存测试通过；实际 RT-DETR snapshot 已取得并校验；完整 Slow 缓存等价待验收 |
+| `tracking.py` | 固定 IoU/外观/短时间隔的单向关联，人物参与的候选对 | 已接入因果媒体观察器；实际检测器已在固定训练窗口运行；全量教师覆盖待验收 |
 | `features.py` | 把窗口内所有已观察关系整理为四格特征；分离静态检索与过程特征 | 学生 4620 维、过程 3473 维已实现；速度与最早实际锚点回归测试通过 |
 | `alignment.py` | R 侧稳健尺度与四格受限单调对齐 | 已接入 teacher_pipeline；实际正常参照覆盖待测 |
 | `retrieval.py` | 静态兼容距离、R 留一来源阈值、Q/C/R 来源隔离与支持选择 | 边界/别名/五折流水线测试通过；全量真实观测教师待构造 |
@@ -171,3 +171,9 @@ Fast、SigLIP、冻结观察及经验证的旧记忆可共享；Slow 推理独�
 装载模型前，检测任务必须在 Fast 快照与观察目录中匹配同一媒体 SHA、FPS、帧数、尺寸和查询截止帧；描述必须逐项匹配固定 2,000 条原始指令及原 PG 分数。继承 `llava`/`eval_utils`/`vad` Python 源码完整列入哈希清单，导入来源必须一致。原视觉塔使用继承 projector 的 dtype，并在 provider 调用前恢复冻结 eval 模式。
 
 `--dry-run` 只报告 `FILE_BINDINGS_PASS_SEMANTIC_NOT_RUN`。运行清单契约见 `NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md`；当前未冻结正式配置，没有正式训练或官方预测结果。完整 CPU 回归 217 项通过，真实 6,000 个检测前缀的 Fast/observer 元数据装配检查通过；这些证据不覆盖当前媒体全量重哈希、CFR/PTS 或 GPU 前向。
+
+## 真实观测数值修复（2026-10-09）
+
+RT-DETR 已取得固定 revision 的完整本地权重并逐文件校验。实际4090运行揭示两类公共缓存错误：严格序列化拒绝 NumPy 标量框坐标；SigLIP BF16输出随缓存未命中批量大小改变，且冷/热patch布局差异会改变区域汇聚舍入。新增观察分支统一逐帧编码与连续patch布局，并将策略、源码和设备信息绑定到缓存键；原ReactVAU任务的批量规则不变。细节与失败证据见 `NC_RTED_FROZEN_OBSERVATION_NUMERICS.md`。
+
+固定6000检测前缀的2413个训练媒体当前文件哈希全部通过，逐帧PTS/CFR全量检查正在独立CPU进程运行。2000条描述指令均能由继承Stage2索引解析到现有原始视频（666整视频、1334临时clip/event）；缺少派生view目录不等于缺原始媒体。正式使用仍需完整resolver运行、存储余量和派生媒体校验，不能仅靠路径解析放行。

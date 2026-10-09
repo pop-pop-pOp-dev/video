@@ -48,7 +48,7 @@ def _normalized_box(box: torch.Tensor, width: int, height: int) -> tuple[float, 
     top, bottom = np.clip((top, bottom), 0.0, float(height))
     if right <= left or bottom <= top:
         return None
-    return (left / width, top / height, right / width, bottom / height)
+    return (float(left / width), float(top / height), float(right / width), float(bottom / height))
 
 
 def sha256_file(path: Path) -> str:
@@ -73,6 +73,8 @@ class FrozenRTDetr:
         actual_files={str(path.relative_to(self.snapshot)):sha256_file(path) for path in sorted(self.snapshot.rglob("*")) if path.is_file() and path.name != RTDETR_PROVENANCE_FILE}
         if not isinstance(expected_files,dict) or actual_files != expected_files:
             raise DetectorError("RT-DETR snapshot files do not match its pinned provenance")
+        import inspect
+        import transformers
         from transformers import RTDetrForObjectDetection, RTDetrImageProcessor
         self.processor=RTDetrImageProcessor.from_pretrained(self.snapshot,local_files_only=True)
         self.model=RTDetrForObjectDetection.from_pretrained(self.snapshot,local_files_only=True).to(device).eval()
@@ -85,7 +87,18 @@ class FrozenRTDetr:
             raise DetectorError("snapshot configuration is not an RT-DETR R50 backbone")
         for parameter in self.model.parameters(): parameter.requires_grad_(False)
         self.device=torch.device(device); self.score_threshold=score_threshold
-        self._identity={"model_id":RTDETR_MODEL_ID,"snapshot":str(self.snapshot.resolve()),"files":actual_files,"provenance":provenance,"preprocess":self.processor.to_dict(),"score_threshold":self.score_threshold}
+        implementation = {
+            "adapter_sha256": sha256_file(Path(__file__)),
+            "transformers_version": transformers.__version__,
+            "torch_version": str(torch.__version__),
+            "cuda_version": torch.version.cuda,
+            "device": str(self.device),
+            "dtype": str(next(self.model.parameters()).dtype),
+            "cuda_device_name": torch.cuda.get_device_name(self.device) if self.device.type == "cuda" else None,
+            "model_source_sha256": sha256_file(Path(inspect.getfile(RTDetrForObjectDetection))),
+            "processor_source_sha256": sha256_file(Path(inspect.getfile(RTDetrImageProcessor))),
+        }
+        self._identity={"model_id":RTDETR_MODEL_ID,"snapshot":str(self.snapshot.resolve()),"files":actual_files,"provenance":provenance,"preprocess":self.processor.to_dict(),"score_threshold":self.score_threshold,"implementation":implementation}
 
     def identity(self) -> dict:
         return self._identity
@@ -245,6 +258,13 @@ def observe_causal_window(images: list[Image.Image], timestamps: list[float], qu
             raise DetectorError("causal window exceeds 2 FPS eight-second observation cap")
     selected=[images[index] for index in indexes]
     detector_identity=detector.identity()
+    # The cache stores individual frames. GPU BF16 kernels can change their
+    # rounding with batch shape, so a frame's value must not depend on how many
+    # other frames missed the cache. Bind and enforce singleton encoding here;
+    # the inherited adapter's original task-specific batching remains unchanged.
+    siglip_identity = {"encoder": siglip_identity,
+                       "observation_encoding": "singleton-frame/v1",
+                       "observation_source_sha256": sha256_file(Path(__file__))}
     keys = [cache_key(media_hash, float(pts[index]), detector_identity, siglip_identity) for index in indexes]
     population = cache.population(keys) if hasattr(cache, "population") else nullcontext()
     with population:
@@ -257,13 +277,15 @@ def observe_causal_window(images: list[Image.Image], timestamps: list[float], qu
                 patches[local]=value['patches']
                 saved=value.get('detections')
                 if saved is not None: detections[local]=tuple(Detection(tuple(row['box_xyxy']),int(row['class_id']),float(row['confidence'])) for row in saved)
-        if missing:
-            encoded=siglip_encode([selected[local] for local,_ in missing])
-            if not isinstance(encoded,torch.Tensor) or encoded.shape != (len(missing),729,1152) or not encoded.is_floating_point() or not bool(torch.isfinite(encoded).all()):
-                raise DetectorError("SigLIP adapter must return finite [N,729,1152] frozen patches")
-            # A per-frame view still owns the complete encoded batch storage.
-            # Clone before persistence so every cache entry stores only that frame.
-            for tensor,(local,key) in zip(encoded,missing): patches[local]=tensor.detach().cpu().clone()
+        for local, key in missing:
+            encoded = siglip_encode([selected[local]])
+            if (not isinstance(encoded, torch.Tensor) or encoded.shape != (1,729,1152)
+                    or not encoded.is_floating_point() or not bool(torch.isfinite(encoded).all())):
+                raise DetectorError("SigLIP adapter must return finite [1,729,1152] frozen patches")
+            # Match FrozenFrameCache's canonical layout before any ROI/global
+            # reduction. Original SigLIP may return column-major patch views;
+            # changing strides only on cache hits changes floating reductions.
+            patches[local] = encoded[0].detach().cpu().contiguous().clone()
         tracked=[]; frozen=[]
         for local,index in enumerate(indexes):
             patch=patches[local]

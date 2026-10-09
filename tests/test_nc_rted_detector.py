@@ -26,9 +26,9 @@ def test_causal_window_reuses_cached_frozen_patches_and_tracks_pairs(tmp_path):
     images=[Image.new('RGB',(8,8)) for _ in range(17)]; timestamps=[index*.5 for index in range(17)]
     cache=FrozenFrameCache(tmp_path,10**9,min_free_bytes=0)
     result=build_causal_window(images,timestamps,8.,Detector(),siglip,cache,'media',{'siglip':'fixed'})
-    assert calls==[16] and len(calls_detector)==16 and result.status.value=='ok'
+    assert calls==[1]*16 and len(calls_detector)==16 and result.status.value=='ok'
     result=build_causal_window(images,timestamps,8.,Detector(),siglip,cache,'media',{'siglip':'fixed'})
-    assert calls==[16] and len(calls_detector)==16 and result.status.value=='ok'
+    assert calls==[1]*16 and len(calls_detector)==16 and result.status.value=='ok'
 
 
 def test_observed_window_exposes_tracking_class_pairs_and_honors_partial_start(tmp_path):
@@ -44,7 +44,7 @@ def test_observed_window_exposes_tracking_class_pairs_and_honors_partial_start(t
     assert observed.features.status.value=='ok'
     assert observed.relation_class_pairs == ((0,1),)
     assert observed.relation_ids == ('0:1',)
-    assert calls == [2]
+    assert calls == [1,1]
     assert (observed.features.relations[0].observed_times_s[
         observed.features.relations[0].feature_valid] > 8.).all()
 
@@ -106,3 +106,92 @@ def test_inherited_siglip_adapter_verifies_original_tower_retained_weights(tmp_p
     with torch.no_grad(): tower.vision_tower.vision_model.embeddings.weight.add_(1)
     with pytest.raises(DetectorError, match="tower changed"):
         adapter([Image.new("RGB", (2,2))])
+
+
+def test_actual_box_postprocessing_round_trips_weights_only_frame_cache(tmp_path):
+    # RT-DETR clipping goes through NumPy; cache metadata must remain portable
+    # Python scalars so weights_only loading needs no NumPy pickle allowlist.
+    box = _normalized_box(torch.tensor([-1.25, 12.5, 128.75, 240.5]), 320, 240)
+    assert box is not None and all(type(coordinate) is float for coordinate in box)
+    cache = FrozenFrameCache(tmp_path, 1 << 20, min_free_bytes=0)
+    key = "7" * 64
+    cache.put(key, {"patches": torch.zeros(2, 3, dtype=torch.bfloat16),
+                    "detections": [{"box_xyxy": box, "class_id": 0, "confidence": .9}]})
+    stored = cache.get(key)
+    assert stored is not None
+    assert stored["detections"][0]["box_xyxy"] == list(box)
+    assert stored["patches"].dtype == torch.bfloat16
+
+
+def test_cache_overlap_is_independent_of_encoder_batch_shape(tmp_path):
+    import numpy as np
+    class Detector:
+        def identity(self): return {"detector": "batch-shape-regression"}
+        def detect(self, image):
+            return (Detection((.1,.1,.3,.7),0,.9), Detection((.5,.2,.9,.8),2,.8))
+    calls = []
+    def batch_sensitive_encoder(images):
+        calls.append(len(images))
+        # Model a real BF16 encoder whose rounding varies with batch size.
+        values = torch.tensor([image.getpixel((0,0))[0] + len(images) for image in images], dtype=torch.bfloat16)
+        return values[:,None,None].expand(-1,729,1152).clone()
+    images = [Image.new("RGB", (8,8), color=(i,0,0)) for i in range(18)]
+    timestamps = [i * .5 for i in range(18)]
+    shared = FrozenFrameCache(tmp_path / "shared", 128 << 20, min_free_bytes=0)
+    fresh = FrozenFrameCache(tmp_path / "fresh", 128 << 20, min_free_bytes=0)
+    def observe(cache, query):
+        return observe_causal_window(images, timestamps, query, Detector(), batch_sensitive_encoder,
+                                      cache, "same-media", {"siglip": "fixed"}, window_start_s=query-8)
+    observe(shared, 8.)
+    reused = observe(shared, 8.5)
+    assert calls == [1] * 17  # Shared frames are encoded only once.
+    independent = observe(fresh, 8.5)
+    assert reused.features.relations and independent.features.relations
+    assert reused.relation_ids == independent.relation_ids
+    for left, right in zip(reused.features.relations, independent.features.relations):
+        np.testing.assert_array_equal(left.student_cells, right.student_cells)
+        np.testing.assert_array_equal(left.cell_mask, right.cell_mask)
+    entries = {p.name for p in fresh.root.glob("*.pt")}
+    assert len(entries) == 16
+    for name in entries:
+        left = shared.get(Path(name).stem)["patches"]
+        right = fresh.get(Path(name).stem)["patches"]
+        assert left.dtype == right.dtype == torch.bfloat16
+        assert torch.equal(left, right)
+
+
+def test_column_major_encoder_cold_and_cached_pooling_share_layout(tmp_path, monkeypatch):
+    import numpy as np
+    import nc_rted.observation as observation
+    import nc_rted.features as features
+    class Detector:
+        def identity(self): return {"detector": "layout-regression"}
+        def detect(self, image):
+            return (Detection((.1,.1,.4,.8),0,.9), Detection((.5,.2,.9,.8),2,.8))
+    generator = torch.Generator().manual_seed(2026)
+    column_major = torch.randn(1,1152,729,generator=generator,dtype=torch.bfloat16).transpose(1,2)
+    assert column_major.stride()[1:] == (1,729)
+    def encode(images):
+        assert len(images) == 1
+        return column_major
+    original_pool = observation.pool_patch_regions
+    strides = []
+    def require_canonical_layout(patches, boxes):
+        strides.append(patches.stride())
+        # A numerical cache must use one layout before reductions. Checking the
+        # actual consumer catches regressions even on BLAS versions that happen
+        # to round both layouts identically for this sample.
+        assert patches.is_contiguous()
+        return original_pool(patches, boxes)
+    monkeypatch.setattr(observation,"pool_patch_regions",require_canonical_layout)
+    monkeypatch.setattr(features,"pool_patch_regions",require_canonical_layout)
+    cache = FrozenFrameCache(tmp_path,32<<20,min_free_bytes=0)
+    def run():
+        return observe_causal_window([Image.new("RGB",(8,8))],[.5],.5,Detector(),encode,cache,
+                                      "layout-media",{"siglip":"column-major"},window_start_s=0.)
+    cold, warm = run(), run()
+    assert strides and set(strides) == {(1152,1)}
+    assert cold.features.relations and warm.features.relations
+    for left,right in zip(cold.features.relations,warm.features.relations):
+        np.testing.assert_array_equal(left.student_cells,right.student_cells)
+        np.testing.assert_array_equal(left.process_cells,right.process_cells)

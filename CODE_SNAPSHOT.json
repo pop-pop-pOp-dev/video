@@ -1,38 +1,25 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "created_at": "2026-10-09T16:08:13.320976+00:00",
-  "source_commit": "4751c2db38ab6dd005feed524763230872153c5c",
+  "created_at": "2026-10-09T17:08:38.943630+00:00",
+  "source_commit": "f7f46d5aabbfe9de1842319e9c6b9ff59027ba0a",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
   "validation": {
-    "cpu_report": {
-      "status": "PASS",
-      "stats": {
-        "warnings": 24,
-        "passed": 217
-      },
-      "torch": "2.4.1+cu121",
-      "scope": "complete NC-RTED CPU suite plus inherited cold-process imports",
-      "environment_correction": "uninstalled source checkout explicitly on PYTHONPATH for child process; v10 parent-only sys.path failed child import, no source changed",
-      "formal_acceptance": false
-    },
-    "runtime_review_status": "PASS_STATIC",
-    "editorial_correction": {
-      "path": "docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md",
-      "reviewed_sha256": "f156230184368d1b636e7016eba28229dd76108b8f3587a584f437531cd06765",
-      "published_sha256": "44b04cf138f169925ed17193cf954ea133fc0c3e7adf94dbf75f1a38dd906dbc",
-      "change": "Documentation-only correction of teacher validation ordering; implementation unchanged",
-      "old": "Teachers are read from the committed store\nonly after all public-media providers are assembled.",
-      "new": "Teacher records are validated during assembly before model loading. They\nremain outside the public-media provider inputs."
-    },
-    "review_scope": "static supplied-source runtime composition; not full-spec or GPU acceptance"
+    "cpu_passed": 220,
+    "cpu_report_sha256": "4c82a6073c507f1f48dced98e3c7244374d3eee50ce40c0840e87e6b8d4ad6a7",
+    "observer_review_status": "PASS_STATIC",
+    "gpu_observer_windows": 12,
+    "nonempty_relation_windows": 12,
+    "cached_patch_and_relation_parity": "exact",
+    "slow_output_parity": "pending",
+    "review_scope": "supplied-source detector numerical changes; previous core/runtime reviews retained; no full-spec acceptance"
   },
   "remaining": [
-    "actual detector assets",
-    "full media and teacher readiness",
-    "real longest-input GPU and cache equivalence",
-    "blind prediction workers and process lifecycle acceptance",
-    "full specification freeze and formal experiments"
+    "full media timing/derived-media readiness",
+    "real crossfit teacher coverage",
+    "longest-input GPU/Slow output equivalence and PRO6000/storage",
+    "blind prediction and queue lifecycle/resource admission",
+    "full freeze and formal experiments"
   ],
   "files": [
     {
@@ -82,8 +69,8 @@
     },
     {
       "path": "docs/NC_RTED_CODE_DESIGN.md",
-      "sha256": "6252a87670194f83a7a3f239068a45ff81c5a50768e970020bb4d8e9782427e1",
-      "bytes": 20673
+      "sha256": "8abd017b703c2440a21768d6d277f5ee2a976d60063e9545eeec87dcca26219b",
+      "bytes": 21719
     },
     {
       "path": "docs/NC_RTED_DETECTION_PROVIDER_CONTRACT.md",
@@ -99,6 +86,11 @@
       "path": "docs/NC_RTED_FEATURE_CONTRACT.md",
       "sha256": "6e3415d353ead27e26cb9b374754e036f4a90772bef36a012ab199f37c1f1cf1",
       "bytes": 3277
+    },
+    {
+      "path": "docs/NC_RTED_FROZEN_OBSERVATION_NUMERICS.md",
+      "sha256": "0c8df90956e9038f382238e72dc6ab611bbe6ffe120b621284592c5beaa57520",
+      "bytes": 3474
     },
     {
       "path": "docs/NC_RTED_IMPLEMENTATION_HANDOFF.md",
@@ -512,8 +504,8 @@
     },
     {
       "path": "src/nc_rted/detector.py",
-      "sha256": "8381feb23de6c5bd139b7cf314c5ccb22bf46e75ec98b996276e75f68579ed94",
-      "bytes": 19075
+      "sha256": "0f3b17bdf57e8fe33d5c3a36652962594e81d717cfbe0eb8f922849016df4ab0",
+      "bytes": 20422
     },
     {
       "path": "src/nc_rted/fast_snapshot.py",
@@ -662,8 +654,8 @@
     },
     {
       "path": "tests/test_nc_rted_detector.py",
-      "sha256": "8fb7e179c259218968ed8b37d8f4d203ee0b6d0ba4921d3498a448203e5110cc",
-      "bytes": 6408
+      "sha256": "08d79f976e1a1951a51d8cc89be6b1875b7b51bec2a74c2ba9f930f011f98c0f",
+      "bytes": 11210
     },
     {
       "path": "tests/test_nc_rted_fast_snapshot.py",

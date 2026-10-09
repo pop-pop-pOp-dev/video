@@ -213,6 +213,19 @@ def preflight(manifest: RuntimeManifest) -> None:
     detector = _mapping(doc.get("detector"), "detector")
     _bound_tree(detector.get("snapshot"), detector.get("snapshot_sha256"), "RT-DETR snapshot")
     _bound_tree(detector.get("siglip_snapshot"), detector.get("siglip_snapshot_sha256"), "SigLIP snapshot")
+    _bound_tree(detector.get("final_stage2_siglip_snapshot"), detector.get("final_stage2_siglip_snapshot_sha256"),
+                "derived final-Stage2 SigLIP snapshot")
+    # Validate derived asset provenance before ReactVAU/Transformers imports;
+    # loaded-tower equality is checked later by InheritedSigLipAdapter.
+    try:
+        from .frozen_vision import bind_derived_final_stage2_vision
+        bind_derived_final_stage2_vision(
+            detector["final_stage2_siglip_snapshot"],
+            expected_parent_export_sha256=inherited["export_hashes"]["non_lora_trainables.bin"],
+            expected_parent_export=Path(inherited["export_directory"]) / "non_lora_trainables.bin",
+            expected_raw_config_sha256=sha256_file(Path(detector["siglip_snapshot"]) / "config.json"))
+    except (KeyError, OSError, RuntimeError) as error:
+        raise ProductionRuntimeError("derived final-Stage2 SigLIP provenance is invalid") from error
     if not isinstance(detector.get("score_threshold"), (int, float)) or not 0 <= detector["score_threshold"] <= 1:
         raise ProductionRuntimeError("RT-DETR threshold is invalid")
     teacher = _mapping(doc.get("teacher"), "teacher")
@@ -285,6 +298,26 @@ def _materialized_stage2_cache(media):
             if len(matches) != 1: raise ProductionRuntimeError("materialized Stage2 media binding is ambiguous")
             with lease_verified_media(matches[0]) as path: yield path
     return Cache()
+
+
+def _configure_inherited_tokenizer(tokenizer) -> None:
+    """Retain Qwen's pretrained pad token when it has no unknown token."""
+    if getattr(tokenizer, "unk_token", None) is not None:
+        tokenizer.pad_token = tokenizer.unk_token
+    tokenizer.padding_side = "right"
+
+
+def _configure_inherited_data_args(data_args, raw_config) -> None:
+    """Copy the inherited multimodal delimiter policy before preprocessing."""
+    value = getattr(raw_config, "mm_use_im_start_end", None)
+    if type(value) is not bool:
+        raise ProductionRuntimeError("loaded inherited model lacks a boolean mm_use_im_start_end policy")
+    data_args.mm_use_im_start_end = value
+
+
+def _require_loaded_final_stage2_tower(tower) -> None:
+    if not getattr(tower, "is_loaded", False):
+        raise ProductionRuntimeError("inherited Slow vision tower must already contain final Stage2 tensors")
 
 
 def _stage2_dataset_class(original, cache):
@@ -452,6 +485,8 @@ class ProductionRuntime:
 def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> ProductionRuntime:
     """Load the exact inherited runtime after ``preflight`` has succeeded."""
     preflight(manifest)
+    from .numerics import configure_deterministic_algorithms
+    numerical_policy = configure_deterministic_algorithms()
     doc, run = manifest.document, manifest.run
     # These fixed data/teacher bindings are validated before ReactVAU, CUDA, or
     # model construction. Their readers only inspect committed JSON/NPZ inputs.
@@ -461,7 +496,7 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
     teacher_path = Path(doc["teacher"]["artifact"])
     teachers = (TeacherIndex(build_teachers_from_store(teacher_path), catalog, identity=doc["teacher"]["sha256"])
                 if teacher_path.is_dir() else TeacherIndex.load(teacher_path, catalog, expected_sha256=doc["teacher"]["sha256"]))
-    identity = {"run_id": run["run_id"], "group": run["group"], "seed": str(run["seed"]), "code_sha256": doc["hashes"]["code_sha256"], "config_sha256": manifest.config_sha256, "data_sha256": catalog.identity, "teacher_sha256": doc["teacher"]["sha256"], "inherited_weights_sha256": doc["hashes"]["inherited_weights_sha256"], "runtime_sha256": doc["hashes"]["runtime_sha256"]}
+    identity = {"run_id": run["run_id"], "group": run["group"], "seed": str(run["seed"]), "code_sha256": doc["hashes"]["code_sha256"], "config_sha256": manifest.config_sha256, "data_sha256": catalog.identity, "teacher_sha256": doc["teacher"]["sha256"], "inherited_weights_sha256": doc["hashes"]["inherited_weights_sha256"], "runtime_sha256": doc["hashes"]["runtime_sha256"], "final_stage2_siglip_snapshot_sha256": doc["detector"]["final_stage2_siglip_snapshot_sha256"], "numerical_policy_identity":numerical_policy.identity()}
     if run["mode"] == "formal":
         if admission is None: raise ProductionRuntimeError("formal assembly requires an external formal admission")
         _validate_formal_admission_before_models(admission, identity)
@@ -487,8 +522,7 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
     Stage2Dataset = _stage2_dataset_class(original, cache)
     from transformers import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained(inherited["tokenizer_directory"], local_files_only=True, model_max_length=8192)
-    tokenizer.pad_token = tokenizer.unk_token
-    tokenizer.padding_side = "right"
+    _configure_inherited_tokenizer(tokenizer)
     try: conversation_lib.default_conversation = conversation_lib.conv_templates["qwen_2"]
     except KeyError as error: raise ProductionRuntimeError("inherited qwen_2 conversation template is unavailable") from error
     data_args = train_module.DataArguments(data_path=doc["catalog"]["dataset_yaml"], lazy_preprocess=True,
@@ -498,9 +532,7 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
     slow = bridge.slow
     raw = slow.get_base_model() if hasattr(slow, "get_base_model") else slow
     tower = slow.get_vision_tower()
-    if not getattr(tower, "is_loaded", False):
-        tower.vision_tower_name = str(Path(doc["detector"]["siglip_snapshot"]).resolve())
-        tower.load_model()
+    _require_loaded_final_stage2_tower(tower)
     import torch
     projector_dtype = next(raw.get_model().mm_projector.parameters()).dtype
     tower.to(device=run["device"], dtype=projector_dtype)
@@ -511,6 +543,7 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
     raw.config.time_msg_type = data_args.time_msg
     raw.config.tokenizer_model_max_length = 8192
     raw.config.vision_encode_type = "image_video_memory_batch"
+    _configure_inherited_data_args(data_args, raw.config)
     if getattr(raw.config, "mm_local_num_frames", None) != 1:
         raise ProductionRuntimeError("loaded inherited projector does not retain local_num_frames=1")
     from .detector import FrozenRTDetr, InheritedSigLipAdapter
@@ -520,8 +553,18 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
     from .detection_provider import FrozenDetectionProvider
     from .caption_provider import Stage2CaptionProvider
     from .train_worker import CheckpointStore, TeacherIndex, TrainingWorker
-    detector = FrozenRTDetr(Path(doc["detector"]["snapshot"]), device=run["device"], score_threshold=doc["detector"]["score_threshold"])
-    siglip = InheritedSigLipAdapter(tower, Path(doc["detector"]["siglip_snapshot"]))
+    detector = FrozenRTDetr(Path(doc["detector"]["snapshot"]), device=run["device"], score_threshold=doc["detector"]["score_threshold"], numerical_policy_identity=numerical_policy.identity())
+    # The Slow loader has already applied the exact final Stage2 non-LoRA
+    # tensors, including its retained vision tower.  Its recorded original
+    # vision_tower_name must remain untouched; the adapter admits the derived
+    # snapshot only after checking its parent-export provenance and every live
+    # retained tensor.
+    siglip = InheritedSigLipAdapter(
+        tower, Path(doc["detector"]["final_stage2_siglip_snapshot"]),
+        expected_parent_export_sha256=inherited["export_hashes"]["non_lora_trainables.bin"],
+        expected_parent_export=Path(inherited["export_directory"]) / "non_lora_trainables.bin",
+        expected_raw_config_sha256=sha256_file(Path(doc["detector"]["siglip_snapshot"]) / "config.json"),
+        numerical_policy_identity=numerical_policy.identity())
     observer = CausalMediaObserver(detector=detector, siglip=siglip, cache=FrozenFrameCache(doc["media"]["observation_cache_root"], doc["media"]["observation_cache_max_bytes"]), media_catalog=media,
         lease_resolver=lambda item: cache.acquire(item.media_key, item.request_index), decoder_factory=OpenCVFrames)
     with _bound_stage2_constructor_environment(stage2, doc["media"]["catalog"]):

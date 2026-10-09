@@ -1,24 +1,29 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "created_at": "2026-10-09T21:05:02.081774+00:00",
-  "source_commit": "497e5e0485a3de03d5c9e73c35a4b599eafbabad",
+  "created_at": "2026-10-09T21:22:45.891482+00:00",
+  "source_commit": "9e550e8455005eb2e28ec35f899f43bc86e45826",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
   "validation": {
-    "cpu_passed": 332,
-    "cpu_report_sha256": "60f49be12308d06297aeae34514abd3a7b0f01dcc07ad7eb6702ddd60639df3b",
-    "queue_review_status": "PASS_STATIC",
-    "queue_review_sha256": "ddbf18ad868e7a2a476f3f19ef8eabe8b94890d400f1f75295cfb3fb3674f16a",
-    "review_scope": "controlled local nonformal lifecycle only; formal admission closed",
-    "inherited_vision_observer_diagnostic_windows": 12,
-    "teacher_cache_review": "PASS",
-    "numerics_helper_review": "PASS",
-    "import_closure_review": "PASS",
-    "short_real_forward_backward": "PASS_DIAGNOSTIC_ONLY"
+    "cpu_passed": 340,
+    "cpu_report_sha256": "7b795236863d04123c79c6753d29dc5c325409f474cd57aa9d89edaf9769b1f6",
+    "vision_review": "PASS_STATIC",
+    "vision_review_sha256": "df3ca1642a1013abfd6f4992b8537a91882fc1625f32875c407a394cb180d810",
+    "vision_review_source_packet_sha256": "d5a04c1302d5b16765747864f06dad03f38db01aa227160e150cc9932f2932f9",
+    "vision_review_exact_source_or_diff_match": [
+      "scripts/nc_rted_export_frozen_vision.py",
+      "src/nc_rted/detector.py",
+      "src/nc_rted/frozen_vision.py",
+      "src/nc_rted/production_runtime.py",
+      "tests/test_nc_rted_frozen_vision.py",
+      "tests/test_nc_rted_production_runtime.py"
+    ],
+    "short_real_forward_backward": "PASS_DIAGNOSTIC_ACTUAL_INHERITED_TOWER",
+    "short_real_report_sha256": "846ed0ddba28c8c091cd908b9cd7ce9bf28afa514cd8d18b73b0d2fa1aa81561"
   },
   "remaining": [
-    "final Stage2 vision runtime provenance acceptance",
-    "deterministic inherited memory/Slow probability and text parity",
+    "complete production assemble and optimizer update/save/reload",
+    "full deterministic Slow text parity",
     "full real crossfit teachers",
     "caption materialization and storage admission",
     "longest-input GPU and PRO6000 verification",
@@ -33,8 +38,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "e5a8297840cc3aa708191b51d6b90f3c1464df1c3ef9077f587a5f0fafdceef6",
-      "bytes": 5482
+      "sha256": "aecb018c7940e618cea54d548e27a00a00e38de69f8346a791116eafcb821dfc",
+      "bytes": 5888
     },
     {
       "path": "THIRD_PARTY.md",
@@ -467,6 +472,11 @@
       "bytes": 2056
     },
     {
+      "path": "scripts/nc_rted_export_frozen_vision.py",
+      "sha256": "32931c876e71c908b7ac856352764588cc67efa7937a2dd06f29272533984a0d",
+      "bytes": 8537
+    },
+    {
       "path": "scripts/nc_rted_extract_observations.py",
       "sha256": "f7188415c3a0c1f648885688bfadc74b4a9e6d1415a513747eeb875dd5ed2439",
       "bytes": 1919
@@ -528,8 +538,8 @@
     },
     {
       "path": "src/nc_rted/detector.py",
-      "sha256": "e08b0fedd1ca98d1c1a68d4134bcb030359857a81004eecd8100d36824a43274",
-      "bytes": 30126
+      "sha256": "e10363ea35f65b051eef1dd0f3c1d4b348ab1d9303b2b07c17e29ce6b6f0042a",
+      "bytes": 33027
     },
     {
       "path": "src/nc_rted/fast_snapshot.py",
@@ -540,6 +550,11 @@
       "path": "src/nc_rted/features.py",
       "sha256": "6753b7e96f785db6a35a0982c22bedb78f7a3016ad3f6856c6ecf09525b703ea",
       "bytes": 14099
+    },
+    {
+      "path": "src/nc_rted/frozen_vision.py",
+      "sha256": "c88c2f268dfb101d9d39286e1ee4952319cdb5af9ae562567ce0e6f1452ba19a",
+      "bytes": 7833
     },
     {
       "path": "src/nc_rted/inherited_memory.py",
@@ -588,8 +603,8 @@
     },
     {
       "path": "src/nc_rted/production_runtime.py",
-      "sha256": "f78713b551f7c1cb1efc0ffe5d077baa23998be0f7bb1248bb20c05aafa5add5",
-      "bytes": 33114
+      "sha256": "fc9a089e6a0235e4d675da87dc72b1d3e978e658000851fb7555677f93bc618a",
+      "bytes": 35884
     },
     {
       "path": "src/nc_rted/queue.py",
@@ -722,6 +737,11 @@
       "bytes": 6282
     },
     {
+      "path": "tests/test_nc_rted_frozen_vision.py",
+      "sha256": "1f0666ea4d694dd912755d7b995565aa03e7c9bb8095683c54cf89b9e9b42280",
+      "bytes": 8373
+    },
+    {
       "path": "tests/test_nc_rted_inherited_siglip_binding.py",
       "sha256": "d54b4df43e0346dd00674e71fc1532bb49674df2ce5a57fd2f9c14305117886e",
       "bytes": 3365
@@ -768,8 +788,8 @@
     },
     {
       "path": "tests/test_nc_rted_production_runtime.py",
-      "sha256": "fc514e09d0fdbbfae5c85f2677299606a8d9a721ba4900d30c68963acdd3b0bb",
-      "bytes": 19102
+      "sha256": "fab8d59f8572351f717fd60cfd3f2faa5a0e366af3bb66bc8dbc786f13243995",
+      "bytes": 23832
     },
     {
       "path": "tests/test_nc_rted_queue.py",

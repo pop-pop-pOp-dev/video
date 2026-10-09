@@ -12,7 +12,8 @@ from nc_rted.media_observer import BoundMedia
 from nc_rted.production_runtime import (ProductionRuntimeError, _bound_stage2_constructor_environment,
                                         _materialized_stage2_cache, _stage2_dataset_class,
                                         _validate_caption_subset, _validate_detection_bindings,
-                                        _assert_inherited_modules_bound, load_manifest)
+                                        _assert_inherited_modules_bound, _configure_inherited_tokenizer,
+                                        _configure_inherited_data_args, _require_loaded_final_stage2_tower, load_manifest)
 from nc_rted.task_inputs import TrainingCatalog, TrainingTask
 
 
@@ -39,6 +40,8 @@ def directory(root: Path, name: str) -> tuple[str, str]:
 
 
 def config(tmp_path: Path, *, mode="diagnostic") -> tuple[Path, str]:
+    from safetensors.torch import save_file
+    import torch
     annotations, annotations_sha = file(tmp_path, "train.json", b"[]")
     provenance, provenance_sha = file(tmp_path, "provenance.json", b"{}")
     subset, subset_sha = file(tmp_path, "captions.json", b"[]")
@@ -67,7 +70,25 @@ def config(tmp_path: Path, *, mode="diagnostic") -> tuple[Path, str]:
         _, export_hashes[name] = file(Path(export), name)
     tokenizer, tokenizer_sha = directory(tmp_path, "tokenizer")
     rtdetr, rtdetr_sha = directory(tmp_path, "rtdetr")
-    siglip, siglip_sha = directory(tmp_path, "siglip")
+    siglip, _ = directory(tmp_path, "siglip")
+    raw_config = b'{"model_type":"siglip"}'
+    (Path(siglip) / "config.json").write_bytes(raw_config)
+    siglip_sha = tree_digest(Path(siglip))
+    final_siglip = tmp_path / "final-stage2-siglip"; final_siglip.mkdir()
+    (final_siglip / "config.json").write_bytes(raw_config)
+    final_tensors = {f"vision_model.test.{index}": __import__("torch").tensor([index], dtype=__import__("torch").bfloat16)
+                     for index in range(421)}
+    parent_export = Path(export) / "non_lora_trainables.bin"
+    torch.save({"base_model.model.model.vision_tower.vision_tower." + name: value for name, value in final_tensors.items()}, parent_export)
+    export_hashes["non_lora_trainables.bin"] = digest(parent_export)
+    save_file(final_tensors, str(final_siglip / "model.safetensors"), metadata={"format":"pt"})
+    final_files = {name: digest(final_siglip / name) for name in ("config.json", "model.safetensors")}
+    final_provenance = {"schema":"nc_rted_final_stage2_vision/v1", "source_export_sha256":export_hashes["non_lora_trainables.bin"],
+                        "source_key_prefix":"base_model.model.model.vision_tower.vision_tower.", "tensor_count":421,
+                        "tensor_dtype":"bfloat16", "raw_config_sha256":final_files["config.json"], "files":final_files,
+                        "source_key_map":{name:"base_model.model.model.vision_tower.vision_tower." + name for name in final_tensors}}
+    (final_siglip / "nc_rted_provenance.json").write_text(json.dumps(final_provenance))
+    final_siglip, final_siglip_sha = str(final_siglip), tree_digest(final_siglip)
     protocol = {"question_template":"Is there an anomaly?", "prompt_style":"neutral", "time_message_style":"short_online_v2",
                 "memory_enhancement":True, "rt_anomaly":True, "trigger_threshold":0.5, "pool_threshold":0.5, "scoring":"yesno"}
     run_id = "diagnostic:runtime-test" if mode == "diagnostic" else "formal-runtime-test"
@@ -82,7 +103,7 @@ def config(tmp_path: Path, *, mode="diagnostic") -> tuple[Path, str]:
       "stage2_cache":{"module":stage_module,"module_sha256":stage_module_sha,"config":stage_config,"config_sha256":stage_config_sha,"accepted_status":"APPROVED_FOR_EXECUTION"},
       "fast":{"snapshot":fast,"snapshot_sha256":fast_sha,"identity":{"checkpoint":"fast-ckpt","implementation":"fast-code"},"protocols":{"ucf-crime":protocol,"xd-violence":protocol}},
       "media":{"catalog":media,"catalog_sha256":media_sha,"observation_cache_root":str(tmp_path / "cache"),"observation_cache_max_bytes":1},
-      "detector":{"snapshot":rtdetr,"snapshot_sha256":rtdetr_sha,"siglip_snapshot":siglip,"siglip_snapshot_sha256":siglip_sha,"score_threshold":0.3},
+      "detector":{"snapshot":rtdetr,"snapshot_sha256":rtdetr_sha,"siglip_snapshot":siglip,"siglip_snapshot_sha256":siglip_sha,"final_stage2_siglip_snapshot":final_siglip,"final_stage2_siglip_snapshot_sha256":final_siglip_sha,"score_threshold":0.3},
       "teacher":{"artifact":teacher,"sha256":teacher_sha}}
     if mode == "formal":
         admission = {"status":"PASS","formal_execution_allowed":True,"engineering_checks":{str(i):"PASS" for i in range(1,11)},"source_files":{}}
@@ -105,6 +126,58 @@ def test_preflight_rejects_missing_detector_before_runtime_import(tmp_path):
     path, _ = config(tmp_path); doc = json.loads(path.read_text()); doc["detector"]["snapshot_sha256"] = "0" * 64; path.write_text(json.dumps(doc))
     with pytest.raises(ProductionRuntimeError, match="RT-DETR snapshot"):
         load_manifest(path, expected_sha256=digest(path))
+
+
+def test_preflight_rejects_changed_derived_final_stage2_siglip_before_runtime_import(tmp_path):
+    path, _ = config(tmp_path); doc = json.loads(path.read_text())
+    doc["detector"]["final_stage2_siglip_snapshot_sha256"] = "0" * 64
+    path.write_text(json.dumps(doc))
+    with pytest.raises(ProductionRuntimeError, match="derived final-Stage2 SigLIP"):
+        load_manifest(path, expected_sha256=digest(path))
+
+
+def test_inherited_tokenizer_retains_pretrained_pad_when_qwen_has_no_unknown_token():
+    tokenizer = type("Tokenizer", (), {"unk_token": None, "pad_token": "<pad>", "padding_side": "left"})()
+    _configure_inherited_tokenizer(tokenizer)
+    assert tokenizer.pad_token == "<pad>"
+    assert tokenizer.padding_side == "right"
+    tokenizer.unk_token = "<unk>"
+    _configure_inherited_tokenizer(tokenizer)
+    assert tokenizer.pad_token == "<unk>"
+
+
+def test_inherited_data_args_copy_the_loaded_multimodal_delimiter_policy():
+    data_args = type("DataArgs", (), {})()
+    _configure_inherited_data_args(data_args, type("Config", (), {"mm_use_im_start_end": True})())
+    assert data_args.mm_use_im_start_end is True
+    with pytest.raises(ProductionRuntimeError, match="mm_use_im_start_end"):
+        _configure_inherited_data_args(type("DataArgs", (), {})(), type("Config", (), {})())
+
+
+def test_runtime_rejects_an_unloaded_tower_without_rewriting_or_reloading_it():
+    tower = type("Tower", (), {"is_loaded": False, "vision_tower_name": "original", "load_model": lambda self: (_ for _ in ()).throw(AssertionError())})()
+    with pytest.raises(ProductionRuntimeError, match="already contain final Stage2"):
+        _require_loaded_final_stage2_tower(tower)
+    assert tower.vision_tower_name == "original"
+
+
+@pytest.mark.skipif(not os.environ.get("NC_RTED_REACTVAU_ROOT"), reason="requires pinned ReactVAU source")
+def test_real_inherited_preprocess_receives_bound_multimodal_delimiter_policy():
+    root = Path(os.environ["NC_RTED_REACTVAU_ROOT"])
+    sys.path.insert(0, str(root))
+    # ReactVAU's trainer imports this compatibility name from Transformers;
+    # preprocess_multimodal itself is unchanged and uses Accelerate's class.
+    import transformers.trainer
+    from accelerate.utils import GradientAccumulationPlugin
+    transformers.trainer.GradientAccumulationPlugin = GradientAccumulationPlugin
+    from llava.constants import DEFAULT_IM_END_TOKEN, DEFAULT_IM_START_TOKEN
+    from llava.train.train import DataArguments, preprocess_multimodal
+    args = DataArguments()
+    args.is_multimodal = True
+    _configure_inherited_data_args(args, type("Config", (), {"mm_use_im_start_end": True})())
+    source = [[{"from":"human", "value":"inspect <image> now"}]]
+    prepared = preprocess_multimodal(source, args)
+    assert prepared[0][0]["value"].startswith(DEFAULT_IM_START_TOKEN + "<image>" + DEFAULT_IM_END_TOKEN)
 
 
 def test_formal_requires_all_ten_gates_and_is_not_diagnostic(tmp_path):

@@ -176,7 +176,8 @@ def _assert_rtdetr_weight_binding(model, weights: Path) -> None:
 
 class FrozenRTDetr:
     """Explicit local snapshot only; uses Transformers RT-DETR postprocessing."""
-    def __init__(self, snapshot: Path, device: str="cpu", score_threshold: float=.3):
+    def __init__(self, snapshot: Path, device: str="cpu", score_threshold: float=.3,
+                 numerical_policy_identity: str | None = None):
         if not 0 <= score_threshold <= 1: raise DetectorError("invalid score threshold")
         self.snapshot=Path(snapshot)
         required=("config.json","preprocessor_config.json",RTDETR_PROVENANCE_FILE)
@@ -230,7 +231,7 @@ class FrozenRTDetr:
             "model_source_sha256": sha256_file(Path(inspect.getfile(RTDetrForObjectDetection))),
             "processor_source_sha256": sha256_file(Path(inspect.getfile(RTDetrImageProcessor))),
         }
-        self._identity={"model_id":RTDETR_MODEL_ID,"snapshot":str(self.snapshot.resolve()),"files":actual_files,"provenance":provenance,"preprocess":self.processor.to_dict(),"score_threshold":self.score_threshold,"implementation":implementation}
+        self._identity={"model_id":RTDETR_MODEL_ID,"snapshot":str(self.snapshot.resolve()),"files":actual_files,"provenance":provenance,"preprocess":self.processor.to_dict(),"score_threshold":self.score_threshold,"implementation":implementation,"numerical_policy_identity":numerical_policy_identity}
 
     def identity(self) -> dict:
         return self._identity
@@ -278,7 +279,11 @@ def _assert_siglip_effective_vision_config(inner, expected_vision: dict) -> dict
 
 class InheritedSigLipAdapter:
     """Adapter over an already-loaded ReactVAU ``SigLipVisionTower`` instance."""
-    def __init__(self, tower, snapshot: Path):
+    def __init__(self, tower, snapshot: Path, *, expected_parent_export_sha256: str | None = None,
+                 expected_parent_export: str | Path | None = None,
+                 expected_parent_key_prefix: str = "base_model.model.model.vision_tower.vision_tower.",
+                 expected_raw_config_sha256: str | None = None,
+                 numerical_policy_identity: str | None = None):
         import inspect
         if (tower.__class__.__module__ != "llava.model.multimodal_encoder.siglip_encoder" or
                 tower.__class__.__name__ != "SigLipVisionTower" or not callable(tower) or
@@ -287,16 +292,32 @@ class InheritedSigLipAdapter:
         self.tower, self.snapshot = tower, Path(snapshot).resolve()
         if not self.snapshot.is_dir() or not (self.snapshot/"config.json").is_file() or not (self.snapshot/"model.safetensors").is_file():
             raise DetectorError("missing inherited SigLip snapshot")
-        if Path(str(tower.vision_tower_name)).resolve() != self.snapshot:
-            raise DetectorError("loaded SigLip tower path differs from bound snapshot")
+        loaded_path = Path(str(tower.vision_tower_name)).resolve()
+        self._derived_binding = None
+        derived_requested = expected_parent_export_sha256 is not None or expected_parent_export is not None
+        if derived_requested:
+            if expected_parent_export_sha256 is None or expected_parent_export is None:
+                raise DetectorError("derived SigLip binding requires both parent path and SHA-256")
+            from .frozen_vision import bind_derived_final_stage2_vision
+            self._derived_binding = bind_derived_final_stage2_vision(
+                self.snapshot, expected_parent_export_sha256=expected_parent_export_sha256,
+                expected_parent_export=expected_parent_export,
+                expected_parent_key_prefix=expected_parent_key_prefix,
+                expected_raw_config_sha256=expected_raw_config_sha256)
+        elif loaded_path != self.snapshot:
+            if expected_parent_export_sha256 is None:
+                raise DetectorError("loaded SigLip tower path differs from bound snapshot")
         source = Path(inspect.getsourcefile(tower.__class__) or "")
         if not source.is_file() or source.name != "siglip_encoder.py":
             raise DetectorError("SigLip tower source is not the inherited encoder")
         self._source_sha256 = sha256_file(source)
-        config_bytes = (self.snapshot / "config.json").read_bytes()
+        config_bytes = (self._derived_binding.config_bytes if self._derived_binding is not None
+                        else (self.snapshot / "config.json").read_bytes())
         self._config_sha256 = hashlib.sha256(config_bytes).hexdigest()
-        self._weights_sha256 = sha256_file(self.snapshot/"model.safetensors")
-        self._weights_signature = self._signature(self.snapshot/"model.safetensors")
+        self._weights_sha256 = (self._derived_binding.weights_sha256 if self._derived_binding is not None
+                                else sha256_file(self.snapshot/"model.safetensors"))
+        self._weights_signature = (None if self._derived_binding is not None
+                                   else self._signature(self.snapshot/"model.safetensors"))
         config=json.loads(config_bytes)
         vision=config.get("vision_config",{})
         if config.get("model_type")!="siglip" or (vision.get("image_size"),vision.get("patch_size"),vision.get("hidden_size"),vision.get("num_hidden_layers")) != (384,14,1152,27):
@@ -325,7 +346,17 @@ class InheritedSigLipAdapter:
         self._tower_state_signature = self._state_signature()
         self._identity = {"repo":"google/siglip-so400m-patch14-384","snapshot":str(self.snapshot),"config_sha256":self._config_sha256,"weights_sha256":self._weights_sha256,"tower_source_sha256":self._source_sha256,"feature_layer":"hidden_states[-1] after deleted layer 26","processor":"ReactVAU SigLipImageProcessor direct bicubic resize 384","dtype":str(tower.dtype),"device":str(tower.device),"encoding_impl":"ReactVAU SigLipVisionTower.forward(chunk_size)","torch_version":str(torch.__version__),"cuda_version":torch.version.cuda,
                           "processor_config":self._processor_binding,
-                          "cuda_device_name":torch.cuda.get_device_name(tower.device) if tower.device.type == "cuda" else None}
+                          "cuda_device_name":torch.cuda.get_device_name(tower.device) if tower.device.type == "cuda" else None,
+                          "numerical_policy_identity": numerical_policy_identity}
+        if self._derived_binding is not None:
+            from .frozen_vision import provenance_digest
+            self._identity["derived_final_stage2_vision"] = {
+                "parent_export_sha256": self._derived_binding.parent_export_sha256,
+                "source_key_prefix": self._derived_binding.source_key_prefix,
+                "tensor_count": len(self._derived_binding.source_key_map),
+                "provenance_digest": provenance_digest(self._derived_binding),
+                "loaded_tower_path": str(loaded_path),
+            }
 
     @staticmethod
     def _signature(path: Path):
@@ -350,6 +381,10 @@ class InheritedSigLipAdapter:
             raise DetectorError("loaded SigLip tower must remain frozen and in eval mode")
 
     def _verify_weights(self):
+        if self._derived_binding is not None:
+            from .frozen_vision import verify_loaded_derived_vision
+            verify_loaded_derived_vision(self._derived_binding, self.tower.vision_tower.state_dict())
+            return
         try:
             from safetensors import safe_open
         except ImportError as error:
@@ -369,8 +404,11 @@ class InheritedSigLipAdapter:
                     raise DetectorError(f"loaded SigLip weight differs from bound snapshot: {name}")
 
     def _assert_intact(self):
-        if (not self.tower.is_loaded or sha256_file(self.snapshot/"config.json") != self._config_sha256 or
-                self._signature(self.snapshot/"model.safetensors") != self._weights_signature):
+        if not self.tower.is_loaded:
+            raise DetectorError("bound SigLip snapshot changed after adapter construction")
+        if (self._derived_binding is None and
+                (sha256_file(self.snapshot/"config.json") != self._config_sha256 or
+                 self._signature(self.snapshot/"model.safetensors") != self._weights_signature)):
             raise DetectorError("bound SigLip snapshot changed after adapter construction")
         self._freeze_eval()
         if self._processor_signature() != self._processor_binding:
@@ -383,6 +421,9 @@ class InheritedSigLipAdapter:
             raise DetectorError("loaded SigLip effective vision configuration changed after adapter construction")
         if self._state_signature() != self._tower_state_signature:
             raise DetectorError("loaded SigLip tower changed after adapter construction")
+        if self._derived_binding is not None:
+            from .frozen_vision import verify_loaded_derived_vision
+            verify_loaded_derived_vision(self._derived_binding, self.tower.vision_tower.state_dict())
     @torch.inference_mode()
     def __call__(self, images: list[Image.Image]) -> torch.Tensor:
         self._assert_intact()

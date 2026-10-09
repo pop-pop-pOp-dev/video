@@ -1,0 +1,50 @@
+# NC-RTED / ReactVAU
+
+正常参照校准的关系—时间证据蒸馏。唯一研究规格见 [EXPERIMENT_SPEC](docs/EXPERIMENT_SPEC.md)，模块和接口见 [代码设计](docs/NC_RTED_CODE_DESIGN.md)。
+
+这是正在开发的实验代码候选。已有模型、教师、任务输入、增量训练、恢复和统计实现；CPU 测试与局部静态审查不能替代真实长输入和完整系统验收。正式训练与官方评测尚未启动，不提供效果或显著性结论。
+
+复用原 ReactVAU Stage1 Fast、最终 Stage2 Slow、LoRA 和 projector。新增过程编码器与证据 token 学习正常参照监督；原权重不重新训练两阶段。正式设计为 R0 + A/U/S/F × 17/42/2026，12 次增量训练、13 个评测模型。旧训练覆盖为 97,140/97,158。
+
+## 安装与 CPU 检查
+
+先安装适配设备/驱动的 PyTorch，再在 Python 3.10+ 环境执行：
+
+```bash
+pip install -e '.[test]'
+python -m pytest -q tests/test_nc_rted*.py
+```
+
+真实 ReactVAU 运行还需其完整依赖和本地模型；参考 `external/ReactVAU-paper/requirements.txt`。4090 上已使用的环境版本在 `configs/nc_rted/environment_4090_reference.json`，它是实测环境记录，不是对 PRO6000 的兼容保证。PRO6000 需独立验证驱动、CUDA、PyTorch 架构支持与最长输入容量。
+
+## 代码入口
+
+- `src/nc_rted/model.py`、`bridge.py`：过程编码、质量/位置预测和 Slow 视觉 token 接入。
+- `teacher_pipeline.py`、`teacher_store.py`：来源互斥正常参照、教师校准与持久化。
+- `media_observer.py`、`caption_provider.py`、`detection_provider.py`：因果观测、完整描述范围与原任务输入。
+- `train_worker.py`、`training.py`、`recovery.py`：配对种子、FP32 主参数、更新和完整恢复。
+- `statistics.py`：来源配对 bootstrap 与六比较 Holm 校正。
+- `scripts/nc_rted_train.py --help`：绑定原权重、Fast、媒体、教师和源码的训练入口；详见 [运行契约](docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md)。
+- `scripts/nc_rted_build_teacher.py --help`、`scripts/nc_rted_export_fast_snapshot.py --help`：数据准备接口。
+- `scripts/nc_rted_queue.py --help`：事务任务队列；初始化只登记任务，不证明正式运行已获验收。
+
+媒体/教师/Fast 快照与原始权重必须按具体路径和哈希绑定。缺失资产显式报错，不用虚假检测或替代视频。十项工程验收全部通过且代码/配置/数据冻结后才允许正式运行。
+
+## 运行入口与当前缺口
+
+准备真实资产并生成运行清单后，先核对清单文件的 SHA-256：
+
+```bash
+python scripts/nc_rted_train.py --config /absolute/path/runtime.json \
+  --config-sha256 MANIFEST_SHA256 --mode diagnostic --dry-run
+```
+
+`--dry-run` 仅检查文件绑定，成功状态为 `FILE_BINDINGS_PASS_SEMANTIC_NOT_RUN`，不表示真实模型或媒体流程通过。正式模式还必须提供独立的 `--admission` 与 `--admission-sha256`，且全部工程验收通过。诊断结果不能作为正式模型结果。
+
+固定训练清单为 6,000 个检测前缀和 2,000 条原始描述。Fast 快照与观察媒体必须匹配内容哈希、帧率、帧数和尺寸；原 ReactVAU 源码也须绑定完整运行依赖。真实 RT-DETR 资产、全量教师覆盖、派生媒体、最长输入 GPU 验收、完整盲预测入口及任务进程恢复仍需完成。
+
+## 数据与依赖
+
+本仓库包含代码、配置、规格、接口说明和测试。模型、训练/测试媒体、访问凭据和机器日志不随源码发布。训练不得读取官方测试标签或指标；官方评测保留完整分母。
+
+`external/ReactVAU-paper` 包含运行所需的固定上游源码及本地适配，来源与文件哈希见 `THIRD_PARTY.md` 和 `CODE_SNAPSHOT.json`。该目录遵循其原始 LICENSE，限非商业科研用途。

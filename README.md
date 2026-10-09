@@ -28,6 +28,7 @@ python -m pytest -q tests/test_nc_rted*.py
 - `scripts/nc_rted_prepare_observations.py --help`：绑定来源和模型的可恢复训练观测提取；部分完成不会发布完整教师输入。
 - `scripts/nc_rted_export_frozen_vision.py --help`：从最终 Stage2 严格导出继承视觉张量并核验来源；原权重保持不变。
 - `scripts/nc_rted_build_teacher.py --help`、`scripts/nc_rted_export_fast_snapshot.py --help`：数据准备接口。
+- `scripts/nc_rted_caption_streaming_probe.py --help`：使用哈希绑定的既有 Stage2 解析器，验证有界 clip/event 派生与原视频直读；三个预定真实样本已通过，完整长输入仍待验收。
 - `scripts/nc_rted_queue.py --help`：事务任务队列；初始化只登记任务，不证明正式运行已获验收。
 
 媒体/教师/Fast 快照与原始权重必须按具体路径和哈希绑定。缺失资产显式报错，不用虚假检测或替代视频。十项工程验收全部通过且代码/配置/数据冻结后才允许正式运行。

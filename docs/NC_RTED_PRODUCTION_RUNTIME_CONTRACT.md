@@ -11,6 +11,17 @@ base/tokenizer trees, exactly `config.json`, `adapter_config.json`,
 approved Stage2 resolver/config, Fast snapshot, media catalog, RT-DETR/SigLIP
 snapshots, and teacher store. Directory values use the stable tree digest:
 sorted relative filename, NUL, file SHA-256, newline. Symlinks are rejected.
+The detector object carries both `siglip_snapshot` with its SHA-256 and
+`final_stage2_siglip_snapshot` with its SHA-256. The first is the original
+raw SigLIP tree: its `config.json` SHA-256 is the expected raw-configuration
+binding for the derived asset. The second is the final-Stage2 derived vision
+tree used by the runtime. Its provenance must name the exact
+`non_lora_trainables.bin` at
+`inherited.export_directory/non_lora_trainables.bin`, whose SHA-256 is already
+bound in `inherited.export_hashes`; it must also prove the complete retained
+vision tensor map against that parent export. A derived path alone is not an
+identity claim and cannot replace either the raw-config or parent-export
+bindings.
 The file-binding preflight requires the source manifest to cover every Python source file below
 the inherited `llava/`, `eval_utils/`, and top-level `vad/` trees, including
 Qwen loading, the multimodal memory manager, VAD `detect_utils`, and
@@ -29,6 +40,13 @@ The `sampling` object is exact: `local_num_frames=1`, `frames_upbound=64`,
 `frames_lowbound=4`, `sample_type=dynamic_fps1`, `time_msg=short_online_v2`,
 `model_max_length=8192`, `vision_chunk_size=32`, and `projector=original`.
 The runtime rejects drift before importing ReactVAU or model libraries.
+
+After preflight succeeds, assembly calls
+`configure_deterministic_algorithms()` before importing inherited ReactVAU
+modules, accessing CUDA, or constructing models. The returned policy identity
+is carried in the checkpoint identity and passed to the frozen detector and
+SigLIP adapter. Preflight's derived-asset provenance check is CPU-only; it is
+not an inherited-module or CUDA load.
 
 The catalog binds the original full training annotations for the fixed catalog,
 plus a separately hash-bound JSON containing exactly its 2,000 caption rows,
@@ -82,7 +100,31 @@ self-referential two-file hash cycle. At execution,
 `TrainingWorker` independently verifies that admission against the full fixed
 recipe, checkpoint identity, complete task count, and source-file hashes.
 
-The inherited vision tower is loaded from the bound SigLip snapshot before the
-adapter is constructed, moved to the original projector parameter dtype even on
-CPU, frozen, and put in eval mode. The sample provider restores eval mode after
-the incremental trainer calls `train()` on its bridge.
+The Slow loader has already applied the final-Stage2 export and loaded its
+retained vision tower before the adapter is constructed. Assembly obtains that
+existing tower from Slow, requires it to be loaded, moves it to the original
+projector parameter dtype, freezes it, and puts it in eval mode. It must not
+reload a standalone tower or rewrite the tower's recorded raw
+`vision_tower_name`. `InheritedSigLipAdapter` receives the derived snapshot
+only to validate the parent export, raw configuration, and every live retained
+tensor against the already-loaded tower. The sample provider restores eval mode
+after the incremental trainer calls `train()` on its bridge.
+
+The inherited tokenizer is loaded from the separately bound tokenizer tree with
+`local_files_only=True` and model length 8192, then configured through the
+runtime's inherited-tokenizer helper. `DataArguments` retains the bound dataset
+YAML and exact sampling fields; only after the reused tower is available does
+assembly assign its image processor, set multimodal mode, synchronize the
+inherited model configuration, and apply the inherited data-argument helper.
+The original `LazySupervisedDataset` remains the implementation boundary; the
+runtime installs only its fail-closed Stage2 subclass around that original
+behavior.
+
+Derived parent verification is a material CPU-memory operation. One real
+parent verification reached approximately 33 GiB RSS; the static lower bound is
+about 30.72 GiB from the simultaneous parent-export bytes, deserialized parent
+tensor map, and derived vision bytes. This is an execution capacity constraint,
+not a performance or completion claim. The bounded v24 observation attempt was
+terminated before its first observation, and formal full-freeze/admission has
+not passed; neither all-6,000 observation completion nor formal execution is
+claimed here.

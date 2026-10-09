@@ -1,7 +1,7 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "created_at": "2026-10-09T21:38:36.790787+00:00",
-  "source_commit": "391368c62efc8bfe9e13d4135b081863e757b04a",
+  "created_at": "2026-10-09T21:53:53.705455+00:00",
+  "source_commit": "9ab479c90a7f1654d5c6caa25eb017402c7e9536",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
   "validation": {
@@ -33,7 +33,22 @@
     "derived_v2_bounded_real_observations": 17,
     "derived_v2_resume_reused": 16,
     "derived_v2_resume_computed": 1,
-    "derived_v2_real_milestone_sha256": "e28b270fcf1087e27f7128373a2d41976484f9c556e36127ca4b20bb116e25bf"
+    "derived_v2_real_milestone_sha256": "e28b270fcf1087e27f7128373a2d41976484f9c556e36127ca4b20bb116e25bf",
+    "cpu_tested_commit": "391368c62efc8bfe9e13d4135b081863e757b04a",
+    "post_test_scoped_changes": [
+      "docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md",
+      "scripts/nc_rted_caption_streaming_probe.py"
+    ],
+    "core_executable_files_identical_to_tested_snapshot": true,
+    "caption_probe_review": "PASS_STATIC",
+    "caption_probe_review_sha256": "2295ecdeac5b81631d455bb854038558b7f3b2ecd9969dd002c1d457255a3d23",
+    "caption_real_cpu_probes_passed": [
+      "shortest_clip",
+      "median_derived_event",
+      "direct_video"
+    ],
+    "caption_real_cpu_report_sha256": "9712b200c4ce457f38c0950633d92bcf2d960745ab520230a4d1828296c60976",
+    "caption_probe_script_sha256": "0a26fe382b30c88c54d7934282624d145b579604e174bdfc75adff4e69a208eb"
   },
   "remaining": [
     "complete production assemble and optimizer update/save/reload",
@@ -52,8 +67,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "62b7d5a44d23c7e46c65418661a7380d9dcd896398d47cadd598be74dd3060cc",
-      "bytes": 6462
+      "sha256": "bed8ce3b01c888bb66bb218e951e8415ef5184e1ff8e3f3ecce85602ca001dc9",
+      "bytes": 6683
     },
     {
       "path": "THIRD_PARTY.md",
@@ -142,8 +157,8 @@
     },
     {
       "path": "docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md",
-      "sha256": "44b04cf138f169925ed17193cf954ea133fc0c3e7adf94dbf75f1a38dd906dbc",
-      "bytes": 5566
+      "sha256": "a205547ca53ea579a392739261e879d9475e34d9957bfa786f49f2fc9435911b",
+      "bytes": 8221
     },
     {
       "path": "docs/NC_RTED_QUEUE_CONTRACT.md",
@@ -479,6 +494,11 @@
       "path": "scripts/nc_rted_build_teacher.py",
       "sha256": "99227112e961a7c6b01096e98d556979786cd35cd2251b691cd68b07827cf9f9",
       "bytes": 1589
+    },
+    {
+      "path": "scripts/nc_rted_caption_streaming_probe.py",
+      "sha256": "0a26fe382b30c88c54d7934282624d145b579604e174bdfc75adff4e69a208eb",
+      "bytes": 21248
     },
     {
       "path": "scripts/nc_rted_export_fast_snapshot.py",

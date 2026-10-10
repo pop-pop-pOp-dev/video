@@ -342,6 +342,10 @@ class InheritedSigLipAdapter:
         if self._processor_binding[-2:] != ("channels_first", (384,384)):
             raise DetectorError("loaded SigLip channel/crop configuration differs")
         self._verify_weights()
+        self._derived_value_verifier = None
+        if self._derived_binding is not None:
+            from .frozen_vision import ExactDerivedVisionVerifier
+            self._derived_value_verifier = ExactDerivedVisionVerifier(self._derived_binding)
         self._freeze_eval()
         self._tower_state_signature = self._state_signature()
         self._identity = {"repo":"google/siglip-so400m-patch14-384","snapshot":str(self.snapshot),"config_sha256":self._config_sha256,"weights_sha256":self._weights_sha256,"tower_source_sha256":self._source_sha256,"feature_layer":"hidden_states[-1] after deleted layer 26","processor":"ReactVAU SigLipImageProcessor direct bicubic resize 384","dtype":str(tower.dtype),"device":str(tower.device),"encoding_impl":"ReactVAU SigLipVisionTower.forward(chunk_size)","torch_version":str(torch.__version__),"cuda_version":torch.version.cuda,
@@ -422,8 +426,7 @@ class InheritedSigLipAdapter:
         if self._state_signature() != self._tower_state_signature:
             raise DetectorError("loaded SigLip tower changed after adapter construction")
         if self._derived_binding is not None:
-            from .frozen_vision import verify_loaded_derived_vision
-            verify_loaded_derived_vision(self._derived_binding, self.tower.vision_tower.state_dict())
+            self._derived_value_verifier.verify(self.tower.vision_tower.state_dict())
     @torch.inference_mode()
     def __call__(self, images: list[Image.Image]) -> torch.Tensor:
         self._assert_intact()

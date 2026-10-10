@@ -62,6 +62,8 @@ class DetectionPrefix:
     queries: Iterable[DetectionQuery]
     image_height: int
     image_width: int
+    frame_count: int | None = None
+    sample_interval: int | None = None
 
 
 class FrozenPrefixReader(Protocol):

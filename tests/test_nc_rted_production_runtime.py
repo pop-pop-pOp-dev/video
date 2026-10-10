@@ -18,7 +18,7 @@ from nc_rted.production_runtime import (ProductionRuntimeError, _bound_stage2_co
                                         _configure_inherited_data_args, _require_loaded_final_stage2_tower,
                                         _checkpoint_identity, _configure_training_memory_mode,
                                         _TRAINING_MEMORY_MODE_IDENTITY, _stage2_or_direct_media_lease,
-                                        load_manifest)
+                                        load_caption_preparation_manifest, load_manifest)
 from nc_rted.recovery import CheckpointStore, RecoveryError
 from nc_rted.task_inputs import TrainingCatalog, TrainingTask
 
@@ -108,7 +108,8 @@ def config(tmp_path: Path, *, mode="diagnostic") -> tuple[Path, str]:
       "inherited":{"external_root":external,"source_manifest":source_manifest,"source_manifest_sha256":source_manifest_sha,"base_directory":base,"base_directory_sha256":base_sha,"export_directory":export,"tokenizer_directory":tokenizer,"tokenizer_sha256":tokenizer_sha,"export_hashes":export_hashes},
       "stage2_cache":{"module":stage_module,"module_sha256":stage_module_sha,"config":stage_config,"config_sha256":stage_config_sha,"accepted_status":"APPROVED_FOR_EXECUTION"},
       "fast":{"snapshot":fast,"snapshot_sha256":fast_sha,"identity":{"checkpoint":"fast-ckpt","implementation":"fast-code"},"protocols":{"ucf-crime":protocol,"xd-violence":protocol}},
-      "media":{"catalog":media,"catalog_sha256":media_sha,"observation_cache_root":str(tmp_path / "cache"),"observation_cache_max_bytes":1},
+      "media":{"catalog":media,"catalog_sha256":media_sha,"observation_cache_root":str(tmp_path / "cache"),"observation_cache_max_bytes":1,
+               "caption_observation_cache":{"root":str(Path("/root/autodl-tmp/lookaway-wm/.cache/nc-rted-caption-observation-tests") / tmp_path.name),"max_bytes":23 * 1024 ** 3,"minimum_free_bytes":20 * 1024 ** 3,"feature_dtype":"bfloat16"}},
       "detector":{"snapshot":rtdetr,"snapshot_sha256":rtdetr_sha,"siglip_snapshot":siglip,"siglip_snapshot_sha256":siglip_sha,"final_stage2_siglip_snapshot":final_siglip,"final_stage2_siglip_snapshot_sha256":final_siglip_sha,"score_threshold":0.3},
       "teacher":{"artifact":teacher,"sha256":teacher_sha}}
     if mode == "formal":
@@ -170,6 +171,30 @@ def test_bounded_stage2_preflight_hash_binds_every_frozen_resolver_input(tmp_pat
 def test_preflight_rejects_missing_detector_before_runtime_import(tmp_path):
     path, _ = config(tmp_path); doc = json.loads(path.read_text()); doc["detector"]["snapshot_sha256"] = "0" * 64; path.write_text(json.dumps(doc))
     with pytest.raises(ProductionRuntimeError, match="RT-DETR snapshot"):
+        load_manifest(path, expected_sha256=digest(path))
+
+
+def test_preflight_requires_bounded_caption_observation_cache(tmp_path):
+    path, _ = config(tmp_path); doc = json.loads(path.read_text())
+    del doc["media"]["caption_observation_cache"]
+    path.write_text(json.dumps(doc))
+    with pytest.raises(ProductionRuntimeError, match="caption observation cache"):
+        load_manifest(path, expected_sha256=digest(path))
+    outside = tmp_path / "outside"; outside.mkdir()
+    path, _ = config(outside)
+    doc = json.loads(path.read_text()); doc["media"]["caption_observation_cache"]["root"] = "/root/nc-rted-caption-observation-outside"
+    path.write_text(json.dumps(doc))
+    with pytest.raises(ProductionRuntimeError, match="approved data volume"):
+        load_manifest(path, expected_sha256=digest(path))
+
+
+def test_caption_preparation_manifest_does_not_require_fast_or_teacher_artifacts(tmp_path):
+    path, _ = config(tmp_path)
+    doc = json.loads(path.read_text())
+    Path(doc["fast"]["snapshot"]).unlink()
+    Path(doc["teacher"]["artifact"]).unlink()
+    assert load_caption_preparation_manifest(path, expected_sha256=digest(path)).path == path
+    with pytest.raises(ProductionRuntimeError, match="Fast snapshot"):
         load_manifest(path, expected_sha256=digest(path))
 
 

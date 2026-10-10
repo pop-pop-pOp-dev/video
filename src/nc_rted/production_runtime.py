@@ -41,6 +41,7 @@ _TRAINING_MEMORY_MODE = {"schema": "nc_rted_training_memory_mode/v1",
                          "use_cache": False}
 _TRAINING_MEMORY_MODE_IDENTITY = hashlib.sha256(
     json.dumps(_TRAINING_MEMORY_MODE, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+_MAX_CAPTION_OBSERVATION_CACHE_BYTES = 23 * 1024 ** 3
 
 
 class ProductionRuntimeError(TaskInputError):
@@ -119,15 +120,24 @@ class RuntimeManifest:
         return self.document["run"]
 
 
-def load_manifest(path: str | Path, *, expected_sha256: str) -> RuntimeManifest:
+def _load_manifest(path: str | Path, *, expected_sha256: str, caption_preparation: bool) -> RuntimeManifest:
     config = _bound_file(str(Path(path).absolute()), expected_sha256, "runtime config")
     try:
         document = json.loads(config.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise ProductionRuntimeError("runtime config is not valid JSON") from error
     manifest = RuntimeManifest(config, expected_sha256, _mapping(document, "runtime config"))
-    preflight(manifest)
+    preflight(manifest, caption_preparation=caption_preparation)
     return manifest
+
+
+def load_manifest(path: str | Path, *, expected_sha256: str) -> RuntimeManifest:
+    return _load_manifest(path, expected_sha256=expected_sha256, caption_preparation=False)
+
+
+def load_caption_preparation_manifest(path: str | Path, *, expected_sha256: str) -> RuntimeManifest:
+    """Load only the frozen bindings needed to populate caption observations."""
+    return _load_manifest(path, expected_sha256=expected_sha256, caption_preparation=True)
 
 
 def load_formal_admission(path: str | Path, *, expected_sha256: str) -> dict:
@@ -142,7 +152,7 @@ def load_formal_admission(path: str | Path, *, expected_sha256: str) -> dict:
     return admission
 
 
-def preflight(manifest: RuntimeManifest) -> None:
+def preflight(manifest: RuntimeManifest, *, caption_preparation: bool = False) -> None:
     """Validate every declared asset before importing Transformers or ReactVAU."""
     doc = manifest.document
     if doc.get("schema") != SCHEMA:
@@ -240,18 +250,30 @@ def preflight(manifest: RuntimeManifest) -> None:
             _validate_bounded_stage2_config(config)
     elif mode != "materialized":
         raise ProductionRuntimeError("Stage2 cache mode is unsupported")
-    fast = _mapping(doc.get("fast"), "fast")
-    _bound_file(fast.get("snapshot"), fast.get("snapshot_sha256"), "Fast snapshot")
-    identity = _mapping(fast.get("identity"), "Fast identity")
-    if not identity.get("checkpoint") or not identity.get("implementation"):
-        raise ProductionRuntimeError("Fast identity is incomplete")
-    _protocols(fast.get("protocols"))
+    if not caption_preparation:
+        fast = _mapping(doc.get("fast"), "fast")
+        _bound_file(fast.get("snapshot"), fast.get("snapshot_sha256"), "Fast snapshot")
+        identity = _mapping(fast.get("identity"), "Fast identity")
+        if not identity.get("checkpoint") or not identity.get("implementation"):
+            raise ProductionRuntimeError("Fast identity is incomplete")
+        _protocols(fast.get("protocols"))
     media = _mapping(doc.get("media"), "media")
     _bound_file(media.get("catalog"), media.get("catalog_sha256"), "media catalog")
     if type(media.get("observation_cache_max_bytes")) is not int or media["observation_cache_max_bytes"] < 1:
         raise ProductionRuntimeError("observation cache bound is invalid")
     if not isinstance(media.get("observation_cache_root"), str) or not Path(media["observation_cache_root"]).is_absolute():
         raise ProductionRuntimeError("observation cache root must be absolute")
+    caption_cache = _mapping(media.get("caption_observation_cache"), "caption observation cache")
+    if (not isinstance(caption_cache.get("root"), str) or not Path(caption_cache["root"]).is_absolute()
+            or type(caption_cache.get("max_bytes")) is not int or not 0 < caption_cache["max_bytes"] <= _MAX_CAPTION_OBSERVATION_CACHE_BYTES
+            or type(caption_cache.get("minimum_free_bytes")) is not int or caption_cache["minimum_free_bytes"] < 20 * 1024 ** 3
+            or caption_cache.get("feature_dtype") != "bfloat16"):
+        raise ProductionRuntimeError("caption observation cache configuration is invalid")
+    try:
+        from .bounded_stage2_cache import BoundedStage2CacheError, bounded_scratch_root
+        bounded_scratch_root(caption_cache["root"])
+    except BoundedStage2CacheError as error:
+        raise ProductionRuntimeError("caption observation cache root is outside the approved data volume") from error
     _media_catalog(Path(media["catalog"]))
     detector = _mapping(doc.get("detector"), "detector")
     _bound_tree(detector.get("snapshot"), detector.get("snapshot_sha256"), "RT-DETR snapshot")
@@ -271,18 +293,19 @@ def preflight(manifest: RuntimeManifest) -> None:
         raise ProductionRuntimeError("derived final-Stage2 SigLIP provenance is invalid") from error
     if not isinstance(detector.get("score_threshold"), (int, float)) or not 0 <= detector["score_threshold"] <= 1:
         raise ProductionRuntimeError("RT-DETR threshold is invalid")
-    teacher = _mapping(doc.get("teacher"), "teacher")
-    if not isinstance(teacher.get("artifact"), str) or not _is_sha(teacher.get("sha256")):
-        raise ProductionRuntimeError("teacher artifact needs an absolute path and SHA-256")
-    teacher_path = Path(teacher["artifact"])
-    if not teacher_path.is_absolute():
-        raise ProductionRuntimeError("teacher artifact path must be absolute")
-    # A pipeline JSON binds directly. A committed teacher store binds its signed
-    # index; ``build_teachers_from_store`` verifies every referenced chunk.
-    if teacher_path.is_dir():
-        _bound_file(str(teacher_path / "index.json"), teacher["sha256"], "teacher store index")
-    else:
-        _bound_file(str(teacher_path), teacher["sha256"], "teacher artifact")
+    if not caption_preparation:
+        teacher = _mapping(doc.get("teacher"), "teacher")
+        if not isinstance(teacher.get("artifact"), str) or not _is_sha(teacher.get("sha256")):
+            raise ProductionRuntimeError("teacher artifact needs an absolute path and SHA-256")
+        teacher_path = Path(teacher["artifact"])
+        if not teacher_path.is_absolute():
+            raise ProductionRuntimeError("teacher artifact path must be absolute")
+        # A pipeline JSON binds directly. A committed teacher store binds its signed
+        # index; ``build_teachers_from_store`` verifies every referenced chunk.
+        if teacher_path.is_dir():
+            _bound_file(str(teacher_path / "index.json"), teacher["sha256"], "teacher store index")
+        else:
+            _bound_file(str(teacher_path), teacher["sha256"], "teacher artifact")
 
 
 def _load_external(path: Path, name: str):
@@ -568,32 +591,53 @@ class ProductionRuntime:
     manifest: RuntimeManifest
     worker: Any
     admission: dict | None = None
+    caption_provider: Any | None = None
 
     def run(self) -> dict:
+        if self.worker is None:
+            raise ProductionRuntimeError("caption preparation runtime cannot train")
         run = self.manifest.run
         return self.worker.run(progress_path=run["progress_path"], admission=self.admission,
                                diagnostic_updates=run.get("diagnostic_updates") if run["mode"] == "diagnostic" else None)
 
+    def prepare_caption_observations(self, sample_ids: list[str] | None = None) -> dict:
+        if self.caption_provider is None:
+            raise ProductionRuntimeError("assembled runtime has no caption observation preparer")
+        return self.caption_provider.prepare_frozen_observations(sample_ids)
+
+
+def assemble_caption_preparation(manifest: RuntimeManifest) -> ProductionRuntime:
+    """Build the caption provider without reading Fast or teacher artifacts."""
+    return _assemble(manifest, caption_preparation=True)
+
 
 def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> ProductionRuntime:
-    """Load the exact inherited runtime after ``preflight`` has succeeded."""
-    preflight(manifest)
+    """Load the exact inherited training runtime after ``preflight`` has succeeded."""
+    return _assemble(manifest, admission=admission, caption_preparation=False)
+
+
+def _assemble(manifest: RuntimeManifest, *, admission: dict | None = None,
+              caption_preparation: bool) -> ProductionRuntime:
+    preflight(manifest, caption_preparation=caption_preparation)
     from .numerics import configure_deterministic_algorithms
     numerical_policy = configure_deterministic_algorithms()
     doc, run = manifest.document, manifest.run
-    # These fixed data/teacher bindings are validated before ReactVAU, CUDA, or
-    # model construction. Their readers only inspect committed JSON/NPZ inputs.
-    from .teacher_store import build_teachers_from_store
-    from .train_worker import TeacherIndex
+    if caption_preparation and (run["mode"] != "diagnostic" or admission is not None):
+        raise ProductionRuntimeError("caption preparation requires a diagnostic manifest without formal admission")
+    # The catalog is required to bind the caption subset back to its frozen
+    # instructions. Teacher material is exclusive to training assembly.
     catalog = TrainingCatalog.load(doc["catalog"]["manifest_directory"], doc["catalog"]["training_annotations"], expected_provenance_sha256=doc["catalog"]["provenance_sha256"])
-    teacher_path = Path(doc["teacher"]["artifact"])
-    teachers = (TeacherIndex(build_teachers_from_store(teacher_path), catalog, identity=doc["teacher"]["sha256"])
-                if teacher_path.is_dir() else TeacherIndex.load(teacher_path, catalog, expected_sha256=doc["teacher"]["sha256"]))
-    identity = _checkpoint_identity(manifest, catalog)
-    if run["mode"] == "formal":
-        if admission is None: raise ProductionRuntimeError("formal assembly requires an external formal admission")
-        _validate_formal_admission_before_models(admission, identity)
-    elif admission is not None: raise ProductionRuntimeError("diagnostic assembly cannot receive formal admission")
+    if not caption_preparation:
+        from .teacher_store import build_teachers_from_store
+        from .train_worker import TeacherIndex
+        teacher_path = Path(doc["teacher"]["artifact"])
+        teachers = (TeacherIndex(build_teachers_from_store(teacher_path), catalog, identity=doc["teacher"]["sha256"])
+                    if teacher_path.is_dir() else TeacherIndex.load(teacher_path, catalog, expected_sha256=doc["teacher"]["sha256"]))
+        identity = _checkpoint_identity(manifest, catalog)
+        if run["mode"] == "formal":
+            if admission is None: raise ProductionRuntimeError("formal assembly requires an external formal admission")
+            _validate_formal_admission_before_models(admission, identity)
+        elif admission is not None: raise ProductionRuntimeError("diagnostic assembly cannot receive formal admission")
     _validate_caption_subset(catalog, Path(doc["catalog"]["caption_subset"]))
     inherited, stage2 = doc["inherited"], doc["stage2_cache"]
     root = Path(inherited["external_root"])
@@ -602,7 +646,8 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
     _import_bound_inherited_runtime(inherited)
     # Install the original fail-closed subclass before constructing the dataset.
     media = _media_catalog(Path(doc["media"]["catalog"]))
-    _validate_detection_bindings(catalog, Path(doc["fast"]["snapshot"]), media)
+    if not caption_preparation:
+        _validate_detection_bindings(catalog, Path(doc["fast"]["snapshot"]), media)
     if stage2.get("mode", "resolver") == "materialized":
         cache = _materialized_stage2_cache(media)
     elif stage2.get("mode") == "bounded":
@@ -623,11 +668,19 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
     except KeyError as error: raise ProductionRuntimeError("inherited qwen_2 conversation template is unavailable") from error
     data_args = train_module.DataArguments(data_path=doc["catalog"]["dataset_yaml"], lazy_preprocess=True,
         frames_upbound=64, frames_lowbound=4, local_num_frames=1, sample_type="dynamic_fps1", time_msg="short_online_v2")
-    bridge, _ = __import__("nc_rted.train_worker", fromlist=["build_training_bridge"]).build_training_bridge(
-        inherited["base_directory"], inherited["export_directory"], export_hashes=inherited["export_hashes"], seed=run["seed"], device=run["device"])
-    slow = bridge.slow
+    if caption_preparation:
+        from .loading import load_inherited_slow
+        from .training import seed_run
+        slow, _ = load_inherited_slow(inherited["base_directory"], inherited["export_directory"],
+                                      train_lora=False, expected_hashes=inherited["export_hashes"], device=run["device"])
+        seed_run(run["seed"])
+    else:
+        bridge, _ = __import__("nc_rted.train_worker", fromlist=["build_training_bridge"]).build_training_bridge(
+            inherited["base_directory"], inherited["export_directory"], export_hashes=inherited["export_hashes"], seed=run["seed"], device=run["device"])
+        slow = bridge.slow
     raw = slow.get_base_model() if hasattr(slow, "get_base_model") else slow
-    _configure_training_memory_mode(raw)
+    if not caption_preparation:
+        _configure_training_memory_mode(raw)
     tower = slow.get_vision_tower()
     _require_loaded_final_stage2_tower(tower)
     import torch
@@ -665,9 +718,23 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
     observer = CausalMediaObserver(detector=detector, siglip=siglip,
         cache=FrozenFrameCache(doc["media"]["observation_cache_root"], doc["media"]["observation_cache_max_bytes"]),
         media_catalog=media, lease_resolver=_stage2_or_direct_media_lease(cache), decoder_factory=OpenCVFrames)
+    from .caption_observation_cache import CaptionObservationCache, ReusedCaptionObserver
+    caption_cache_config = doc["media"]["caption_observation_cache"]
+    persistent_captions = CaptionObservationCache(caption_cache_config["root"], caption_cache_config["max_bytes"],
+                                                   min_free_bytes=caption_cache_config["minimum_free_bytes"])
+    if stage2.get("mode") == "bounded":
+        resolver_provenance = lambda item: cache.provenance_for(item.media_key, item.request_index)
+    else:
+        resolver_provenance = lambda item: {"mode": stage2.get("mode", "resolver"), "media_sha256": item.media_sha256,
+                                            "request_index": item.request_index}
+    observer = ReusedCaptionObserver(observer, persistent_captions, resolver_provenance=resolver_provenance,
+                                     feature_dtype=caption_cache_config["feature_dtype"])
     with _bound_stage2_constructor_environment(stage2, doc["media"]["catalog"]):
         dataset = Stage2Dataset(doc["catalog"]["dataset_yaml"], tokenizer, data_args)
     captions = Stage2CaptionProvider(catalog=catalog, dataset=dataset, model=slow, vision_tower=tower, observer=observer)
+    if caption_preparation:
+        tower.eval()
+        return ProductionRuntime(manifest, None, caption_provider=captions)
     protocols = _protocols(doc["fast"]["protocols"])
     reader = StreamingDetectionReader(doc["fast"]["snapshot"], snapshot_sha256=doc["fast"]["snapshot_sha256"], fast_identity=doc["fast"]["identity"], protocols=protocols, encode=siglip)
     detections = FrozenDetectionProvider(slow, catalog, protocols, reader=reader, observation_reader=observer)
@@ -680,4 +747,4 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
     worker = TrainingWorker(bridge, catalog, teachers, InheritedTaskTokenizer.from_original(tokenizer, data_args), provider,
         CheckpointStore(run["checkpoint_root"], identity), group=run["group"], seed=run["seed"])
     tower.eval()
-    return ProductionRuntime(manifest, worker, admission)
+    return ProductionRuntime(manifest, worker, admission, captions)

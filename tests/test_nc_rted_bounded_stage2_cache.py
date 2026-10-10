@@ -70,6 +70,19 @@ def test_direct_video_lease_uses_original_source_without_copying(tmp_path):
     assert not list(Path(stage2["scratch_root"]).glob("*.mp4"))
 
 
+def test_provenance_revalidates_source_and_records_only_request_identity(tmp_path):
+    stage2, source = bounded_stage2(tmp_path)
+    cache = BoundedStage2Cache(stage2)
+    provenance = cache.provenance_for("ucf-crime/events/train/sample_E0.mp4", 1)
+    assert provenance == {"mode": "bounded", "resolver_module_sha256": stage2["module_sha256"],
+                          "resolver_config_sha256": stage2["config_sha256"],
+                          "relative": "ucf-crime/events/train/sample_E0.mp4", "request_index": 1,
+                          "kind": "events", "source_sha256": digest(source), "segment": [0, 1]}
+    source.write_bytes(b"changed")
+    with pytest.raises(BoundedStage2CacheError, match="source SHA"):
+        cache.provenance_for("ucf-crime/events/train/sample_E0.mp4", 1)
+
+
 def test_derived_lease_uses_original_validation_and_releases_success(tmp_path, monkeypatch):
     stage2, _ = bounded_stage2(tmp_path)
     cache = BoundedStage2Cache(stage2)

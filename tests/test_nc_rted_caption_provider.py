@@ -106,6 +106,15 @@ def test_provider_uses_original_item_and_preserves_original_caption_sampling_not
     assert not torch.is_inference(material.observations.features)
 
 
+def test_provider_preparation_uses_the_ordinary_caption_path_and_reports_catalog_completion():
+    dataset, observer = _Dataset(), _Observer()
+    provider = Stage2CaptionProvider(catalog=_catalog(), dataset=dataset, model=_Model(), vision_tower=_Vision(), observer=observer)
+    assert provider.prepare_frozen_observations() == {"requested": 1, "catalog_caption_count": 1, "complete": True}
+    assert dataset.calls == 1 and len(observer.calls) == 1
+    with pytest.raises(CaptionProviderError, match="unique fixed"):
+        provider.prepare_frozen_observations(["caption:ucf-crime:caption-1", "caption:ucf-crime:caption-1"])
+
+
 def test_provider_refuses_unbound_detector_before_original_media_is_read():
     dataset, observer = _Dataset(), _Observer()
     observer.ready = False

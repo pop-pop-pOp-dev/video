@@ -132,6 +132,22 @@ class Stage2CaptionProvider:
         self.sampling_reader = OriginalSamplingAuditReader(dataset)
         self._decode_config = _decode_arguments(dataset)
 
+    def prepare_frozen_observations(self, sample_ids: list[str] | None = None) -> dict:
+        """Populate/reuse caption observations in deterministic catalog order.
+
+        Calling the ordinary provider preserves the inherited caption decode,
+        PG alignment, and old-memory construction. A persistent observer turns
+        a completed entry into a warm observation read on a resumed run.
+        """
+        expected = sorted(self._index)
+        selected = expected if sample_ids is None else list(sample_ids)
+        if len(set(selected)) != len(selected) or any(sample_id not in self._index for sample_id in selected):
+            raise CaptionProviderError("caption preparation needs unique fixed caption sample IDs")
+        for sample_id in selected:
+            self(sample_id)
+        return {"requested": len(selected), "catalog_caption_count": len(expected),
+                "complete": len(selected) == len(expected)}
+
     @torch.no_grad()
     def __call__(self, sample_id: str) -> SampleMaterial:
         from .train_worker import SampleMaterial

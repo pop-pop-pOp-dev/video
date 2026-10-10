@@ -144,6 +144,18 @@ class CausalMediaObserver:
         except KeyError as error:
             raise MediaObserverError("media identity is absent from the bound observer registry") from error
 
+    @staticmethod
+    def caption_observation_implementation_identity() -> dict:
+        """Bind every local implementation that produces cached relation cells."""
+        from . import batches, detection_media, detector, features, observation, observation_cache, tracking
+        modules = {"batches": batches, "detection_media": detection_media, "detector": detector,
+                   "features": features,
+                   "observation": observation, "observation_cache": observation_cache, "tracking": tracking}
+        paths = {"media_observer": Path(__file__), **{name: Path(str(module.__file__)) for name, module in modules.items()}}
+        if any(not path.is_file() for path in paths.values()):
+            raise MediaObserverError("caption observation producer source is unavailable")
+        return {name: sha256_file(path) for name, path in sorted(paths.items())}
+
     @contextmanager
     def _open(self, media: BoundMedia):
         if not self.ready:

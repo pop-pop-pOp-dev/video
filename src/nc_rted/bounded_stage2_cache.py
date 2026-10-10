@@ -248,6 +248,14 @@ class BoundedStage2Cache:
             raise BoundedStage2CacheError("frozen Stage2 source SHA-256 differs")
         return request
 
+    def provenance_for(self, relative_path: str, request_index: int) -> dict:
+        """Return the revalidated source/range identity without retaining media."""
+        request = self._request(relative_path, request_index)
+        return {"mode": "bounded", "resolver_module_sha256": self.stage2["module_sha256"],
+                "resolver_config_sha256": self.stage2["config_sha256"], "relative": request["relative"],
+                "request_index": request_index, "kind": request["kind"], "source_sha256": request["source_sha256"],
+                "segment": request.get("segment")}
+
     def _run_child(self, request: dict, output: Path, maximum_bytes: int):
         # These paths are executable. Rebind them immediately before spawning
         # the child instead of trusting construction-time validation.

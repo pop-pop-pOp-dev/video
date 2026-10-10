@@ -89,6 +89,20 @@ are absent from this boundary. Detection uses only the supplied frozen Fast
 snapshot and per-dataset protocol. Teacher records are validated during assembly before model loading. They
 remain outside the public-media provider inputs.
 
+`media.caption_observation_cache` is an explicit absolute-root, 20-GiB-reserve,
+and at-most-23-GiB store for compact frozen caption relation observations. Its
+identity includes the fixed caption request and original sampling audit, bound
+media metadata, bounded-resolver source/range/config identity, detector and
+SigLIP/numerical identities, and the exact feature/mask/time layout. It stores
+only detached CPU observation features, masks, times, and audit metadata; it
+does not retain video bytes, RGB frames, patch features, Slow state, old memory,
+or trainable tensors. The production layout fixes cached features to BF16;
+corrupt or nonmatching entries are deleted and rebuilt.
+`scripts/nc_rted_prepare_caption_observations.py` invokes the ordinary caption
+provider in deterministic catalog order; completed entries are reusable on a
+later invocation, while all inherited decode/sampling/PG and old-memory paths
+remain unchanged.
+
 Before model construction, every selected detection task joins its
 `(dataset, media_key)` to both the Fast snapshot and observer media catalog.
 The media SHA-256, FPS, frame count, dimensions, selected query index, and its

@@ -18,7 +18,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from nc_rted.prediction_inputs import (CANDIDATE_SCHEMA_V2, IMPLEMENTATION_SCHEMA, RESOURCE_ADMISSION_SCHEMA_V1, RESOURCE_ALLOCATION_SCHEMA_V1, RESOURCE_MEASUREMENT_SCHEMA_V1, SCHEMA_V2,
+from nc_rted.prediction_inputs import (CANDIDATE_SCHEMA_V2, IMPLEMENTATION_SCHEMA, RESOURCE_ADMISSION_SCHEMA_V1, RESOURCE_ALLOCATION_SCHEMA_V1, RESOURCE_MEASUREMENT_SCHEMA_V1, RESOURCE_PROJECTION_SCHEMA_V1, SCHEMA_V2,
                                        _IMPLEMENTATION_FILES, ModelArtifact, PredictionInputError, VadRequest, VauRequest, _bound_path, canonical_json,
                                        load_model_artifact, load_prediction_plan, prediction_execution_binding_sha256, prediction_matrix_id,
                                        verify_implementation_manifest)
@@ -160,6 +160,100 @@ def _v2_fixture(tmp_path, *, ready=(("R0", None),)):
     plan_digest = _write(plan, {**registration, "matrix_id": matrix_id, "candidate": {"path": str(candidate), "sha256": candidate_digest},
                                 "admission": {"formal_admission": str(admission), "formal_admission_sha256": admission_digest}})
     return plan, plan_digest, model_manifests, registration
+
+
+def _projected_resource_fixture(tmp_path, *, scope_sha256="a" * 64):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    output_budget = 1_600_000_000
+    scope = {"kind": "blind_prediction", "run_id": "formal:blind", "execution_scope_sha256": scope_sha256,
+             "device": "cuda:1", "physical_gpu_uuid": "GPU-1", "data_volume": str(tmp_path),
+             "min_free_bytes": 20 * 1024**3 + output_budget, "run_budget_seconds": 262260,
+             "deadline_utc_epoch": time.time() + 600}
+    limits = {key: scope[key] for key in ("data_volume", "min_free_bytes", "run_budget_seconds", "deadline_utc_epoch")}
+    allocation = {"schema": RESOURCE_ALLOCATION_SCHEMA_V1, "status": "ACCEPTED", "kind": "blind_prediction",
+                  "execution_scope_sha256": scope_sha256, "allocation_id": "alloc", "host": "host", "device": "cuda:1",
+                  "physical_gpu_uuid": "GPU-1", "lease_id": "lease", "authorization_sha256": "c" * 64, "limits": limits}
+    allocation_path = tmp_path / "allocation.json"; allocation_hash = _write(allocation_path, allocation)
+    runtime_hash, source_hash, identity_hash, model_hash = "1" * 64, "d" * 64, "2" * 64, "3" * 64
+    reports, rows = [], []
+    for index in range(21):
+        report = tmp_path / f"representative-{index}.json"
+        identity = f"vau:{index}"
+        diagnostic = tmp_path / f"diagnostic-{index}.json"
+        diagnostic_hash = _write(diagnostic, {"schema": "nc_rted_prediction_runtime_probe_admission/v1", "status": "PASS",
+                                               "device": "cuda:0", "output": str(report)})
+        report_hash = _write(report, {"candidate_result": {"status": "PASS_RUNTIME_PROBE", "identity": identity, "device": "cuda:0",
+                                      "formal_prediction": False, "prediction_store_written": False, "runtime": {"sha256": runtime_hash},
+                                      "source_manifest": {"sha256": source_hash}, "identity_manifest": {"sha256": identity_hash},
+                                      "model_manifest": {"sha256": model_hash}, "diagnostic_admission": {"path": str(diagnostic), "sha256": diagnostic_hash}, "peak_cuda_allocated_bytes": 5 + index,
+                                      "peak_cuda_reserved_bytes": 10 + index}})
+        reports.append({"path": str(report), "sha256": report_hash})
+        acceptance = tmp_path / f"acceptance-{index}.json"
+        acceptance_hash = _write(acceptance, {"report": str(report), "report_sha256": report_hash,
+                                               "terminal": {"status": "TERMINAL_RUNTIME_PROBE", "candidate_status": "PASS_RUNTIME_PROBE"}})
+        rows.append({"status": "PASS", "identity": identity, "report": str(report), "report_sha256": report_hash,
+                     "acceptance": str(acceptance), "acceptance_sha256": acceptance_hash})
+    inventory = tmp_path / "inventory.json"
+    inventory_hash = _write(inventory, {"schema": "nc_rted_fixed_prediction_measurement_inventory/v10",
+                                        "status": "FIXED_REPRESENTATIVES_COMPLETED_NOT_FORMAL_ADMISSION", "rows": rows})
+    implementation = tmp_path / "implementation.json"; implementation_hash = _write(implementation, {"files": {"src/nc_rted/prediction_inputs.py": "4" * 64, "src/nc_rted/prediction_worker.py": "5" * 64}})
+    preflight = tmp_path / "preflight.json"; preflight_hash = _write(preflight, {"schema": "nc_rted_r0_blind_manifest_build/v2",
+        "status": "PREFLIGHT_PASS_FORMAL_ADMISSION_REQUIRED", "gpu_launched": False, "runtime": {"sha256": runtime_hash},
+        "identity_manifest": {"sha256": identity_hash}, "r0_model_manifest": {"sha256": model_hash}, "bindings": {"prediction_source": {"sha256": source_hash}, "implementation": {"path": str(implementation), "sha256": implementation_hash}}})
+    cache_implementation = tmp_path / "cache-implementation.json"; cache_implementation_hash = _write(cache_implementation, {"files": {"src/nc_rted/prediction_inputs.py": "6" * 64, "src/nc_rted/prediction_worker.py": "7" * 64}})
+    cache_preflight = tmp_path / "cache-preflight.json"; cache_preflight_hash = _write(cache_preflight, {**json.loads(preflight.read_text()), "bindings": {"prediction_source": {"sha256": source_hash}, "implementation": {"path": str(cache_implementation), "sha256": cache_implementation_hash}}})
+    timeline = tmp_path / "timeline.json"
+    timeline_hash = _write(timeline, {"schema": "nc_rted_gate02_source29_stratified_timeline/v1",
+        "status": "CENTRAL_PLANNING_ESTIMATE_NOT_ADMISSION_OR_GUARANTEE", "central_per_model_seconds": {"total": 201726},
+        "safety_margin": {"fraction": .3}})
+    overhead = []
+    for value in ("869", "3286"):
+        acceptance = tmp_path / f"overhead-{value}.json"
+        overhead.append({"path": str(acceptance), "sha256": _write(acceptance, {"status": "PASS_FIXED_REPRESENTATIVE_MEASUREMENT",
+            "identity": f"vau:{value}", "terminal": {"status": "TERMINAL_RUNTIME_PROBE", "candidate_status": "PASS_RUNTIME_PROBE"}})})
+    device_timeline = tmp_path / "device-timeline.json"
+    device_timeline_hash = _write(device_timeline, {"schema": "nc_rted_gate02_source29_device_timeline/v1",
+        "status": "PLANNING_ESTIMATE_NOT_RESOURCE_ADMISSION", "accepted_inputs": {"source_reports": [
+            "gate02_prediction_measurement_inventory_v10.json", "vau_residency_gpu_equivalence_v1.json", "r0_gpu1_arson018_runtime_acceptance_v6.json"],
+            "vau_new_acceptance": {"869": overhead[0]["sha256"], "3286": overhead[1]["sha256"]}}})
+    observation = tmp_path / "observation.json"; observation_hash = _write(observation, {"schema": "nc_rted_root_resource_observation/v1",
+        "status": "OBSERVED_NOT_FORMAL_ADMISSION", "host": "host", "gpu_inventory": ["0, GPU-1"]})
+    launch = tmp_path / "launch.json"; launch_hash = _write(launch, {"physical_gpu_uuid": "GPU-1", "preflight_sha256": preflight_hash})
+    cache_report = tmp_path / "cache-report.json"; cache_report_hash = _write(cache_report, {"candidate_result": {"preflight_report": {"sha256": cache_preflight_hash}, "prediction_store_written": False}})
+    cache = tmp_path / "cache.json"; cache_hash = _write(cache, {"status": "PASS_CACHE_EQUIVALENCE_GPU_GATE", "formal_prediction": False,
+        "report": str(cache_report), "report_sha256": cache_report_hash, "peak_cuda_reserved_bytes": 30})
+    applicability = tmp_path / "applicability.json"; applicability_hash = _write(applicability, {"schema": prediction_inputs.RESOURCE_APPLICABILITY_SCHEMA_V1,
+        "status": "PASS_CONSERVATIVE_TARGET_APPLICABILITY", "execution_scope_sha256": scope_sha256, "host": "host", "device": "cuda:1",
+        "physical_gpu_uuid": "GPU-1", "historical_preflight": {"path": str(preflight), "sha256": preflight_hash},
+        "historical_inventory": {"path": str(inventory), "sha256": inventory_hash}, "target_preflight": {"path": str(preflight), "sha256": preflight_hash}, "cache_preflight": {"path": str(cache_preflight), "sha256": cache_preflight_hash},
+        "target_bindings": {"runtime_sha256": runtime_hash, "fast_snapshot_sha256": "5" * 64, "source_manifest_sha256": source_hash,
+        "tokenizer_sha256": "6" * 64, "embedded_vision_binding_sha256": "7" * 64, "decoder_sha256": "8" * 64,
+        "implementation_manifest_sha256": implementation_hash, "identity_manifest_sha256": identity_hash, "r0_model_manifest_sha256": model_hash},
+        "resource_observation": {"path": str(observation), "sha256": observation_hash}, "historical_launch": {"path": str(launch), "sha256": launch_hash},
+        "cache_acceptance": {"path": str(cache), "sha256": cache_hash}, "allowed_implementation_deltas": ["src/nc_rted/prediction_inputs.py", "src/nc_rted/prediction_worker.py"], "zero_timing_speed_credit": True})
+    output = tmp_path / "output-budget.json"; output_hash = _write(output, {"schema": "nc_rted_gate02_prediction_output_budget_assessment/v1",
+        "status": "PRACTICAL_BOUND_DERIVED_CAP_NOT_IMPLEMENTED", "default_factory_payloads": {"vad": "bounded", "vau": "bounded"},
+        "bound_metadata": {"vad_videos_per_model": 1051, "vad_total_frames_per_model": 3372608, "vad_total_queries_per_model": 135050,
+        "vau_requests_per_model": 3339, "max_new_tokens": 512, "maximum_decoded_text_json_escaped_bytes": 393216}})
+    projection = {"schema": RESOURCE_PROJECTION_SCHEMA_V1, "status": "PROJECTED_FROM_REPRESENTATIVE_MEASUREMENTS",
+                  "projection_basis": "CONSERVATIVE_FULL_WORKLOAD_ESTIMATE", "kind": "blind_prediction",
+                  "execution_scope_sha256": scope_sha256, "allocation_sha256": allocation_hash, "host": "host",
+                  "physical_gpu_uuid": "GPU-1", "workload": {"kind": "blind_prediction", "vad_queries": 135050,
+                  "slow_triggers": 47458, "vau_requests": 3339}, "representative_inventory": {"path": str(inventory), "sha256": inventory_hash},
+                  "representative_reports": reports, "peak_evidence": reports[-1], "source29_preflight": {"path": str(preflight), "sha256": preflight_hash},
+                  "prediction_source_sha256": source_hash, "projection_report": {"path": str(timeline), "sha256": timeline_hash},
+                  "timing_inputs": {"inventory": {"path": str(inventory), "sha256": inventory_hash},
+                  "device_timeline": {"path": str(device_timeline), "sha256": device_timeline_hash}, "overhead_acceptances": overhead},
+                  "target_applicability": {"path": str(applicability), "sha256": applicability_hash},
+                  "output_budget_assessment": {"path": str(output), "sha256": output_hash}, "projected_runtime_seconds": 201726,
+                  "safety_margin_fraction": .3, "runtime_budget_seconds": 262260, "peak_cuda_allocated_bytes": 25,
+                  "peak_cuda_reserved_bytes": 30, "output_budget_bytes": output_budget, "required_free_bytes": scope["min_free_bytes"]}
+    projection_path = tmp_path / "projection.json"; projection_hash = _write(projection_path, projection)
+    admission = tmp_path / "admission.json"
+    _write(admission, {"schema": RESOURCE_ADMISSION_SCHEMA_V1, "status": "PASS", "formal_execution_allowed": True,
+                       "scope": scope, "accepted_allocation": {"path": str(allocation_path), "sha256": allocation_hash},
+                       "accepted_projection": {"path": str(projection_path), "sha256": projection_hash}})
+    return scope, allocation_path, allocation_hash, projection_path, projection_hash, admission
 
 
 def test_plan_rejects_supervision_and_preserves_verbatim_question(tmp_path):
@@ -359,6 +453,172 @@ def test_resource_qualification_rejects_limit_drift(tmp_path):
     admission_document = json.loads(admission.read_text()); admission_document["accepted_measurement"]["sha256"] = measurement_hash; _write(admission, admission_document)
     with pytest.raises(PredictionInputError, match="accepted resource measurement"):
         prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64)
+
+
+def test_resource_projection_admission_binds_representatives_estimate_and_output_reserve(tmp_path):
+    scope, _, _, projection_path, _, admission = _projected_resource_fixture(tmp_path)
+    assert prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64) == scope
+    projection = json.loads(projection_path.read_text())
+    reports = projection["representative_reports"]
+    projection["representative_reports"] = projection["representative_reports"][:1]
+    _write(projection_path, projection)
+    admission_document = json.loads(admission.read_text()); admission_document["accepted_projection"]["sha256"] = _digest(projection_path); _write(admission, admission_document)
+    with pytest.raises(PredictionInputError, match="representative"):
+        prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64)
+    projection["representative_reports"] = reports
+
+
+def test_resource_projection_rejects_drift_and_operator_registry_rechecks_bound_evidence(tmp_path):
+    scope, allocation_path, allocation_hash, projection_path, projection_hash, admission = _projected_resource_fixture(tmp_path)
+    projection = json.loads(projection_path.read_text())
+    projection["runtime_budget_seconds"] = 262243
+    _write(projection_path, projection)
+    admission_document = json.loads(admission.read_text()); admission_document["accepted_projection"]["sha256"] = _digest(projection_path); _write(admission, admission_document)
+    with pytest.raises(PredictionInputError, match="runtime estimate"):
+        prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64)
+    projection["runtime_budget_seconds"] = 262260; projection["host"] = "other"
+    _write(projection_path, projection)
+    admission_document["accepted_projection"]["sha256"] = _digest(projection_path); _write(admission, admission_document)
+    with pytest.raises(PredictionInputError, match="accepted resource projection"):
+        prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64)
+    projection["host"] = "host"
+    projection["workload"]["vau_requests"] -= 1
+    _write(projection_path, projection)
+    admission_document["accepted_projection"]["sha256"] = _digest(projection_path); _write(admission, admission_document)
+    with pytest.raises(PredictionInputError, match="accepted resource projection"):
+        prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64)
+    projection["workload"]["vau_requests"] += 1; projection["required_free_bytes"] -= 1
+    _write(projection_path, projection)
+    admission_document["accepted_projection"]["sha256"] = _digest(projection_path); _write(admission, admission_document)
+    with pytest.raises(PredictionInputError, match="peak/output reserve"):
+        prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64)
+    projection["required_free_bytes"] += 1; projection_hash = _write(projection_path, projection)
+    authorization = {"schema": prediction_inputs.RESOURCE_AUTHORIZATION_SCHEMA_V1, "status": "PASS", "host": "host", "physical_gpu_uuid": "GPU-1", "lease_id": "lease",
+                     "lease_expires_utc_epoch": time.time() + 700, "project_volume": scope["data_volume"], "max_budget_seconds": scope["run_budget_seconds"],
+                     "min_free_bytes": scope["min_free_bytes"], "deadline_utc_epoch": scope["deadline_utc_epoch"], "capacity_bytes": 100}
+    authorization_path = tmp_path / "authorization.json"; authorization_hash = _write(authorization_path, authorization)
+    allocation = json.loads(allocation_path.read_text()); allocation["authorization_sha256"] = authorization_hash; allocation_hash = _write(allocation_path, allocation)
+    projection["allocation_sha256"] = allocation_hash; projection_hash = _write(projection_path, projection)
+    registry = {"schema": prediction_inputs.RESOURCE_EVIDENCE_REGISTRY_SCHEMA_V1, "accepted": {
+        "resource_authorization": {"path": str(authorization_path), "sha256": authorization_hash},
+        "resource_allocation": {"path": str(allocation_path), "sha256": allocation_hash},
+        "resource_projection": {"path": str(projection_path), "sha256": projection_hash}}}
+    registry_path = tmp_path / "operator-registry.json"; registry_hash = _write(registry_path, registry)
+    prediction_inputs.validate_resource_execution_evidence(scope, registry_path=str(registry_path), registry_sha256=registry_hash,
+                                                           host="host", physical_gpu_uuid="GPU-1", capacity_bytes=100)
+    projection["peak_cuda_reserved_bytes"] = 101; _write(projection_path, projection)
+    with pytest.raises(PredictionInputError, match="accepted resource_projection"):
+        prediction_inputs.validate_resource_execution_evidence(scope, registry_path=str(registry_path), registry_sha256=registry_hash,
+                                                               host="host", physical_gpu_uuid="GPU-1", capacity_bytes=100)
+
+
+def test_resource_projection_rejects_rehashed_wrong_runtime_device_and_output_geometry(tmp_path):
+    _, _, _, projection_path, _, admission = _projected_resource_fixture(tmp_path)
+    projection = json.loads(projection_path.read_text())
+    inventory_path = Path(projection["representative_inventory"]["path"])
+    inventory = json.loads(inventory_path.read_text())
+    report_path = Path(inventory["rows"][0]["report"]); report = json.loads(report_path.read_text())
+    report["candidate_result"]["device"] = "cuda:99"; report_hash = _write(report_path, report)
+    acceptance_path = Path(inventory["rows"][0]["acceptance"]); acceptance = json.loads(acceptance_path.read_text())
+    acceptance["report_sha256"] = report_hash; acceptance_hash = _write(acceptance_path, acceptance)
+    inventory["rows"][0]["report_sha256"] = report_hash; inventory["rows"][0]["acceptance_sha256"] = acceptance_hash
+    inventory_hash = _write(inventory_path, inventory)
+    projection["representative_inventory"]["sha256"] = inventory_hash
+    projection["representative_reports"][0]["sha256"] = report_hash
+    _write(projection_path, projection)
+    admission_document = json.loads(admission.read_text()); admission_document["accepted_projection"]["sha256"] = _digest(projection_path); _write(admission, admission_document)
+    with pytest.raises(PredictionInputError, match="runtime/source/identity applicability"):
+        prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64)
+    _, _, _, projection_path, _, admission = _projected_resource_fixture(tmp_path / "geometry")
+    projection = json.loads(projection_path.read_text())
+    budget_path = Path(projection["output_budget_assessment"]["path"]); budget = json.loads(budget_path.read_text())
+    budget["bound_metadata"]["vau_requests_per_model"] = 999999999; budget_hash = _write(budget_path, budget)
+    projection["output_budget_assessment"]["sha256"] = budget_hash; _write(projection_path, projection)
+    admission_document = json.loads(admission.read_text()); admission_document["accepted_projection"]["sha256"] = _digest(projection_path); _write(admission, admission_document)
+    with pytest.raises(PredictionInputError, match="output assessment geometry"):
+        prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64)
+    _, _, _, projection_path, _, admission = _projected_resource_fixture(tmp_path / "timing")
+    projection = json.loads(projection_path.read_text())
+    device_timeline_path = Path(projection["timing_inputs"]["device_timeline"]["path"])
+    device_timeline = json.loads(device_timeline_path.read_text())
+    device_timeline["accepted_inputs"]["vau_new_acceptance"]["869"] = "f" * 64
+    device_timeline_hash = _write(device_timeline_path, device_timeline)
+    projection["timing_inputs"]["device_timeline"]["sha256"] = device_timeline_hash; _write(projection_path, projection)
+    admission_document = json.loads(admission.read_text()); admission_document["accepted_projection"]["sha256"] = _digest(projection_path); _write(admission, admission_document)
+    with pytest.raises(PredictionInputError, match="overhead acceptance does not match"):
+        prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64)
+
+
+def test_v2_plan_builder_publishes_official_registration_with_projected_resource_admission(tmp_path):
+    _, _, _, registration = _v2_fixture(tmp_path)
+    identities_path = Path(registration["identity_manifest"])
+    original = json.loads(identities_path.read_text())
+    ucf, xd, vau = original["vad"][0], original["vad"][1], original["vau"][0]
+    identities = {"vad": [{**ucf, "id": f"u{index}"} for index in range(251)] +
+                         [{**xd, "id": f"x{index}"} for index in range(800)],
+                  "vau": [{**vau, "id": f"q{index}"} for index in range(3339)]}
+    identity_hash = _write(identities_path, identities)
+    registration.update(run_id="formal:projection", identity_manifest_sha256=identity_hash,
+                        denominators={"ucf": 251, "xd": 800, "vau": 3339})
+    implementation_path = Path(registration["bindings"]["implementation_manifest"])
+    registration["bindings"]["implementation_manifest_sha256"] = _write(
+        implementation_path,
+        {"files": {"src/nc_rted/prediction_inputs.py": "4" * 64,
+                   "src/nc_rted/prediction_worker.py": "5" * 64}},
+    )
+    scope_hash = prediction_inputs.prediction_execution_scope_sha256(
+        run_id=registration["run_id"], bindings=registration["bindings"], protocol=registration["protocol"],
+        identity_manifest_sha256=identity_hash, denominators=registration["denominators"], output_root=registration["output_root"])
+    scope, _, _, _, _, admission = _projected_resource_fixture(tmp_path / "projected", scope_sha256=scope_hash)
+    projection_path = Path(json.loads(admission.read_text())["accepted_projection"]["path"])
+    projection = json.loads(projection_path.read_text())
+    inventory_path = Path(projection["representative_inventory"]["path"])
+    inventory = json.loads(inventory_path.read_text())
+    preflight_path = Path(projection["source29_preflight"]["path"])
+    preflight = json.loads(preflight_path.read_text())
+    core = {"runtime": registration["bindings"]["runtime_sha256"], "source_manifest": registration["bindings"]["source_manifest_sha256"],
+            "identity_manifest": identity_hash, "model_manifest": next(item["model_manifest_sha256"] for item in registration["model_tasks"] if item["group"] == "R0")}
+    preflight["runtime"]["sha256"] = core["runtime"]; preflight["identity_manifest"]["sha256"] = core["identity_manifest"]
+    preflight["r0_model_manifest"]["sha256"] = core["model_manifest"]; preflight["bindings"]["prediction_source"]["sha256"] = core["source_manifest"]
+    preflight_hash = _write(preflight_path, preflight)
+    for row in inventory["rows"]:
+        report_path = Path(row["report"]); report = json.loads(report_path.read_text())
+        report["candidate_result"]["runtime"]["sha256"] = core["runtime"]; report["candidate_result"]["source_manifest"]["sha256"] = core["source_manifest"]
+        report["candidate_result"]["identity_manifest"]["sha256"] = core["identity_manifest"]; report["candidate_result"]["model_manifest"]["sha256"] = core["model_manifest"]
+        row["report_sha256"] = _write(report_path, report)
+        acceptance_path = Path(row["acceptance"]); acceptance = json.loads(acceptance_path.read_text()); acceptance["report_sha256"] = row["report_sha256"]
+        row["acceptance_sha256"] = _write(acceptance_path, acceptance)
+    inventory_hash = _write(inventory_path, inventory)
+    projection["source29_preflight"]["sha256"] = preflight_hash; projection["representative_inventory"]["sha256"] = inventory_hash
+    projection["prediction_source_sha256"] = core["source_manifest"]
+    projection["timing_inputs"]["inventory"] = projection["representative_inventory"]
+    projection["representative_reports"] = [{"path": row["report"], "sha256": row["report_sha256"]} for row in inventory["rows"]]
+    projection["peak_evidence"] = projection["representative_reports"][-1]
+    applicability_path = Path(projection["target_applicability"]["path"])
+    applicability = json.loads(applicability_path.read_text())
+    applicability["historical_preflight"] = projection["source29_preflight"]; applicability["historical_inventory"] = projection["representative_inventory"]
+    launch_path = Path(applicability["historical_launch"]["path"]); launch = json.loads(launch_path.read_text()); launch["preflight_sha256"] = preflight_hash; applicability["historical_launch"]["sha256"] = _write(launch_path, launch)
+    applicability["target_bindings"].update({f"{name}_sha256": registration["bindings"][f"{name}_sha256"]
+                                             for name in ("runtime", "fast_snapshot", "source_manifest", "tokenizer", "embedded_vision_binding", "decoder", "implementation_manifest")})
+    applicability["target_bindings"]["identity_manifest_sha256"] = identity_hash
+    applicability["target_bindings"]["r0_model_manifest_sha256"] = next(item["model_manifest_sha256"] for item in registration["model_tasks"] if item["group"] == "R0")
+    target_preflight_path = tmp_path / "projected" / "target-preflight.json"
+    target_preflight = json.loads(Path(applicability["target_preflight"]["path"]).read_text())
+    target_preflight["bindings"]["implementation"]["sha256"] = registration["bindings"]["implementation_manifest_sha256"]
+    applicability["target_preflight"] = {"path": str(target_preflight_path), "sha256": _write(target_preflight_path, target_preflight)}
+    projection["target_applicability"]["sha256"] = _write(applicability_path, applicability)
+    projection_hash = _write(projection_path, projection)
+    admission_document = json.loads(admission.read_text()); admission_document["accepted_projection"]["sha256"] = projection_hash; _write(admission, admission_document)
+    registration["bindings"]["resource_admission"] = str(admission)
+    registration["bindings"]["resource_admission_sha256"] = _digest(admission)
+    registration_path = tmp_path / "official-registration.json"; _write(registration_path, registration)
+    output = tmp_path / "official-candidate.json"
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run([sys.executable, str(root / "scripts/nc_rted_build_prediction_plan.py"), "candidate",
+                             "--registration", str(registration_path), "--output", str(output)],
+                            text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["status"] == "CANDIDATE_PUBLISHED"
 
 
 def test_resource_execution_requires_operator_registry_and_substantive_evidence(tmp_path):
@@ -907,6 +1167,65 @@ def test_worker_loads_one_selected_model_and_never_changes_question(tmp_path):
     assert vau.questions == ["Describe this clip exactly."]
     assert outcome == {"completed": 3, "failed": 0, "skipped": 0, "expected": 3,
                        "succeeded": 3, "technical_failures": 0, "missing": 0}
+
+
+def test_vau_execution_groups_bound_media_without_changing_resume_identities_or_payloads(tmp_path):
+    manifest, digest, model_manifests = _fixture(tmp_path)
+    plan = load_prediction_plan(manifest, expected_sha256=digest)
+    media_a = tmp_path / "duplicate-a.mp4"; media_a.write_bytes(b"a")
+    media_b = tmp_path / "duplicate-b.mp4"; media_b.write_bytes(b"b")
+    media_c = tmp_path / "unique-c.mp4"; media_c.write_bytes(b"c")
+    vau = (
+        VauRequest("q1", 0, str(media_a), _digest(media_a), "first A"),
+        VauRequest("q2", 1, str(media_b), _digest(media_b), "first B"),
+        VauRequest("q3", 2, str(media_a), _digest(media_a), "second A"),
+        VauRequest("q4", 3, str(media_c), _digest(media_c), "only C"),
+        VauRequest("q5", 4, str(media_b), _digest(media_b), "second B"),
+    )
+    plan = replace(plan, vau=vau)
+    assert [request.identity for request in plan.requests()] == ["vad:ucf:u1", "vad:xd:x1", "vau:q1", "vau:q2", "vau:q3", "vau:q4", "vau:q5"]
+    assert [request.identity for request in plan.execution_requests()] == ["vad:ucf:u1", "vad:xd:x1", "vau:q1", "vau:q3", "vau:q2", "vau:q5", "vau:q4"]
+    expected_execution = (*plan.vad, vau[0], vau[2], vau[1], vau[4], vau[3])
+    assert all(actual is expected for actual, expected in zip(plan.execution_requests(), expected_execution))
+    artifact_path, artifact_hash = model_manifests[("A", 17)]
+    selected = load_model_artifact(artifact_path, expected_sha256=artifact_hash, task=plan.selected_model("A", 17))
+    store = PredictionStore(plan.output_root / selected.task_id, run_id=plan.run_id, manifest_sha256=plan.manifest_sha256,
+                            model_task=selected.task_id, model_binding_sha256=selected.manifest_sha256)
+    store.publish(identity="vau:q3", attempt=1, status="success", provenance={}, payload={"text": "second A", "token_ids": [3]})
+    events = []
+
+    class OrderedVad(_Vad):
+        def predict(self, request, model, *, protocol):
+            events.append(request.identity)
+            return super().predict(request, model, protocol=protocol)
+
+    class OrderedVau(_Vau):
+        def generate(self, request, model, *, protocol):
+            events.append(request.identity)
+            if request.identity == "vau:q2":
+                raise RuntimeError("question-local failure")
+            return super().generate(request, model, protocol=protocol)
+
+    outcome = PredictionWorker(plan, store, loader=_Loader(), vad=OrderedVad(), vau=OrderedVau(), model=selected).run()
+    assert events == ["vad:ucf:u1", "vad:xd:x1", "vau:q1", "vau:q2", "vau:q5", "vau:q4"]
+    assert outcome == {"completed": 5, "failed": 1, "skipped": 1, "expected": 7,
+                       "succeeded": 6, "technical_failures": 1, "missing": 0}
+    assert store.get(identity="vau:q2")["status"] == "failure"
+    for request in vau:
+        record = store.get(identity=request.identity)
+        if request.identity != "vau:q2":
+            assert record["payload"]["text"] == request.question
+    resumed_events = []
+
+    class ResumeVau(_Vau):
+        def generate(self, request, model, *, protocol):
+            resumed_events.append(request.identity)
+            return super().generate(request, model, protocol=protocol)
+
+    resumed = PredictionWorker(plan, store, loader=_Loader(), vad=OrderedVad(), vau=ResumeVau(), model=selected).run()
+    assert resumed_events == []
+    assert resumed == {"completed": 0, "failed": 0, "skipped": 7, "expected": 7,
+                       "succeeded": 6, "technical_failures": 1, "missing": 0}
 
 
 def test_separate_model_tasks_receive_independent_slow_bound_objects(tmp_path):

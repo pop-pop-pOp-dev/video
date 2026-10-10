@@ -243,7 +243,7 @@ class PredictionWorker:
     def _run_locked(self) -> dict[str, int]:
         model = self._model()
         completed = failed = skipped = 0
-        for request in self.plan.requests():
+        for request in self.plan.execution_requests():
             if not self.store.should_run(identity=request.identity, max_retries=self.max_retries):
                 skipped += 1
                 continue

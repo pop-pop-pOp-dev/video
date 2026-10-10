@@ -344,7 +344,10 @@ class _DefaultLoader:
         bridge = EvidenceSlowBridge(slow, evidence)
         restored = _restore_trainable(bridge, artifact)
         bridge.eval(); bridge.prediction_evidence_enabled = artifact.group != "R0"
-        vad, vau, residency = _build_routes(self.runtime, bridge, device=self.device)
+        model_task = getattr(artifact, "task_id", None)
+        if not isinstance(model_task, str) or not model_task:
+            model_task = f"{artifact.group}:{getattr(artifact, 'seed', None)}:{getattr(artifact, 'evidence_enabled', None)}"
+        vad, vau, residency = _build_routes(self.runtime, bridge, device=self.device, model_task=model_task)
         from .prediction_adapters import BoundReactVAUModel
         residency.stage_language()
         return BoundReactVAUModel(artifact.group, artifact.seed, artifact.evidence_enabled, bridge, vad, vau, {"slow": report, "checkpoint": restored}, residency)
@@ -399,7 +402,7 @@ class _FullMediaObserver:
         return pack_observation_blocks([block.features for block in blocks], task="caption")
 
 
-def _build_routes(runtime: PredictionRuntime, bridge, *, device: str):
+def _build_routes(runtime: PredictionRuntime, bridge, *, device: str, model_task: str):
     from .detector import FrozenRTDetr, InheritedSigLipAdapter
     from .detection_media import OpenCVFrames
     from .detection_provider import DetectionProtocol
@@ -468,9 +471,16 @@ def _build_routes(runtime: PredictionRuntime, bridge, *, device: str):
     hivau = doc["protocols"]["hivau"]
     residency = _VauPhaseResidency(bridge, device)
     fast = _ResidentBatchedFast(doc["fast"], hivau["paligemma_batch_size"], residency)
+    runtime_identity = getattr(runtime, "sha256", None)
+    if not isinstance(runtime_identity, str) or not runtime_identity:
+        runtime_identity = hashlib.sha256(json.dumps(doc, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")).hexdigest()
+    cache_binding = hashlib.sha256(json.dumps({"runtime_sha256": runtime_identity, "model_task": model_task,
+                                                "evidence_enabled": evidence_enabled, "numerics": doc["numerics"]},
+                                               sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     reader = FullBlindHivauReader(slow=bridge.slow, fast_detector=fast, fast_prompt="", vision_encoder=siglip,
                                   observer=None if observer is None else _FullMediaObserver(observer, media),
-                                  evidence_enabled=evidence_enabled, target_fps=hivau["target_fps"], query_interval=hivau["query_interval"], media_catalog=media)
+                                  evidence_enabled=evidence_enabled, target_fps=hivau["target_fps"], query_interval=hivau["query_interval"], media_catalog=media,
+                                  material_cache_binding=cache_binding)
     generation = dict(doc["generation"]); generation["max_new_tokens"] = hivau["max_new_tokens"]
     _audit_bound_inherited_modules(runtime.inherited["external_root"],
                                    json.loads(Path(runtime.inherited["source_manifest"]).read_text(encoding="utf-8"))["files"])

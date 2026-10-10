@@ -1,35 +1,31 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "snapshot_format": 28,
-  "created_at": "2026-10-10T14:32:35.755116+00:00",
-  "source_commit": "48b6f4a4c9643fd1d471c99c14de78a1572fd106",
-  "source_base_commit": "0e586a7e2fd0bd3503fcf97e8824bd7cc0391b0c",
+  "snapshot_format": 32,
+  "created_at": "2026-10-10T17:10:33.643699+00:00",
+  "source_commit": "c482f9c4ad85083e7c33bf751b9a6d03f1780463",
+  "source_base_commit": "48b6f4a4c9643fd1d471c99c14de78a1572fd106",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
   "previous_published_commit": "4a36cc87d82a267604461f477862c7f010323eed",
   "source_whitelist": {
-    "previous_snapshot_manifest_sha256": "8b1ece234fd5ffe1939eca9bbfd8d49d9c91db40a6d2e45548c322c5808ab19d",
-    "accepted_code03b_paths": [
-      "scripts/nc_rted_interleaved_formal.py",
-      "scripts/nc_rted_queue.py",
-      "src/nc_rted/formal_bundle.py",
-      "src/nc_rted/interleaved_training.py",
-      "src/nc_rted/queue.py",
-      "src/nc_rted/resource_attestation.py",
-      "src/nc_rted/worker_runtime.py",
-      "tests/test_nc_rted_interleaved_training.py",
-      "tests/test_nc_rted_queue.py"
+    "previous_snapshot_manifest_sha256": "fcd1335ce67d95d8dac9585aff6ab67dbb40f5719223d8f15038d4f4d2294f0f",
+    "source29_basis_commit": "48b6f4a4c9643fd1d471c99c14de78a1572fd106",
+    "accepted_combined_prediction_commit": "c482f9c4ad85083e7c33bf751b9a6d03f1780463",
+    "accepted_combined_prediction_paths": [
+      "scripts/nc_rted_publish_r0_projection.py",
+      "src/nc_rted/prediction_inputs.py",
+      "src/nc_rted/prediction_media.py",
+      "src/nc_rted/prediction_runtime.py",
+      "src/nc_rted/prediction_worker.py",
+      "tests/test_nc_rted_prediction.py"
     ],
-    "accepted_residency_paths": [
-      "src/nc_rted/prediction_adapters.py",
+    "accepted_source31_cache_commit": "a5f6315da7aa10edf24de42054e99fc83875ab88",
+    "source31_cache_byte_identical_paths": [
+      "src/nc_rted/prediction_media.py",
       "src/nc_rted/prediction_runtime.py"
     ],
-    "excluded_paths": [
-      "scripts/nc_rted_vau_fast_residency_equivalence_probe.py"
-    ],
-    "new_files": [
-      "scripts/nc_rted_interleaved_formal.py",
-      "src/nc_rted/formal_bundle.py"
+    "excluded_unreviewed_components": [
+      "source30_current_policy_longest_helper"
     ]
   },
   "validation": {
@@ -37,17 +33,12 @@
     "secrets_scan": {
       "status": "PASS",
       "scoped_paths": [
-        "scripts/nc_rted_interleaved_formal.py",
-        "scripts/nc_rted_queue.py",
-        "src/nc_rted/formal_bundle.py",
-        "src/nc_rted/interleaved_training.py",
-        "src/nc_rted/queue.py",
-        "src/nc_rted/resource_attestation.py",
-        "src/nc_rted/worker_runtime.py",
-        "tests/test_nc_rted_interleaved_training.py",
-        "tests/test_nc_rted_queue.py",
-        "src/nc_rted/prediction_adapters.py",
-        "src/nc_rted/prediction_runtime.py"
+        "scripts/nc_rted_publish_r0_projection.py",
+        "src/nc_rted/prediction_inputs.py",
+        "src/nc_rted/prediction_media.py",
+        "src/nc_rted/prediction_runtime.py",
+        "src/nc_rted/prediction_worker.py",
+        "tests/test_nc_rted_prediction.py"
       ]
     },
     "accepted_evidence": [
@@ -220,25 +211,31 @@
         "path": "reports/nc_rted/vau_batch32_residency_native_review_v3.json",
         "sha256": "29d659d9bf721501f473d97a20d130b62c737e91715c1fb7cc84f156964b1b47",
         "required_status": "PASS_STATIC_GPU_RESIDENCY_GATE_REQUIRED"
+      },
+      {
+        "path": "reports/nc_rted/prediction_combined_native_review_v4.json",
+        "sha256": "87c9c30dc98dc70a7501d00847320ee4439b10883dbe538dc7e7505b86d60567",
+        "required_status": "PASS_STATIC_CPU_ARTIFACT_PATH_REQUIRED"
+      },
+      {
+        "path": "reports/nc_rted/source31/vau869_cache_equivalence_acceptance_v1.json",
+        "sha256": "2621e5d927dc8a6c18c22b903f0693b504a20a2de8a8719e65ae795302d94d80",
+        "required_status": "PASS_CACHE_EQUIVALENCE_GPU_GATE"
       }
     ],
     "accepted_source_coverage": {
-      "source_commit": "48b6f4a4c9643fd1d471c99c14de78a1572fd106",
+      "source_commit": "c482f9c4ad85083e7c33bf751b9a6d03f1780463",
+      "source_base_commit": "48b6f4a4c9643fd1d471c99c14de78a1572fd106",
       "delta": [
-        "scripts/nc_rted_interleaved_formal.py",
-        "scripts/nc_rted_queue.py",
-        "src/nc_rted/formal_bundle.py",
-        "src/nc_rted/interleaved_training.py",
-        "src/nc_rted/queue.py",
-        "src/nc_rted/resource_attestation.py",
-        "src/nc_rted/worker_runtime.py",
-        "tests/test_nc_rted_interleaved_training.py",
-        "tests/test_nc_rted_queue.py",
-        "src/nc_rted/prediction_adapters.py",
-        "src/nc_rted/prediction_runtime.py"
+        "scripts/nc_rted_publish_r0_projection.py",
+        "src/nc_rted/prediction_inputs.py",
+        "src/nc_rted/prediction_media.py",
+        "src/nc_rted/prediction_runtime.py",
+        "src/nc_rted/prediction_worker.py",
+        "tests/test_nc_rted_prediction.py"
       ],
-      "missing": [],
-      "physical_batch_one_included": false
+      "source31_cache_basis": "a5f6315da7aa10edf24de42054e99fc83875ab88",
+      "missing": []
     },
     "publication_ancestry_correction": "Snapshot26 derives from verified snapshot25/publication22 a9cd640; earlier manifests preserved."
   },
@@ -904,6 +901,12 @@
       "origin": "release18"
     },
     {
+      "path": "scripts/nc_rted_publish_r0_projection.py",
+      "sha256": "e6f6ce409ed3c0a4ee3ae408dd2b108852044ea2b7015a98d8534c3275c703a0",
+      "bytes": 17231,
+      "origin": "combined-source32"
+    },
+    {
       "path": "scripts/nc_rted_queue.py",
       "sha256": "467a497451cbf56ae99d3b86d4dfc8447b293300679e8938bc49ff0b070ad10a",
       "bytes": 71050,
@@ -1097,21 +1100,21 @@
     },
     {
       "path": "src/nc_rted/prediction_inputs.py",
-      "sha256": "3c5daea7dda01eecc55425a706942e93f4cfac9c5216a6b9feb4616853c13a91",
-      "bytes": 53592,
-      "origin": "release22"
+      "sha256": "a36f89a05bd2bf8082e29cfe039c72ad1d3bbe120dbec158478a36b29308aa62",
+      "bytes": 81114,
+      "origin": "combined-source32"
     },
     {
       "path": "src/nc_rted/prediction_media.py",
-      "sha256": "b95047aac32f1f25a55addc3de4dd74b29c15b24c25ecfd8d8b8b22e5e79568f",
-      "bytes": 12832,
-      "origin": "accepted_release25"
+      "sha256": "fb0dcb67fbe6d49af4a4ae2b26fbaefac3d6e006c82dc114a3bccf794696c8ce",
+      "bytes": 19183,
+      "origin": "combined-source32"
     },
     {
       "path": "src/nc_rted/prediction_runtime.py",
-      "sha256": "e261767602fe99a0977021d598830f2fe7a73388994e913812e042edf0b5e0f5",
-      "bytes": 40506,
-      "origin": "source29"
+      "sha256": "2b64cfc90b70533cd3a752ab8b21b9dfd90698169a0634af0250ccc195e7a6da",
+      "bytes": 41466,
+      "origin": "combined-source32"
     },
     {
       "path": "src/nc_rted/prediction_store.py",
@@ -1121,9 +1124,9 @@
     },
     {
       "path": "src/nc_rted/prediction_worker.py",
-      "sha256": "7ae1fe134013efb348e344ee8dd7d4b6865093eb59ce493efa37f83183954a03",
-      "bytes": 16077,
-      "origin": "release18"
+      "sha256": "86dcbfcffef7c27ca951cae4c26eefddf7b82af6da6a528fddb4052bc37badfd",
+      "bytes": 16087,
+      "origin": "combined-source32"
     },
     {
       "path": "src/nc_rted/production_runtime.py",
@@ -1403,9 +1406,9 @@
     },
     {
       "path": "tests/test_nc_rted_prediction.py",
-      "sha256": "0fb3248404eaa21f7d5aaae2cab3246ec07e2eb69015158e06a732f0c89f886c",
-      "bytes": 91344,
-      "origin": "source26_release26"
+      "sha256": "7fe46d578c9e4d02d674d156cb70835c258f31dc84703cda6fe50c1d437c6967",
+      "bytes": 120320,
+      "origin": "combined-source32"
     },
     {
       "path": "tests/test_nc_rted_prediction_runtime.py",

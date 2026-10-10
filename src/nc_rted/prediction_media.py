@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import fcntl, hashlib, os
+from collections import OrderedDict
 from dataclasses import dataclass
 import math
 import torch
@@ -26,6 +27,99 @@ class BlindHivauMaterial:
     time_message: str
     observations: object
     fast_scores: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class _CachedHivauMaterial:
+    """CPU-only immutable snapshot; every cache return gets fresh tensors."""
+    visual_embeddings: torch.Tensor
+    images: tuple[torch.Tensor, ...]
+    image_sizes: tuple[tuple[int, int], ...]
+    observed_seconds: float
+    sampled_frame_times: tuple[float, ...]
+    time_message: str
+    observation_features: torch.Tensor | None
+    observation_valid: torch.Tensor | None
+    observation_times: torch.Tensor | None
+    fast_scores: tuple[float, ...]
+    bytes: int
+
+
+class _BoundedHivauMaterialCache:
+    """Per-reader LRU whose entries are detached CPU snapshots, never results."""
+    def __init__(self, max_bytes: int, max_entries: int):
+        if type(max_bytes) is not int or max_bytes < 1 or type(max_entries) is not int or max_entries < 1:
+            raise PredictionExecutionError("HIVAU material cache bounds are invalid")
+        self.max_bytes, self.max_entries = max_bytes, max_entries
+        self.entries: OrderedDict[tuple, _CachedHivauMaterial] = OrderedDict()
+        self.bytes = 0
+
+    @staticmethod
+    def _tensor_snapshot(value: torch.Tensor) -> torch.Tensor:
+        return value.detach().to("cpu").clone()
+
+    @staticmethod
+    def _tensor_bytes(value: torch.Tensor | None) -> int:
+        return 0 if value is None else value.numel() * value.element_size()
+
+    def freeze(self, material: BlindHivauMaterial) -> _CachedHivauMaterial | None:
+        observations = material.observations
+        if observations is not None:
+            # Runtime observations are ObservationBatch. Refuse unknown mutable
+            # objects rather than retaining an alias with uncertain semantics.
+            fields = tuple(getattr(observations, name, None) for name in ("features", "valid", "observed_times"))
+            if not all(isinstance(value, torch.Tensor) for value in fields):
+                return None
+            observation_features, observation_valid, observation_times = fields
+        else:
+            observation_features = observation_valid = observation_times = None
+        visual = self._tensor_snapshot(material.visual_embeddings)
+        images = tuple(self._tensor_snapshot(image) for image in material.images)
+        frozen = _CachedHivauMaterial(visual, images, tuple(material.image_sizes), material.observed_seconds,
+                                      tuple(material.sampled_frame_times), material.time_message,
+                                      None if observation_features is None else self._tensor_snapshot(observation_features),
+                                      None if observation_valid is None else self._tensor_snapshot(observation_valid),
+                                      None if observation_times is None else self._tensor_snapshot(observation_times),
+                                      tuple(material.fast_scores), 0)
+        size = self._tensor_bytes(frozen.visual_embeddings) + sum(self._tensor_bytes(image) for image in frozen.images)
+        size += self._tensor_bytes(frozen.observation_features) + self._tensor_bytes(frozen.observation_valid) + self._tensor_bytes(frozen.observation_times)
+        return _CachedHivauMaterial(frozen.visual_embeddings, frozen.images, frozen.image_sizes,
+                                    frozen.observed_seconds, frozen.sampled_frame_times, frozen.time_message,
+                                    frozen.observation_features, frozen.observation_valid, frozen.observation_times,
+                                    frozen.fast_scores, size)
+
+    def get(self, key: tuple, *, device: torch.device) -> BlindHivauMaterial | None:
+        frozen = self.entries.pop(key, None)
+        if frozen is None:
+            return None
+        self.entries[key] = frozen
+        observations = None
+        if frozen.observation_features is not None:
+            from .bridge import ObservationBatch
+            observations = ObservationBatch(frozen.observation_features.to(device).clone(),
+                                            frozen.observation_valid.to(device).clone(),
+                                            frozen.observation_times.to(device).clone())
+        return BlindHivauMaterial(frozen.visual_embeddings.to(device).clone(),
+                                  [image.to(device).clone() for image in frozen.images], list(frozen.image_sizes),
+                                  frozen.observed_seconds, frozen.sampled_frame_times, frozen.time_message,
+                                  observations, frozen.fast_scores)
+
+    def put(self, key: tuple, material: BlindHivauMaterial) -> None:
+        frozen = self.freeze(material)
+        if frozen is None or frozen.bytes > self.max_bytes:
+            return
+        prior = self.entries.pop(key, None)
+        if prior is not None:
+            self.bytes -= prior.bytes
+        self.entries[key] = frozen
+        self.bytes += frozen.bytes
+        while len(self.entries) > self.max_entries or self.bytes > self.max_bytes:
+            _, evicted = self.entries.popitem(last=False)
+            self.bytes -= evicted.bytes
+
+    def clear(self) -> None:
+        self.entries.clear()
+        self.bytes = 0
 
 
 class FullBlindDetectionReader:
@@ -92,7 +186,8 @@ class FullBlindHivauReader:
     """
     def __init__(self, *, slow, fast_detector, fast_prompt: str, vision_encoder, observer, target_fps: int = 4, query_interval: int = 4,
                  decoder_factory=OpenCVFrames, memory_factory=None, grid_builder=None, time_message_style: str = "short_online_v2", media_catalog=None,
-                 evidence_enabled: bool = True):
+                 evidence_enabled: bool = True, material_cache_binding: str = "reader-local-v1",
+                 material_cache_max_bytes: int = 512 << 20, material_cache_max_entries: int = 128):
         if target_fps < 1 or query_interval != 4:
             raise PredictionExecutionError("HIVAU requires a positive target FPS and four-frame queries")
         self.slow, self.fast_detector, self.fast_prompt, self.vision_encoder, self.observer = slow, fast_detector, fast_prompt, vision_encoder, observer
@@ -100,6 +195,10 @@ class FullBlindHivauReader:
         self.memory_factory, self.grid_builder = memory_factory, grid_builder
         self.media_catalog = None if media_catalog is None else self._physical_catalog(media_catalog)
         self.evidence_enabled = evidence_enabled
+        if not isinstance(material_cache_binding, str) or not material_cache_binding:
+            raise PredictionExecutionError("HIVAU material cache binding is invalid")
+        self.material_cache_binding = material_cache_binding
+        self.material_cache = _BoundedHivauMaterialCache(material_cache_max_bytes, material_cache_max_entries)
 
     @staticmethod
     def _physical_catalog(media_catalog):
@@ -135,6 +234,13 @@ class FullBlindHivauReader:
         if self.media_catalog is not None and media is None:
             raise PredictionExecutionError("HIVAU media is absent or ambiguous in the official catalog")
         media = media if media is not None else BoundMedia("hivau", path.name, str(path), media_sha256, 1., 1, 1, 1)
+        key = (self.material_cache_binding, str(path), media_sha256, media.fps, media.frame_count, media.height, media.width,
+               self.target_fps, self.query_interval, self.evidence_enabled)
+        parameter = next((self.slow.get_base_model() if hasattr(self.slow, "get_base_model") else self.slow).get_model().mm_projector.mlp.parameters())
+        cached = self.material_cache.get(key, device=parameter.device)
+        if cached is not None:
+            return cached
+        material = None
         with lease_verified_media(media) as leased:
             decoder = self.decoder_factory(leased)
             try:
@@ -173,8 +279,13 @@ class FullBlindHivauReader:
                                                                 sampled_frame_times=times, observed_seconds=end)
                     if observed.features.shape[1] != len(caption_block_endpoints(end)):
                         raise PredictionExecutionError("HIVAU observation blocks omit part of the media duration")
-                parameter = next((self.slow.get_base_model() if hasattr(self.slow, "get_base_model") else self.slow).get_model().mm_projector.mlp.parameters())
                 image = torch.zeros(1, 3, int(decoder.height), int(decoder.width), device=parameter.device, dtype=parameter.dtype)
                 message = f"\nThe video contains {len(groups)} frames sampled from the past {end:.1f} seconds ago (0.0s of the entire video) up to the present moment ({end:.1f}s of the entire video). "
-                return BlindHivauMaterial(visual, [image], [(int(decoder.height), int(decoder.width))], end, times, message, observed, tuple(map(float, scores)))
+                material = BlindHivauMaterial(visual, [image], [(int(decoder.height), int(decoder.width))], end, times, message, observed, tuple(map(float, scores)))
             finally: decoder.close()
+        # Both decoder.close() and the verified-media lease's final integrity
+        # check succeeded. A late failure must never become a cache hit.
+        if material is None:
+            raise PredictionExecutionError("HIVAU reader completed without material")
+        self.material_cache.put(key, material)
+        return material

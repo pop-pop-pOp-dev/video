@@ -1,84 +1,34 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "snapshot_format": 18,
-  "created_at": "2026-10-10T07:44:16.821495+00:00",
-  "source_commit": "decd71c10cf27fd8413269802bc2c698fb1c18ab",
-  "source_base_commit": "696bf0407a6bacc9fc170ca1422239fdb0e8a378",
+  "snapshot_format": 19,
+  "created_at": "2026-10-10T09:27:29.001563+00:00",
+  "source_commit": "efd4a2edd2a9df03bd490b3e8f57da4978249a30",
+  "source_base_commit": "decd71c10cf27fd8413269802bc2c698fb1c18ab",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
-  "previous_published_commit": "5f74b23dd42a8e09522897d482ba15157df3cb8f",
+  "previous_published_commit": "6cf88986e557b40090508dd28414632d8b0fcc17",
   "source_whitelist": {
-    "previous_snapshot_manifest_sha256": "6c2cd59812458cef3bf74fb0d515c5fde34c4f2f3546ff961c0b42c74a937d40",
-    "previous_content_paths": 202,
-    "accepted_seed_delta_paths": [
-      "scripts/nc_rted_seed_observation_prefix.py",
-      "src/nc_rted/observation_seed.py",
-      "tests/test_nc_rted_observation_seed.py"
-    ],
-    "retained_prior_snapshot_paths": [
-      "THIRD_PARTY.md",
-      "external/ReactVAU-paper/LICENSE",
-      "external/ReactVAU-paper/README.md",
-      "external/ReactVAU-paper/eval_utils/hivau/eval_ans_hivau.py",
-      "external/ReactVAU-paper/eval_utils/hivau/eval_reactvau_hivau.py",
-      "external/ReactVAU-paper/eval_utils/hivau/hivau_utils.py",
-      "external/ReactVAU-paper/eval_utils/hivau/reactvau_inference.py",
-      "external/ReactVAU-paper/eval_utils/hivau/run_reactvau_vau.py",
-      "external/ReactVAU-paper/eval_utils/hivau/transform_metric.py",
-      "external/ReactVAU-paper/eval_utils/vad/detect_utils.py",
-      "external/ReactVAU-paper/eval_utils/vad/eval_paligemma_detection.py",
-      "external/ReactVAU-paper/eval_utils/vad/eval_reactvau_detection.py",
-      "external/ReactVAU-paper/llava/__init__.py",
-      "external/ReactVAU-paper/llava/constants.py",
-      "external/ReactVAU-paper/llava/conversation.py",
-      "external/ReactVAU-paper/llava/dist_utils.py",
-      "external/ReactVAU-paper/llava/mm_utils.py",
-      "external/ReactVAU-paper/llava/model/__init__.py",
-      "external/ReactVAU-paper/llava/model/apply_delta.py",
-      "external/ReactVAU-paper/llava/model/builder.py",
-      "external/ReactVAU-paper/llava/model/consolidate.py",
-      "external/ReactVAU-paper/llava/model/language_model/llava_qwen.py",
-      "external/ReactVAU-paper/llava/model/llava_arch.py",
-      "external/ReactVAU-paper/llava/model/make_delta.py",
-      "external/ReactVAU-paper/llava/model/multimodal_encoder/builder.py",
-      "external/ReactVAU-paper/llava/model/multimodal_encoder/clip_encoder.py",
-      "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/__init__.py",
-      "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/flash_attention_class.py",
-      "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/pos_embed.py",
-      "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/vit_scale_clean.py",
-      "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2_encoder.py",
-      "external/ReactVAU-paper/llava/model/multimodal_encoder/siglip_encoder.py",
-      "external/ReactVAU-paper/llava/model/multimodal_encoder/umt/vit.py",
-      "external/ReactVAU-paper/llava/model/multimodal_encoder/umt_encoder.py",
-      "external/ReactVAU-paper/llava/model/multimodal_projector/builder.py",
-      "external/ReactVAU-paper/llava/model/multimodal_projector/memory_manager.py",
-      "external/ReactVAU-paper/llava/model/multimodal_projector/projector_FSTW_PEMF.py",
-      "external/ReactVAU-paper/llava/model/multimodal_projector/tome16_mlp.py",
-      "external/ReactVAU-paper/llava/model/multimodal_projector/tome64_mlp.py",
-      "external/ReactVAU-paper/llava/model/utils.py",
-      "external/ReactVAU-paper/llava/serialize_utils.py",
-      "external/ReactVAU-paper/llava/train/llava_trainer.py",
-      "external/ReactVAU-paper/llava/train/llava_trainer_eval.py",
-      "external/ReactVAU-paper/llava/train/reactvau_stage2_cache_adapter.py",
-      "external/ReactVAU-paper/llava/train/train.py",
-      "external/ReactVAU-paper/llava/train/train_mem.py",
-      "external/ReactVAU-paper/llava/train/train_mem_stage2_cache.py",
-      "external/ReactVAU-paper/llava/train/train_mem_stage2_capacity_two_step.py",
-      "external/ReactVAU-paper/llava/train/train_mem_stage2_capacity_zero3_two_step.py",
-      "external/ReactVAU-paper/llava/train/train_mem_stage2_full_seeded.py",
-      "external/ReactVAU-paper/llava/train/train_mem_stage2_zero3_mixed_runtime_checkpoint.py",
-      "external/ReactVAU-paper/llava/utils.py",
-      "external/ReactVAU-paper/llava/video_utils.py",
-      "external/ReactVAU-paper/requirements.txt",
-      "external/ReactVAU-paper/vad/generate_detection_dataset.py",
-      "external/ReactVAU-paper/vad/generate_paligemma_train_data.py",
-      "external/ReactVAU-paper/vad/get_prompt.py",
-      "external/ReactVAU-paper/vad/paper_binary_loss.py",
-      "external/ReactVAU-paper/vad/train_paligemma_vad_384.py"
+    "previous_snapshot_manifest_sha256": "9c66566854d81b05f7fc60f1b1da48a20464d2d5b73200a449263b34f6cc7222",
+    "accepted_cuda_delta_paths": [
+      "scripts/nc_rted_prediction_runtime_probe.py",
+      "tests/test_nc_rted_prediction_runtime_probe.py"
     ],
     "main_governance_paths": [
-      "AGENTS.md",
-      "AGENT_BOARD.md"
+      "AGENT_BOARD.md",
+      "AGENTS.md"
+    ],
+    "all_other_paths": "Retained from accepted publication v18",
+    "newly_published_accepted_probe_paths": [
+      "scripts/nc_rted_prediction_runtime_probe.py",
+      "tests/test_nc_rted_prediction_runtime_probe.py"
+    ],
+    "accepted_release19_prior_publication_omissions": [
+      "scripts/nc_rted_build_interleaved_diagnostic_manifests.py",
+      "scripts/nc_rted_build_prediction_plan.py",
+      "scripts/nc_rted_refresh_r0_source_bindings.py",
+      "tests/test_nc_rted_interleaved_manifest_builder.py",
+      "tests/test_nc_rted_probe_geometry.py",
+      "tests/test_nc_rted_refresh_r0_source_bindings.py"
     ]
   },
   "validation": {
@@ -86,11 +36,16 @@
     "secrets_scan": {
       "status": "PASS",
       "scoped_paths": [
-        "AGENTS.md",
+        "scripts/nc_rted_prediction_runtime_probe.py",
+        "tests/test_nc_rted_prediction_runtime_probe.py",
         "AGENT_BOARD.md",
-        "scripts/nc_rted_seed_observation_prefix.py",
-        "src/nc_rted/observation_seed.py",
-        "tests/test_nc_rted_observation_seed.py"
+        "AGENTS.md",
+        "scripts/nc_rted_build_interleaved_diagnostic_manifests.py",
+        "scripts/nc_rted_build_prediction_plan.py",
+        "scripts/nc_rted_refresh_r0_source_bindings.py",
+        "tests/test_nc_rted_interleaved_manifest_builder.py",
+        "tests/test_nc_rted_probe_geometry.py",
+        "tests/test_nc_rted_refresh_r0_source_bindings.py"
       ]
     },
     "accepted_evidence": [
@@ -123,6 +78,21 @@
         "path": "reports/nc_rted/github_publication_api_v14.json",
         "sha256": "4fc53130ddd91cd5c6be2b4ef6c6dce02b2c14b0a36c7350b1b883b8b4198566",
         "required_status": "PUBLISHED_REMOTE_COMMIT_AND_ALL_FILE_HASHES_VERIFIED"
+      },
+      {
+        "path": "reports/nc_rted/cuda_release19_integration_v1.json",
+        "sha256": "591e12c9b23e0e7de81d1d3fa9db3cd7266b5f3c7ce8b20d1cc68a92559022de",
+        "required_status": "INTEGRATED_ACCEPTED_STATIC_CODE"
+      },
+      {
+        "path": "reports/nc_rted/r0_cuda_order_native_review_v1.json",
+        "sha256": "6b6078e4a2189d31778c116dbe67a19ea16741d5ece428b16b845b969cb7c683",
+        "required_status": "PASS_STATIC"
+      },
+      {
+        "path": "reports/nc_rted/github_publication_api_v15.json",
+        "sha256": "4dc752c59a4da11dc4a7acfa2fc52977e33a7fad530e32f440becaa6ab00d461",
+        "required_status": "PUBLISHED_REMOTE_COMMIT_AND_ALL_FILE_HASHES_VERIFIED"
       }
     ],
     "hotpath_release18_sha256": {
@@ -133,13 +103,26 @@
       "scripts/nc_rted_seed_observation_prefix.py": "9703a11a0c3a522dfd5da5b223b5f64c7da4b438421763df7f49b8cd41809fde",
       "src/nc_rted/observation_seed.py": "8d589e714146b2a530349c3e1fb48606d0c676fbeffb4ffe599cb5efeb54894e",
       "tests/test_nc_rted_observation_seed.py": "4c602970005abbb41e18476865061f654aa1fb2c8e9809bb38a9309533afe840"
+    },
+    "prepublication_correction": "Previous snapshot omitted probe source/test; explicit accepted files added after validate KeyError; no remote mutation occurred.",
+    "accepted_source_coverage": {
+      "scoped_tracked_count": 128,
+      "source_commit": "efd4a2edd2a9df03bd490b3e8f57da4978249a30",
+      "missing": [],
+      "different": [],
+      "scope": [
+        "src/nc_rted",
+        "scripts/nc_rted*",
+        "tests/test_nc_rted*",
+        "configs/nc_rted"
+      ]
     }
   },
   "remaining": [
-    "complete6000 observations and sealed crossfit teachers",
+    "finish teacher artifact acceptance (generation completed)",
     "complete2000 caption preparation",
-    "complete actual resource diagnostics and formal admission",
-    "complete formal12training13completeevaluations/statistics"
+    "diagnose R0 factory failure and pass actual resource diagnostics",
+    "formal12training13completeevaluations/statistics"
   ],
   "files": [
     {
@@ -156,8 +139,8 @@
     },
     {
       "path": "AGENT_BOARD.md",
-      "sha256": "2fc84c0e97c74c2e3c5b69b36d7f427a92662e4dae86ae28f09d7c1e11d2eea9",
-      "bytes": 107569,
+      "sha256": "89d98fff6732fa86d465ee046b66392cb901fd90b420aca3602f34d8e4a43636",
+      "bytes": 114597,
       "origin": "main_governance"
     },
     {
@@ -689,10 +672,20 @@
       "origin": "release18"
     },
     {
+      "path": "scripts/nc_rted_build_interleaved_diagnostic_manifests.py",
+      "sha256": "b66a188e44b53b5a9df0a1c98acdc9ebb1c079e1d362ea99ee8bb8b4be0a60f1",
+      "bytes": 28854
+    },
+    {
       "path": "scripts/nc_rted_build_manifests.py",
       "sha256": "bad0e780869983b456ba9d9aa441e18c464f553d30d0ad1924b130d8ad103351",
       "bytes": 3482,
       "origin": "release18"
+    },
+    {
+      "path": "scripts/nc_rted_build_prediction_plan.py",
+      "sha256": "1936e610a34cdf180ac1e28c28b693e57fbf95c05053ea19146e812652e38595",
+      "bytes": 7554
     },
     {
       "path": "scripts/nc_rted_build_r0_blind_manifest.py",
@@ -761,6 +754,11 @@
       "origin": "release18"
     },
     {
+      "path": "scripts/nc_rted_prediction_runtime_probe.py",
+      "sha256": "57514d778e087836377063a31fcdcd777bbabe88cd74e60cacdf17073117b277",
+      "bytes": 40005
+    },
+    {
       "path": "scripts/nc_rted_prepare_caption_observations.py",
       "sha256": "1a78b5e74b02f29a3cabc199379280507006d01cdd184431a5a51ca4a3b14b9f",
       "bytes": 1384,
@@ -777,6 +775,11 @@
       "sha256": "20e308c4125d36086eeed1b22650d97e3c4b014fb66c2d6526b69efcb133952c",
       "bytes": 51382,
       "origin": "release18"
+    },
+    {
+      "path": "scripts/nc_rted_refresh_r0_source_bindings.py",
+      "sha256": "eb6c0d3e71650f4e10271721f58992ef0191e7f4d041e9c94bfe870a6f6c27a9",
+      "bytes": 11366
     },
     {
       "path": "scripts/nc_rted_seed_observation_prefix.py",
@@ -1193,6 +1196,11 @@
       "origin": "release18"
     },
     {
+      "path": "tests/test_nc_rted_interleaved_manifest_builder.py",
+      "sha256": "65308c195af19f524254cf29e0e60560b5cbdb0c8f37c837aa927ada7e0cae00",
+      "bytes": 22333
+    },
+    {
       "path": "tests/test_nc_rted_interleaved_training.py",
       "sha256": "d268d13af891e9c03f2747e75e597f472f34b36ac52d501b4829eab9055bab9d",
       "bytes": 18299,
@@ -1259,6 +1267,16 @@
       "origin": "release18"
     },
     {
+      "path": "tests/test_nc_rted_prediction_runtime_probe.py",
+      "sha256": "a6419a2dca5d7dffe15a34f8c5f6ad6389ad720f91dfda58b864e237cc239b5c",
+      "bytes": 34643
+    },
+    {
+      "path": "tests/test_nc_rted_probe_geometry.py",
+      "sha256": "be9e45ceb0fc5daf047b1a73d4a049f6227a6e14dffff82a8cef2be5067e241b",
+      "bytes": 3624
+    },
+    {
       "path": "tests/test_nc_rted_production_runtime.py",
       "sha256": "5bd81c3851aeb3da81d672700153aedeb91a225b9720f451f7dff5a70c20a899",
       "bytes": 33013,
@@ -1287,6 +1305,11 @@
       "sha256": "30ebf1290153fb382a739ba260365c9fa5200d74873fc3cd014bb2a44b644028",
       "bytes": 12181,
       "origin": "release18"
+    },
+    {
+      "path": "tests/test_nc_rted_refresh_r0_source_bindings.py",
+      "sha256": "7bd76126bfcfb148dba9b9a1863d6727e0c3eb9b41b491d664861e87413308c6",
+      "bytes": 7842
     },
     {
       "path": "tests/test_nc_rted_resource_contract.py",
@@ -1373,5 +1396,5 @@
       "origin": "release18"
     }
   ],
-  "governance_docs_refreshed_at": "2026-10-10T07:45:38.265688+00:00"
+  "governance_docs_refreshed_at": "2026-10-10T09:27:29.001797+00:00"
 }

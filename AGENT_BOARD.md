@@ -1,7 +1,7 @@
 # Agent 留言板：先读这里，再继续工作
 
 > 用户于 2026-10-10 明确要求：减少重复工作和 token 浪费。此文件用于上下文压缩、换 agent、会话恢复时交接。它记录执行事实，不替代唯一实验规格。
-> **快照更新：2026-10-10 07:44 UTC。进度数字均为最近观测，不代表实时状态。**
+> **快照更新：2026-10-10 09:25 UTC。进度数字均为最近观测，不代表实时状态。**
 
 ## 接手规则
 
@@ -20,20 +20,20 @@
 | ID | 任务 / 负责人 | 状态 | 依赖、最近证据与下一步 |
 |---|---|---|---|
 | DOC-01 | TODO 模块及 Agent 维护规则 / root | DONE | 本文件与 `AGENTS.md` 已加入任务 ID、归属、依赖、验收与交接规则；文档改动无需新增测试 |
-| PREP-01 | 6,000训练观测 / v26worker133055，root跟踪 | IN_PROGRESS | 2026-10-10 07:44 UTC 4975/6000，其中4931复用；GPU0 CPU50 sourcev25/configv26；余时短测估算约70min随媒体变化，非承诺 |
+| PREP-01 | 6,000训练观测 / v26worker已自然完成 | DONE | 6000=4931复用+1069新算；indexSHAd9fadafb7fb9a33be1fcf833381ed9356c5b59f4896504d91eba177e730500d3，commitSHA6c5eb9bf，completion_v1；133055已自然退出，不再启动 |
 | ACCEL-01 | 观测加速 / root | DONE | 用户授权后完成4931条保留与切换，133055/133057运行；实际12新条/48.62s=14.81/min（旧约9/min），hotpath/seed独立接受，live_throughput_v1；本轮不再调参/重启 |
 | PREP-02 | 官方盲 Fast 完成封存、组装与转换 / nc_rted_blind_factory | DONE | 1051条自然完成；snapshot v1/v2同SHA50dd73c5；converter独立v6接受并合入，未重算Fast；后续R0是独立任务 |
-| PREP-03 | 2,000描述缓存 / 原worker，root跟踪 | IN_PROGRESS | 07:43UTC完成sequence698、开始699；原125128/125797继续，source15/config4不变，未重启 |
-| PREP-04 | 观测封存与真实crossfit教师 / root持久链 | WAITING_DEPENDENCY | 新单一supervisor133057，teacher_after_observations_v26/status.json；等v26自然完成6000及seal后自动CPUbuild，旧790384已按用户授权停止，不再启动旧链 |
+| PREP-03 | 2,000描述缓存 / 原worker，root跟踪 | IN_PROGRESS | 09:10UTC完成1164开始1165，远端125128/125797真实alive；空余269.97GiB；source15/config4不变 |
+| PREP-04 | 观测封存与真实crossfit教师 / teacher_runtime_audit验收 | IN_REVIEW | 09:16:48UTC supervisor封存TEACHER_COMPLETED，运行31m12s；manifest SHA f66d6ca861be44c041d5a7319639add74d66e4c612937b73f50e9cd69be44598；原133057/153728均退出，验收输出一次，不重算 |
 | CODE-01 | 逐模型预测与实际probe / root | DONE | CODE01A8760d53与CODE01Bc6d26e2均独立PASS_STATIC；精确合入release17 d764e85；实际GPU测量另属GATE02 |
 | CODE-01A | 预测计划/资源准入 / root最终修复，独立astra验收 | DONE | 8760d53独立v6 PASS_STATIC；原57+17增量+setup2项通过；精确5文件合入release9f9fb3e（含builder），无GPU |
 | CODE-01B | 实际probe / root | DONE | c6d26e2独立v6 PASS_STATIC；35+3+1+2窄测沿用，精确4文件合入d764e85。磁盘pending须匹配stdout TERMINAL_RUNTIME_PROBE才可接受 |
 | CODE-02 | 同seed四组诊断配置 / nc_rted_bundle_harness_finish | DONE | 75f8119独立v4 PASS_STATIC；20项+恢复3项接受；逐字合入release_v17 HEAD85f4d09，仅诊断，formal仍serial |
 | CODE-03 | 正式训练资源/队列 / accepted_release18 | DONE | 36898c93独立v5 PASS_STATIC，精确11文件合入clean release18 696bf040；integration_v1 report。未重跑测试，无GPU |
-| PUB-01 | 已验收代码限定发布GitHub / root | IN_PROGRESS | release18已发布5f74b23dd42a8e09522897d482ba15157df3cb8f/v14，203远端文件全验证。最后新增seedhelper decd71c与最新board待新v18/v15补充发布 |
+| PUB-01 | 已验收代码限定发布GitHub / root | DONE | 最新6cf88986e557b40090508dd28414632d8b0fcc17，snapshot18/publisher15，206远端文件全hash验证，含accepted seedhelper3文件与治理文档；github_publication_api_v15.json |
 | GATE-01 | 增量实现独立审查 / 独立gpt-6-astra | DONE | CODE01A v6、01B v6、02 v4、03 v5均PASS_STATIC；不代表运行资源准入，勿重开审查 |
-| GATE-02 | 资源排程与实际运行准入 / root | WAITING_DEPENDENCY | 新gate02_resource_schedule_readiness_v3.json含全部135050queries+47458Slow/model+3339VAU；无实际prediction/update端到端计时、无完整teacher/caption，不宣称可装入租期；R0刷新准备由prediction_resource_final整理 |
-| EXP-01 | R0盲预测 / root调度 | WAITING_DEPENDENCY | source refresh v5已实际完成preflight SHA0dfe4e4d，绑定release17 d764e85；GPU0优先加速观测，R0诊断尚未执行 |
+| GATE-02 | 资源排程与实际运行准入 / root、formal_next_inputs | IN_PROGRESS | teacher完成待输出验收；caption继续；formal_next_inputs_v1有实际后续builder入口，先部署独立依赖；缺代表性训练及预测计时 |
+| EXP-01 | R0盲预测 / root、r0_factory_failure | BLOCKED | CUDA顺序修复1830d66独立接受，source_refresh_v6完成；probev2 PID156193终态factory失败112.18s/peak0；stdout/report SHA94373522匹配，terra诊断具体factory异常，不重试相同调用 |
 | EXP-02 | A/U/S/F × 17/42/2026正式训练 / root调度 | WAITING_DEPENDENCY | 等GATE-02；最新正式训练仍0/12，既有准备任务不计入 |
 | EXP-03 | 13模型全量盲预测、诊断及统一统计 / root调度 | WAITING_DEPENDENCY | 对应checkpoint冻结后盲预测，完整分母后解锁统一指标；最新完整模型评测0/13 |
 
@@ -49,12 +49,12 @@
 
 ## 现在做哪一步
 
-1. **用户已明确授权并完成断点切换。旧372217与teacher790384已退出；不要恢复或重跑旧任务。** 新GPU0worker133055（CPUaffinity0–55、cpu_threads50）与唯一teacher133057已启动；已确认新产出；48.62秒12条=14.81/min。ACCEL01完成，不要再调参/复测/重启；观察自然6000封存。
-2. 运行source `/root/autodl-tmp/nc-rted-observation-v25-candidate` HEAD`10a9d82eaf5c3cd6f5e751a9dd6db25ddcb1cd13`；正式config **v26** `.cache/nc_rted_observation_extraction_config_v26.json` SHA`8e1dc9eb4609a94da91720efd1306b392ad2b4d88510e2b0f9a4b901735e0309`，不要改名或热改。输出`artifacts/nc_rted/teacher_observations_derived_stage2_v26`；模型初始化约90秒，resume随后会读取4931旧记录再出现computed新进度。
-3. 实际保留4931/6000条旧记录、剩1069；`observation_v26_handover_execution_v1.json`记录真实新PID、最终尾部seed；旧全部数据和日志保留。第一次SIGINT被旧nohup继承忽略，已记录sigint_ignored_v1并按同一用户授权SIGTERM退出；无需再处理此故障。
-4. 新teacher链`artifacts/nc_rted/teacher_after_observations_v26/status.json`/supervisor133057，完成后教师输出`teacher_crossfit_derived_stage2_v26`。不得创建第二条链。旧teacher_v24已停止，不作当前入口。
-5. 性能证据已完成不重测：CPU8同3窗口2.185x（只诊断），生产CPU50同3载荷完全相同、2可比窗口1.573x；`observation_exact_gpu_cpu50_equivalence_v1.json`。helper decd71c及source10a9d82均独立PASS_STATIC，已真实seed两次（预复用4904、最终4931），不是从头计算。
-6. release18 HEAD696bf040及新队列/预测代码已发布GitHub **5f74b23dd42a8e09522897d482ba15157df3cb8f**，report github_publication_api_v14.json，203文件远端全验证。最后新seedhelper3文件与最终board正在准备snapshotv18/publisherv15补充发布。R0preflight绑定release17保留；实际R0probe仍未启动，正式0/12，完整0/13。
+1. 6000观测与1051官方盲Fast均已封存，直接复用，绝不重启。
+2. teacher于09:16:48UTC封存成功：`teacher_crossfit_derived_stage2_v26/teacher_manifest.json` SHA `f66d6ca861be44c041d5a7319639add74d66e4c612937b73f50e9cd69be44598`。原133057/153728已退出。teacher_runtime_audit仅验收输出与覆盖，不实现优化、不重跑；旧缓存开销推测不适用于该uncached执行。
+3. 远端caption source15/config4继续；root读取实际状态。formal_next_inputs准备accepted release18独立部署闭包；实际bundle生成仍等完整caption seal，不造占位产物。
+4. R0 CUDA顺序错误已修复且独立接受1830d66；source-only刷新v6 preflight SHA886bb8e3d07a5cc0a638129f6d7db6fad54cf0d99caffc0b14319340f0143d7e。已收取session69239，v2 PID156193已终态，factory失败112.18s、peak0；report SHA943735220348be78bf9134fda8f5ba36a1ea1502b955ba6753e8b48c7c3b7093与stdout匹配。r0_factory_failure负责具体异常诊断；不得重复相同GPU探测。
+5. clean release18 HEAD696bf040与seedhelperdecd71c已发布GitHub6cf88986。CUDA fix1830d66尚待限定合入/发布；main不能作为接受源码。
+6. 前一个用户“仅问答”轮没有执行变更；本continuation已确认教师完成及R0具体阶段失败，属于改变下一动作的新证据。正式训练0/12、完整模型评测0/13，目标active。
 
 ### 描述准备准确入口（当前）
 
@@ -69,11 +69,11 @@
 
 | 工作 | 最近状态 | 负责人/入口 |
 |---|---|---|
-| 本地GPU0训练观测 | 新PID133055；4975/6000，4931复用，14.81/min短测 | PREP-01 v26；sourcev25，不热改 |
+| 训练观测 | 6000/6000封存完成，原133055自然退出 | PREP-01 DONE，completion_v1，不重跑 |
 | 官方盲Fast | 1051/1051自然完成且封存，原GPU0已用于观测 | PREP-02 DONE，SHA50dd73，不重提取 |
 | 远端描述缓存 | source15/config4 supervisor125128已启动 | PREP-03，当前supervisor状态为准 |
-| 完整teacher | 新等待链133057，等v26观测自然完成 | PREP-04，仅此一条 |
-| R0逐模型预测门禁/完整登记入口 | 最小实现修复中 | CODE-01负责人；不得读取测试答案/指标 |
+| 完整teacher | 09:16UTC已封存TEACHER_COMPLETED；133057/153728退出 | PREP-04输出验收，不重复build |
+| R0 GPU1有界运行探测 | v2 PID156193已退出，factory失败；accepted1830d66/sourcev6 | EXP-01具体异常诊断，非正式全量 |
 | 四组真实manifest/正式入口 | 缺完整teacher+caption依赖，配置代码收尾 | CODE-02负责人；禁止占位teacher |
 
 ## 已完成：不要再做一遍
@@ -114,6 +114,8 @@
 - 实施 agent：gpt-5.6-terra；独立审查：gpt-6-astra。只核验改动涉及的范围，不把审查扩展成新一轮重复准备。
 
 ## 追加留言（新消息写在末尾）
+
+- **2026-10-10 UTC | PREP-04 runtime audit | corrected source finding.** The v26 child command used source `nc-rted-observation-v25-candidate` commit `10a9d82eaf5c3cd6f5e751a9dd6db25ddcb1cd13`. Exact call graph is `build_teachers_from_store -> load_teacher_store -> build_teachers_from_compact -> build_teachers(parse_frozen_records(...))`; `build_teachers_from_compact` omits `cache=`, so the active PID153728 was uncached. The prior cache-attribution is superseded. Before exit observation: Rl/100%CPU, 50 threads, RSS about9.61GB, 1779.46 CPU seconds in29:56 elapsed, 1.231GB logical reads and zero writes; this fits full in-memory loading plus CPU-only finite crossfit, with atomic output only at end. A later exact `ps` had no PID153728 row; this does not determine success/failure. Corrected report: `reports/nc_rted/prep04_teacher_runtime_audit_v1.md`. Candidate proposal only, not implemented or launched: one cache context at compact boundary, hoist per-fold `normal_scale_key`, then O(1) bounded LRU preserving cache semantics; independently review before any fresh run. Owner must inspect existing supervisor terminal state/output; do not restart or modify the v26 run.
 
 - **2026-10-10 UTC | CODE-03 | committed candidate `f59b7e8f4a924c1ddbe1e4c4876f17164c16b5d7`.** Closed the seven resource-attestation review residuals in isolated tree `/root/autodl-tmp/nc-rted-code03-resource`: executed entrypoint/source coverage; substantive host/device/runtime/workload/envelope qualification; interpreter and controlled environment binding; held-GPU-lock reservation tied to queue attempt and integrity/expiry recovery; exact deadline/rental/budget/volume constraints; bound final-1000-update output contract at publication/recovery; durable ancestry/temp publication and actual CLI retry reuse. Focused test: `PYTHONPATH=/root/autodl-tmp/nc-rted-code03-resource/src /root/autodl-tmp/lookaway-wm/.venv/bin/python -m pytest -q tests/test_nc_rted_queue.py --basetemp=/root/autodl-tmp/lookaway-wm/.cache/tmp/code03-queue-1017` => **26 passed** (9.37s), plus `py_compile` and `git diff --check`; no GPU, installs, formal launch, or frozen-worker modification. Candidate is ready for exact independent review; formal execution remains disallowed pending it.
 
@@ -301,4 +303,20 @@
 
 - **2026-10-10 07:41 UTC | root | 断点切换已实际完成，代码已上传。** 用户明确同意后停止旧等待链，旧worker忽略SIGINT所以同授权SIGTERM（故障证据保留）；最终seed4931条，启动GPU0新133055与teacher133057，仅剩1069。所有原结果保留。GitHub acceptedrelease18成功5f74b23/v14，203文件sha验证。下一步确认新观测computed增长，再登记实际吞吐；不要再次执行handover。
 
+- **2026-10-10 07:46 UTC | accepted_release18 | GPU1 R0 bounded diagnostic prepared, not launched.** Exact accepted source remains clean release17 `d764e853b81cc51b7051913e35d0d0b6af25d0c0`; refreshed preflight `artifacts/nc_rted/r0_source_refresh_v5/preflight.json` SHA `0dfe4e4dc30599804a0bafa5420249911877e9fa60a346f749222e5ab55eb376` is reused without media/model rehash. New probe-only admission `reports/nc_rted/r0_gpu1_arson018_diagnostic_admission_v1.json` SHA `b06260d0bf9cdeb73a0c91290eba817518cc85dda7f0cf761add000d79b7d70a` binds a 300s `vad:ucf:Arson018_x264` diagnostic, 20GiB floor, fresh immutable report output, and preflight hash. Preparation `r0_gpu1_arson018_diagnostic_preparation_v1.json` records GPU1 UUID `GPU-2229fe4e-f76d-b6cf-6282-2d4c769c83d5`, UUID mask with logical `cuda:0`, CPU56-111, deadline1791618691 and terminal stdout requirement. This is not a full evaluation/GATE02 PASS/throughput claim. No GPU launch, answer/label/metric access, worker action, or old handover occurred.
+
+- **2026-10-10 07:50 UTC | accepted_release18 | GPU1 R0 bounded diagnostic terminal failure recorded.** Root launched one v2-admission diagnostic; PID136118 has exited. Durable `reports/nc_rted/r0_gpu1_arson018_runtime_probe_v1.json` SHA `25d466b8a48474101bd88128c3e5975e7df15508d9f4de55d09e73a2ef6e3c48` remains `PENDING_TERMINAL_CONFIRMATION`, containing `FAILED_RUNTIME_PROBE` / sanitized `RUNTIME_FAILURE` at `cuda_initialization`, 23.672s, zero CUDA peaks, no prediction store/formal prediction. Existing stdout `logs/nc_rted_r0_gpu1_arson018_runtime_probe_v1.stdout.log` has `TERMINAL_RUNTIME_PROBE` with exactly the same report SHA, so terminal evidence is valid but unsuccessful. Report `r0_gpu1_arson018_runtime_probe_terminal_v1.json`; do not retry, inspect labels/answers/metrics, or touch workers133055/133057. Any future work is a separately scoped CUDA-initialization diagnosis.
+
 - **2026-10-10 07:44 UTC | root | ACCEL-01完成：真实吞吐。** 新worker4938→4950用48.622s，12条新观测，14.808/min；旧约9/min，仅粗略不配对约1.6x。GPU0采样0–30%仍有CPU/解码段，不能写GPU已吃满。按此短测1050条约71min但媒体异质，不承诺。当前4975/6000；R0 GPU1诊断准备委派accepted_release18。远端caption698→699，原worker保持；此处前一次board小脚本字符串错误未落盘，本次纠正，无任务重复。
+
+- **2026-10-10 07:47 UTC | root | PUB-01最终完成。** GitHub `6cf88986e557b40090508dd28414632d8b0fcc17`，最新report `github_publication_api_v15.json`，206文件验证；无凭据落盘。新观测5020/6000继续、teacher133057等待。R0GPU1诊断admission草案已备，root将读取owner最终命令后启动有界探测，尚不是正式R0评测。
+
+- **2026-10-10 07:50 UTC | root | 本轮最终交接。** 用户要求的加速断点切换已完成且实产出，当前5067/6000=4931复用+136新算；新133055与teacher133057继续，不再重启。GitHub最新6cf88986/v15全部206文件远端验证。空闲GPU1已启动R0有界诊断136118，admission_v2SHA69596cdfe46871bece214c2434091b2fa7a7a0e0f45f125fdf2d0ac714955753，deadline1791618862；owner accepted_release18只收既有stdout/report并写terminal报告，不自动重试。下次先收这一次结果，别重复启动；磁盘pendingreport单独不算PASS。原Fast1051已封存、remotecaption698→699观测继续。
+
+- **2026-10-10 09:12 UTC | root | goal继续的真实状态。** 6000观测封存indexSHAd9fadafb7...，completion_v1新证据；teacher153728真实Rl100%CPU已运行25min，无需重启。caption1164/2000。R0旧探测失败已确认，root最小cuda顺序诊断，agent修具体阻塞；另一agent准备实际训练清单与命令。不是另一轮研究方案或全验收重跑。
+
+- **2026-10-10T09:18:24.756933+00:00 | code01a_v5_review | EXP-01 CUDA initialization-order repair PASS_STATIC.** Exact clean `1830d66da0e74a03c4793069d2d6b8decd3cdb4f` atop acceptedrelease17d764e853, only probe initialization and focused fixture test. Report `reports/nc_rted/r0_cuda_order_native_review_v1.json`. Actual no-model diagnosticSHAcf514a09 reproduces lazy reset failure and explicit initialize-then-resetPASS; reused2pass29deselected1.84s. Requesteddevice selection precedes peak reset/sync and factory load; existing supervision/identity semantics untouched. No reviewer GPU/tests/worker actions. Next root integrate exact fix, source-only refresh and retry same boundedR0 diagnostic; formal admission remains separate/false.
+
+- **2026-10-10 09:20 UTC | formal_next_inputs | GATE-02 formal factory inputs prepared, no worker touched.** New `reports/nc_rted/gate02_formal_next_inputs_v1.json` validates as `GATE02_FORMAL_NEXT_INPUTS_READY`. It binds accepted release18 `696bf040`, the legal training Fast `f25f1132`, binding report `a4032bdf`, recipe `aebba036` (8,000 = 6,000 detection + 2,000 caption; 1,000 updates; accumulation8), and accepted VAD protocol source `r0_prediction_runtime.json` `135060e8`. Its parameterized, post-completion command dynamically obtains the teacher output and seal hashes only from `TEACHER_COMPLETED` supervisor evidence and requires retrieved caption supervisor `FULL_PREPARATION_COMPLETED`; it then creates diagnostic-only A/U/S/F bundles for seeds17/42/2026 at one update. Observation index `d9fadafb` is sealed, but teacherPID153728 and caption1164/2000 are incomplete, so no partial manifest/bundle, GPU run, or formal queue action was made. Formal remains serial and needs representative detection+caption timing, resource qualification, attestation, and admission.
+
+- **2026-10-10 09:xx UTC | PREP-04 completion audit | teacher completed, manifest-only validation PASS.** Supervisor status is `TEACHER_COMPLETED` at `2026-10-10T09:16:48.641268+00:00`; child153728/supervisor133057 exited naturally after **31m12s**. Manifest `artifacts/nc_rted/teacher_crossfit_derived_stage2_v26/teacher_manifest.json` is 16,051,810 bytes and SHA `f66d6ca861be44c041d5a7319639add74d66e4c612937b73f50e9cd69be44598`, matching status; it binds indexSHA `d9fadafb7fb9a33be1fcf833381ed9356c5b59f4896504d91eba177e730500d3` and configSHA `8e1dc9eb4609a94da91720efd1306b392ad2b4d88510e2b0f9a4b901735e0309`. One accepted `TeacherIndex.load` manifest-only audit (catalog synthesized solely from generated IDs/datasets, no observations/labels) passed exact 6000-row coverage, per-dataset U/F histogram, S=F, and eligible mask/position/joint checks. Coverage: 265 auxiliary-valid (UCF49, XD216), 5735 explicit rejections; this is a coverage fact, not formal-training/scientific acceptance. Report `reports/nc_rted/prep04_teacher_completion_coverage_v1.json` SHA `b5ea3651c0a0e472d379408b448820fd95b6dc32b47220cd37c535d23f936a85`. Do not rerun teacher; prior uncached-runtime concern is superseded by actual completion.

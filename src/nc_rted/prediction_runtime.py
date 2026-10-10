@@ -344,17 +344,41 @@ class _DefaultLoader:
         bridge = EvidenceSlowBridge(slow, evidence)
         restored = _restore_trainable(bridge, artifact)
         bridge.eval(); bridge.prediction_evidence_enabled = artifact.group != "R0"
-        vad, vau = _build_routes(self.runtime, bridge, device=self.device)
+        vad, vau, residency = _build_routes(self.runtime, bridge, device=self.device)
         from .prediction_adapters import BoundReactVAUModel
-        return BoundReactVAUModel(artifact.group, artifact.seed, artifact.evidence_enabled, bridge, vad, vau, {"slow": report, "checkpoint": restored})
+        residency.stage_language()
+        return BoundReactVAUModel(artifact.group, artifact.seed, artifact.evidence_enabled, bridge, vad, vau, {"slow": report, "checkpoint": restored}, residency)
 
 
 class _RunnerVadAdapter:
-    def predict(self, request, model, *, protocol): return model.vad_detector.detect(request)
+    def predict(self, request, model, *, protocol):
+        if not isinstance(protocol, dict): raise PredictionInputError("VAD protocol differs before language activation")
+        primary_error = None
+        try:
+            model.residency.activate_language()
+            return model.vad_detector.detect(request)
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            try: model.residency.stage_language()
+            except BaseException:
+                if primary_error is None: raise
 
 
 class _RunnerVauAdapter:
-    def generate(self, request, model, *, protocol): return model.hivau_inference.generate(request)
+    def generate(self, request, model, *, protocol):
+        primary_error = None
+        try:
+            model.residency.activate_language()
+            return model.hivau_inference.generate(request)
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            try: model.residency.stage_language()
+            except BaseException:
+                if primary_error is None: raise
 
 
 class _FullMediaObserver:
@@ -442,14 +466,15 @@ def _build_routes(runtime: PredictionRuntime, bridge, *, device: str):
     def detect(request): runner.protocol = protocols[request.dataset]; return original(request)
     runner.detect = detect
     hivau = doc["protocols"]["hivau"]
-    fast = _BatchedFast(_fast_detector(doc["fast"], device), hivau["paligemma_batch_size"])
+    residency = _VauPhaseResidency(bridge, device)
+    fast = _ResidentBatchedFast(doc["fast"], hivau["paligemma_batch_size"], residency)
     reader = FullBlindHivauReader(slow=bridge.slow, fast_detector=fast, fast_prompt="", vision_encoder=siglip,
                                   observer=None if observer is None else _FullMediaObserver(observer, media),
                                   evidence_enabled=evidence_enabled, target_fps=hivau["target_fps"], query_interval=hivau["query_interval"], media_catalog=media)
     generation = dict(doc["generation"]); generation["max_new_tokens"] = hivau["max_new_tokens"]
     _audit_bound_inherited_modules(runtime.inherited["external_root"],
                                    json.loads(Path(runtime.inherited["source_manifest"]).read_text(encoding="utf-8"))["files"])
-    return runner, BlindVauRunner(bridge=bridge, media_reader=reader, prompt_tokenizer=prompt, tokenizer=tokenizer, generation_config=generation)
+    return runner, BlindVauRunner(bridge=bridge, media_reader=reader, prompt_tokenizer=prompt, tokenizer=tokenizer, generation_config=generation), residency
 
 
 def _tokenizer(runtime):
@@ -477,6 +502,127 @@ class _BatchedFast:
     def batch_score_grids(self, grids, prompt):
         return [score for start in range(0, len(grids), self.batch_size)
                 for score in self.detector.batch_score_grids(grids[start:start + self.batch_size], prompt)]
+
+
+class _VauPhaseResidency:
+    """Stage only Slow language/evidence tensors; guarded vision remains on CUDA."""
+    def __init__(self, bridge, device: str):
+        self.bridge, self.device, self.detector = bridge, device, None
+        raw = bridge.raw_slow
+        self.vision = raw.get_vision_tower()
+        visual_ids = {id(value) for value in self.vision.parameters()} | {id(value) for value in self.vision.buffers()}
+        self.language_parameters = [value for value in bridge.parameters() if id(value) not in visual_ids]
+        self.language_buffers = []
+        buffer_ids = set()
+        for module in bridge.modules():
+            for name, value in module._buffers.items():
+                if value is not None and id(value) not in visual_ids and id(value) not in buffer_ids:
+                    self.language_buffers.append((module, name)); buffer_ids.add(id(value))
+        for name, value in list(bridge.named_parameters(remove_duplicate=False)) + list(bridge.named_buffers(remove_duplicate=False)):
+            if id(value) in visual_ids and "vision_tower" not in name:
+                raise PredictionInputError("guarded vision tensor is shared with a language owner")
+        self.state = "language_cuda_visual_cuda_fast_absent"
+
+    def _sync_and_empty(self) -> None:
+        if str(self.device).startswith("cuda") and torch.cuda.is_available():
+            torch.cuda.synchronize(self.device)
+            torch.cuda.empty_cache()
+
+    @staticmethod
+    def _module_is_cpu(module) -> bool:
+        parameters = getattr(module, "parameters", None)
+        buffers = getattr(module, "buffers", None)
+        if not callable(parameters) or not callable(buffers): return True
+        devices = {str(value.device) for value in parameters()} | {str(value.device) for value in buffers()}
+        return not devices or devices == {"cpu"}
+
+    def _stage_fast_cpu(self) -> None:
+        if self.detector is None: return
+        self.detector.model.to("cpu")
+        self.detector.device = torch.device("cpu")
+        if not self._module_is_cpu(self.detector.model) or self.detector.device != torch.device("cpu"):
+            raise PredictionInputError("Fast detector did not reach CPU residency")
+
+    def _move_language(self, device: str) -> None:
+        parameter_originals = [(value, value.data) for value in self.language_parameters]
+        buffer_originals = [(module, name, module._buffers[name]) for module, name in self.language_buffers]
+        try:
+            with torch.no_grad():
+                for value, _ in parameter_originals: value.data = value.data.to(device)
+                for module, name, value in buffer_originals: module._buffers[name] = value.to(device) if value is not None else None
+            if any(str(value.device) != self.device for value in self.vision.parameters()):
+                raise PredictionInputError("guarded vision tower moved during language residency transition")
+        except BaseException:
+            try:
+                with torch.no_grad():
+                    for value, original in parameter_originals: value.data = original
+                    for module, name, original in buffer_originals: module._buffers[name] = original
+            except BaseException:
+                # A later explicit stage_language call is the only recovery path.
+                self.state = "residency_faulted"
+            raise
+
+    def activate_language(self) -> None:
+        if self.state == "residency_faulted":
+            raise PredictionInputError("VAU residency is faulted; stage language before reentry")
+        self._move_language(self.device)
+        self.bridge.eval()
+        self.state = "language_cuda_visual_cuda_fast_cpu" if self.detector is not None else "language_cuda_visual_cuda_fast_absent"
+
+    def stage_language(self) -> None:
+        try:
+            self._move_language("cpu")
+            if self.state == "residency_faulted": self._stage_fast_cpu()
+            self._sync_and_empty()
+        except BaseException:
+            self.state = "residency_faulted"
+            raise
+        self.state = "language_cpu_visual_cuda_fast_cpu" if self.detector is not None else "language_cpu_visual_cuda_fast_absent"
+
+    def score_fast(self, config: dict[str, Any], batch_size: int, grids, prompt):
+        self.stage_language()
+        detector = self.detector
+        primary_error = None
+        try:
+            if detector is None:
+                detector = _fast_detector(config, self.device)
+                self.detector = detector
+            else:
+                detector.model.to(self.device)
+                detector.device = torch.device(self.device)
+            result = _BatchedFast(detector, batch_size).batch_score_grids(grids, prompt)
+            return result
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            if detector is not None:
+                try:
+                    self._stage_fast_cpu()
+                except BaseException:
+                    self.state = "residency_faulted"
+                    if primary_error is None: raise
+            try:
+                self._sync_and_empty()
+            except BaseException:
+                self.state = "residency_faulted"
+                if primary_error is None: raise
+            if primary_error is None:
+                self.activate_language()
+            elif self.state != "residency_faulted":
+                self.state = "language_cpu_visual_cuda_fast_cpu" if detector is not None else "language_cpu_visual_cuda_fast_absent"
+
+
+class _ResidentBatchedFast:
+    """Lazy Fast wrapper that preserves original batch geometry and score order."""
+    def __init__(self, config: dict[str, Any], batch_size: int, residency: _VauPhaseResidency):
+        if type(batch_size) is not int or batch_size < 1:
+            raise PredictionInputError("HIVAU Fast batch size is invalid")
+        self.config, self.batch_size, self.residency = dict(config), batch_size, residency
+        self.image_size = self.config["image_size"]
+
+    def batch_score_grids(self, grids, prompt):
+        return self.residency.score_fast(self.config, self.batch_size, grids, prompt)
 
 
 def default_factory(plan, model, *, device: str = "cuda:0") -> dict[str, Any]:

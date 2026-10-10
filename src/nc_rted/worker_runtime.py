@@ -4,6 +4,18 @@ from contextlib import contextmanager
 import fcntl, json, os, socket, uuid
 from pathlib import Path
 
+
+class HeldGpuLock:
+    """The canonical GPU flock handle retained by a supervised child."""
+    def __init__(self, path: Path, handle):
+        self.path, self._handle = path, handle
+
+    def fileno(self):
+        return self._handle.fileno()
+
+    def close(self):
+        return self._handle.close()
+
 def process_stat(pid: int) -> list[str] | None:
     """Parse procfs stat after its final ')' (comm may contain spaces/parentheses)."""
     try:
@@ -146,4 +158,4 @@ def gpu_lock(data_volume: str | Path, gpu: int | None):
         # Do not explicitly unlock: the child inherits this file description.
         # Closing the controller's descriptor releases it only after the child
         # has also exited, while an explicit LOCK_UN would free a live child.
-        yield handle
+        yield HeldGpuLock(path, handle)

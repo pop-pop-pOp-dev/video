@@ -29,6 +29,7 @@ class BoundReactVAUModel:
     vad_detector: Any
     hivau_inference: Any
     load_report: Mapping[str, Any]
+    residency: Any
 
 
 class ReactVAUVadAdapter:
@@ -37,8 +38,18 @@ class ReactVAUVadAdapter:
         vad = protocol.get("vad")
         if not isinstance(vad, dict) or set(vad) != {"target_fps", "query_interval", "batch_size"}:
             raise PredictionExecutionError("bound VAD protocol is incomplete")
-        result = model.vad_detector.detect_video(request.media_path, target_fps=vad["target_fps"],
-                                                  query_interval=vad["query_interval"], batch_size=vad["batch_size"], verbose=False)
+        primary_error = None
+        try:
+            model.residency.activate_language()
+            result = model.vad_detector.detect_video(request.media_path, target_fps=vad["target_fps"],
+                                                      query_interval=vad["query_interval"], batch_size=vad["batch_size"], verbose=False)
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            try: model.residency.stage_language()
+            except BaseException:
+                if primary_error is None: raise
         if not isinstance(result, dict):
             raise PredictionExecutionError("inherited VAD evaluator returned no record")
         scores, fast, indices = result.get("query_scores"), result.get("paligemma_scores"), result.get("query_frame_indices")
@@ -76,8 +87,18 @@ class ReactVAUVauAdapter:
         pipeline = getattr(runtime, "pipeline", None)
         if getattr(pipeline, "context_mode", None) != "none":
             raise PredictionExecutionError("HIVAU Fast score prompt context is enabled")
-        result = runtime.generate(video_path=request.media_path, question=request.question,
-                                  max_new_tokens=hivau["max_new_tokens"], task=hivau["task"])
+        primary_error = None
+        try:
+            model.residency.activate_language()
+            result = runtime.generate(video_path=request.media_path, question=request.question,
+                                      max_new_tokens=hivau["max_new_tokens"], task=hivau["task"])
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            try: model.residency.stage_language()
+            except BaseException:
+                if primary_error is None: raise
         if not isinstance(result, dict) or not isinstance(result.get("response"), str):
             raise PredictionExecutionError("inherited HIVAU inference returned no response")
         # The released wrapper exposes text but not generated IDs. The bound runtime

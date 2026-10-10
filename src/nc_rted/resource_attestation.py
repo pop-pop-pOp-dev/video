@@ -20,6 +20,7 @@ from .storage_lock import allocation_lock, ensure_directory
 
 
 SCHEMA = "nc_rted_formal_resource_attestation/v1"
+BUNDLE_SCHEMA = "nc_rted_formal_bundle_resource_attestation/v1"
 
 
 class ResourceAttestationError(ValueError):
@@ -418,6 +419,135 @@ def verify_attestation(payload: dict, job_key: str, accepted_evidence: dict[str,
         raise ResourceAttestationError("formal execution/output contract differs from attestation")
     if reservation is not None and (reservation.get("lease_id") != execution["lease_id"] or reservation.get("physical_gpu") != execution["physical_gpu"] or reservation.get("host") != execution["host"]):
         raise ResourceAttestationError("attestation reservation is not held by this attempt")
+
+
+def verify_bundle_attestation(payload: dict, job_key: str, accepted_evidence: dict[str, tuple[str, str]],
+                              reservation: dict | None = None) -> None:
+    """Validate an attestation for four admitted groups sharing preparation only."""
+    from .formal_bundle import FormalBundleContractError, load_bundle, validate_members
+    _, document = _bound_file(payload.get("resource_attestation"), payload.get("resource_attestation_sha256"),
+                              "formal bundle resource attestation")
+    binding, execution, contract = document.get("binding"), document.get("execution"), document.get("contract")
+    qualification, authorization = document.get("qualification"), document.get("authorization")
+    if (document.get("schema") != BUNDLE_SCHEMA or document.get("status") != "PASS" or
+            not all(isinstance(value, dict) for value in (binding, execution, contract, qualification, authorization))):
+        raise ResourceAttestationError("formal bundle resource attestation schema or status is invalid")
+    required = ("bundle_config", "bundle_config_sha256", "member_identities", "frozen_source_sha256")
+    if binding.get("job_key") != job_key or any(binding.get(key) != payload.get(key) for key in required):
+        raise ResourceAttestationError("resource attestation does not bind this formal bundle payload")
+    try:
+        bundle_path, bundle = load_bundle(binding["bundle_config"], binding["bundle_config_sha256"])
+        members = validate_members(bundle)
+    except FormalBundleContractError as error:
+        raise ResourceAttestationError(str(error)) from error
+    _accepted(payload.get("bundle_evidence"), bundle_path, binding["bundle_config_sha256"], accepted_evidence, "formal bundle")
+    identities = {group: value["identity"] for group, value in members.items()}
+    if binding["member_identities"] != identities or payload.get("member_identities") != identities:
+        raise ResourceAttestationError("formal bundle member identities differ")
+    checkpoint_roots = [str(Path(members[group]["runtime"].run["checkpoint_root"]).resolve())
+                        for group in ("A", "U", "S", "F")]
+    checkpoints = {group: str((Path(members[group]["runtime"].run["checkpoint_root"]) / "final" /
+                               "manifest.json").resolve()) for group in ("A", "U", "S", "F")}
+    outputs = payload.get("expected_outputs")
+    expected_outputs = [
+        {"path": checkpoints[group], "artifact_type": "checkpoint", "semantic": "formal_training",
+         "run_identity": identities[group]}
+        for group in ("A", "U", "S", "F")
+    ]
+    expected_outputs.append({"path": "bundle-report.json", "artifact_type": "report", "semantic": "formal_bundle",
+                             "member_identities": identities, "final_checkpoints": checkpoints,
+                             "bundle_checkpoint_root": str(Path(bundle["bundle_checkpoint_root"]).resolve())})
+    if outputs != expected_outputs or payload.get("checkpoint_roots") != checkpoint_roots:
+        raise ResourceAttestationError("formal bundle output contract differs from admitted members")
+    source = next(iter(identities.values()))["code_sha256"]
+    if binding["frozen_source_sha256"] != source:
+        raise ResourceAttestationError("formal bundle source identity differs")
+    volume = PROJECT_VOLUME.resolve()
+    roots = [Path(payload.get("run_dir", "")), Path(bundle["bundle_checkpoint_root"]),
+             *(Path(members[group]["runtime"].run["checkpoint_root"]) for group in ("A", "U", "S", "F")),
+             *(Path(members[group]["runtime"].run["progress_path"]) for group in ("A", "U", "S", "F"))]
+    canonical_roots = [_contained(volume, str(path), "formal bundle destination") for path in roots]
+    if len(set(canonical_roots)) != len(canonical_roots):
+        raise ResourceAttestationError("formal bundle destinations alias")
+    for index, path in enumerate(canonical_roots):
+        if any(path in other.parents or other in path.parents for other in canonical_roots[index + 1:]):
+            raise ResourceAttestationError("formal bundle destinations overlap")
+    if (payload.get("bundle_checkpoint_root") != str(canonical_roots[1]) or
+            payload.get("progress_path") not in {str(path) for path in canonical_roots[6:]}):
+        raise ResourceAttestationError("formal bundle queue destinations differ")
+    execution_inputs = {key: payload.get(key) for key in ("command", "execution_environment", "interpreter",
+                                                            "run_dir", "progress_path", "checkpoint_roots",
+                                                            "bundle_checkpoint_root", "expected_outputs")}
+    if binding.get("execution_inputs") != execution_inputs:
+        raise ResourceAttestationError("formal bundle execution/output contract differs from attestation")
+    if execution.get("host") != socket.gethostname() or execution.get("physical_gpu") != payload.get("physical_gpu"):
+        raise ResourceAttestationError("formal bundle attestation is for a different execution host/device")
+    environment, interpreter = payload.get("execution_environment"), payload.get("interpreter")
+    validate_environment(environment, volume)
+    if execution.get("environment") != environment or execution.get("interpreter") != interpreter:
+        raise ResourceAttestationError("formal bundle execution environment differs")
+    if (not isinstance(interpreter, dict) or not isinstance(interpreter.get("path"), str) or
+            sha256_file(Path(interpreter["path"])) != interpreter.get("launcher_sha256") or
+            sha256_file(Path(interpreter["path"]).resolve()) != interpreter.get("target_sha256")):
+        raise ResourceAttestationError("formal bundle interpreter is not attested")
+    if execution.get("gpu_uuid") != gpu_uuid(int(payload["physical_gpu"])):
+        raise ResourceAttestationError("formal bundle GPU differs")
+    now = time.time(); budget = _finite_positive(payload.get("run_budget_seconds"), "run budget")
+    lease_expiry = _finite_positive(execution.get("lease_expires_utc_epoch"), "resource lease expiry")
+    if not isinstance(execution.get("lease_id"), str) or not execution["lease_id"] or lease_expiry <= now:
+        raise ResourceAttestationError("formal bundle lease is absent or expired")
+    authorization_path, authorization_doc = _bound_file(authorization.get("path"), authorization.get("sha256"), "resource authorization")
+    _accepted(payload.get("resource_authorization_evidence"), authorization_path, authorization.get("sha256"), accepted_evidence, "resource authorization")
+    if (authorization_doc.get("schema") != "nc_rted_resource_authorization/v1" or authorization_doc.get("status") != "PASS" or
+            authorization_doc.get("host") != execution["host"] or authorization_doc.get("gpu_uuid") != execution["gpu_uuid"] or
+            authorization_doc.get("lease_id") != execution["lease_id"] or
+            authorization_doc.get("project_volume") != contract.get("data_volume") or
+            _finite_positive(authorization_doc.get("max_budget_seconds"), "authorized budget") < budget or
+            _finite_positive(authorization_doc.get("min_free_bytes"), "authorized reserve") > float(contract.get("min_free_bytes", 0)) or
+            _finite_positive(authorization_doc.get("deadline_utc_epoch"), "authorized deadline") < float(contract.get("deadline_utc_epoch", 0)) or
+            _finite_positive(authorization_doc.get("lease_expires_utc_epoch"), "authorized lease") < lease_expiry):
+        raise ResourceAttestationError("resource authorization differs from the formal bundle")
+    name = qualification.get("accepted_evidence_name")
+    expected = accepted_evidence.get(name) if isinstance(name, str) else None
+    qualification_path, qualification_doc = _bound_file(qualification.get("path"), qualification.get("sha256"), "bundle qualification report")
+    if not expected or (qualification.get("path"), qualification.get("sha256")) != expected:
+        raise ResourceAttestationError("bundle qualification is not accepted evidence")
+    workload = {"member_identities": identities, "updates": 1000, "kind": "formal_bundle",
+                "shared_preparation": "frozen_provider_only", "common_recovery": True}
+    measurements, envelope = qualification_doc.get("measurements", {}), qualification_doc.get("resource_envelope", {})
+    if (qualification_doc.get("schema") != "nc_rted_runtime_qualification/v2" or qualification_doc.get("status") != "PASS_GPU_KERNEL_AND_INHERITED_RUNTIME_IMPORTS" or
+            qualification_doc.get("host") != execution["host"] or qualification_doc.get("gpu_uuid") != execution["gpu_uuid"] or
+            qualification_doc.get("source_sha256") != source or qualification_doc.get("workload") != workload or
+            qualification_doc.get("runtime_environment") != {"interpreter": interpreter, "environment": environment} or
+            measurements.get("forward_backward_completed") is not True or measurements.get("complete_long_input") is not True or
+            measurements.get("common_boundary_recovery_completed") is not True or
+            type(measurements.get("optimizer_updates")) is not int or measurements["optimizer_updates"] < 1):
+        raise ResourceAttestationError("bundle qualification does not measure this formal workload")
+    start = _finite_positive(qualification_doc.get("valid_from_utc_epoch"), "qualification start")
+    end = _finite_positive(qualification_doc.get("valid_until_utc_epoch"), "qualification expiry")
+    measured_at = _finite_positive(measurements.get("measured_at_utc_epoch"), "measurement time")
+    if not (start <= measured_at <= now < end and now - measured_at <= QUALIFICATION_MAX_AGE and now + budget <= end):
+        raise ResourceAttestationError("bundle qualification is stale, future dated, or expires during the run")
+    probe = measurements.get("local_import_probe", {})
+    if (probe.get("status") != "PASS" or probe.get("interpreter") != interpreter or probe.get("environment") != environment or
+            probe.get("runtime_identity") != python_runtime_probe(interpreter, environment)):
+        raise ResourceAttestationError("bundle qualification local imports differ")
+    available = _finite_positive(envelope.get("device_memory_bytes"), "qualified device memory")
+    required_memory = _finite_positive(envelope.get("required_memory_bytes"), "qualified required memory")
+    allocated = _finite_positive(measurements.get("peak_cuda_allocated_bytes"), "measured allocation")
+    reserved = _finite_positive(measurements.get("peak_cuda_reserved_bytes"), "measured reservation")
+    updates = _finite_positive(measurements.get("seconds_per_bundle_update_upper_bound"), "bundle update bound")
+    overhead = _finite_positive(measurements.get("setup_checkpoint_seconds_upper_bound"), "measured overhead")
+    if not (allocated <= reserved <= required_memory <= available) or 1000 * updates + overhead > budget or available != gpu_memory_bytes(int(payload["physical_gpu"])):
+        raise ResourceAttestationError("bundle measured memory/time envelope does not fit allocation")
+    if contract != {key: payload.get(key) for key in ("data_volume", "min_free_bytes", "run_budget_seconds", "deadline_utc_epoch")}:
+        raise ResourceAttestationError("formal bundle resource contract differs")
+    if (contract.get("data_volume") != str(volume) or _finite_positive(contract.get("min_free_bytes"), "disk reserve") < MIN_FREE_BYTES or
+            _finite_positive(contract.get("deadline_utc_epoch"), "deadline") != FORMAL_DEADLINE or now + budget > lease_expiry or lease_expiry > RENTAL_CUTOFF or
+            shutil.disk_usage(volume).free < contract["min_free_bytes"]):
+        raise ResourceAttestationError("formal bundle resource contract is not currently viable")
+    if reservation is not None and (reservation.get("lease_id") != execution["lease_id"] or reservation.get("physical_gpu") != execution["physical_gpu"] or reservation.get("host") != execution["host"]):
+        raise ResourceAttestationError("formal bundle reservation is not held by this attempt")
 
 
 def resource_lease_expiry(payload: dict) -> float:

@@ -42,6 +42,12 @@ def _seal_capture_tree(root):
     _sync_capture_tree(root)
 
 
+def capture_allocation_bytes(copies, directory_count, launch_bytes, block):
+    """Charge every capture destination and the exact serialized launch contract."""
+    return (sum(((path.stat().st_size + block - 1) // block) * block for path in copies.values()) +
+            directory_count * block + ((len(launch_bytes) + block - 1) // block) * block)
+
+
 def capture_formal_inputs(payload, run_dir):
     """Copy validated launch inputs before Popen so later path replacement cannot alter code."""
     root=Path(run_dir)/"immutable-inputs"
@@ -205,6 +211,187 @@ def capture_formal_inputs(payload, run_dir):
     environment=dict(launch["environment"]); environment["PYTHONPATH"]=str(root/"src")
     return launch["command"], environment, launch["cuda_visible_devices"]
 
+
+def capture_formal_bundle_inputs(payload, run_dir):
+    """Snapshot all four admitted members before the bundle process starts."""
+    root=Path(run_dir)/"immutable-inputs"; bundle=Path(payload["bundle_config"])
+    ensure_formal_directory(payload, root.parent, "formal bundle capture parent")
+    repo=Path(__file__).resolve().parents[1]
+    def captured_command():
+        command=list(payload["command"])
+        command[1]=str(root/"scripts"/"nc_rted_interleaved_formal.py")
+        command[command.index("--bundle")+1]=str(root/"bundle.json")
+        command[command.index("--captured-root")+1]=str(root)
+        return command
+    def closure():
+        try:
+            document=json.loads(bundle.read_text())
+            if hashlib.sha256(bundle.read_bytes()).hexdigest()!=payload["bundle_config_sha256"]: raise ValueError
+            source_manifest=Path(document["source_manifest"]); source_map=Path(document["captured_source_map"]["path"])
+            if (hashlib.sha256(source_manifest.read_bytes()).hexdigest()!=document["source_manifest_sha256"] or
+                    hashlib.sha256(source_map.read_bytes()).hexdigest()!=document["captured_source_map"]["sha256"]): raise ValueError
+            source_document=json.loads(source_manifest.read_text()); source_map_document=json.loads(source_map.read_text())
+            files=source_document["files"]; mapped=source_map_document["files"]; members=document["members"]
+            if (not isinstance(files,dict) or not isinstance(mapped,dict) or
+                    not isinstance(members,dict) or set(members)!={"A","U","S","F"}): raise ValueError
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise QueueError("formal bundle inputs changed before capture") from error
+        copies={Path("bundle.json"):bundle, Path("bundle-source-manifest.json"):source_manifest,
+                Path("source-map.json"):source_map}
+        def add(relative, source):
+            if (not isinstance(relative,Path) or relative.is_absolute() or ".." in relative.parts or
+                    not source.is_file()): raise QueueError("formal bundle capture path is invalid")
+            previous=copies.get(relative)
+            if previous is not None and previous.resolve() != source.resolve():
+                raise QueueError("formal bundle capture has colliding source destinations")
+            copies[relative]=source
+        for relative,digest in files.items():
+            source=repo/relative
+            if (not isinstance(relative,str) or not isinstance(digest,str) or len(digest)!=64 or
+                    not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest()!=digest):
+                raise QueueError("formal bundle source differs before capture")
+            add(Path(relative), source)
+        for original,relative in mapped.items():
+            source=Path(original)
+            if (not isinstance(original,str) or not isinstance(relative,str) or not source.is_file()):
+                raise QueueError("formal bundle captured source map differs")
+            add(Path(relative), source)
+        runtimes=[]
+        for group in ("A","U","S","F"):
+            item=members[group]; runtime_path=Path(item.get("runtime", "")); admission_path=Path(item.get("admission", ""))
+            if (set(item)!={"runtime","runtime_sha256","admission","admission_sha256"} or
+                    not runtime_path.is_file() or not admission_path.is_file() or
+                    hashlib.sha256(runtime_path.read_bytes()).hexdigest()!=item["runtime_sha256"] or
+                    hashlib.sha256(admission_path.read_bytes()).hexdigest()!=item["admission_sha256"]):
+                raise QueueError("formal bundle member changed before capture")
+            try:
+                admission=json.loads(admission_path.read_text()); expected=admission["source_files"]
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                raise QueueError("formal bundle admission is invalid before capture") from error
+            if not isinstance(expected,dict) or expected != {name: hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in mapped}:
+                raise QueueError("formal bundle admission differs from captured source map")
+            add(Path("members")/group/"runtime.json", runtime_path)
+            add(Path("members")/group/"admission.json", admission_path)
+            runtimes.append(json.loads(runtime_path.read_text()))
+        try:
+            inherited=runtimes[0]["inherited"]; stage2=runtimes[0]["stage2_cache"]; binding=source_map_document["runtime"]
+            inherited_manifest=Path(inherited["source_manifest"]); external=Path(inherited["external_root"]); stage_module=Path(stage2["module"])
+            inherited_files=json.loads(inherited_manifest.read_text())["files"]
+            if (not isinstance(inherited_files,dict) or
+                    hashlib.sha256(inherited_manifest.read_bytes()).hexdigest()!=inherited["source_manifest_sha256"] or
+                    not stage_module.is_file() or hashlib.sha256(stage_module.read_bytes()).hexdigest()!=stage2["module_sha256"]): raise ValueError
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise QueueError("formal bundle runtime source closure changed before capture") from error
+        for runtime in runtimes[1:]:
+            if runtime.get("inherited") != inherited or runtime.get("stage2_cache") != stage2:
+                raise QueueError("formal bundle members do not share one runtime source closure")
+        add(Path(binding["inherited_source_manifest"]), inherited_manifest)
+        add(Path(binding["stage2_module"]), stage_module)
+        for relative,digest in inherited_files.items():
+            source=external/relative
+            if (not isinstance(relative,str) or not isinstance(digest,str) or len(digest)!=64 or
+                    not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest()!=digest):
+                raise QueueError("formal bundle inherited source differs before capture")
+            add(Path(binding["inherited_external_root"])/relative, source)
+        return document, copies
+    def verify_capture(sealed=True):
+        if not root.is_dir(): raise QueueError("immutable formal bundle input path is not a directory")
+        copied_bundle=root/"bundle.json"
+        try:
+            document=json.loads(copied_bundle.read_text())
+            if hashlib.sha256(copied_bundle.read_bytes()).hexdigest()!=payload["bundle_config_sha256"]: raise ValueError
+            source_manifest=root/"bundle-source-manifest.json"; source_map=root/"source-map.json"
+            if (hashlib.sha256(source_manifest.read_bytes()).hexdigest()!=document["source_manifest_sha256"] or
+                    hashlib.sha256(source_map.read_bytes()).hexdigest()!=document["captured_source_map"]["sha256"]): raise ValueError
+            source_document=json.loads(source_manifest.read_text()); source_map_document=json.loads(source_map.read_text())
+            files=source_document["files"]; mapped=source_map_document["files"]; members=document["members"]
+            if not isinstance(files,dict) or not isinstance(mapped,dict) or set(members)!={"A","U","S","F"}: raise ValueError
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise QueueError("captured formal bundle closure is invalid") from error
+        allowed={Path("bundle.json"),Path("bundle-source-manifest.json"),Path("source-map.json"),Path("launch-contract.json")}
+        for relative,digest in files.items():
+            candidate=root/relative
+            if (not isinstance(relative,str) or not isinstance(digest,str) or Path(relative).is_absolute() or ".." in Path(relative).parts or
+                    not candidate.is_file() or hashlib.sha256(candidate.read_bytes()).hexdigest()!=digest): raise QueueError("captured formal bundle source differs")
+            allowed.add(Path(relative))
+        runtimes=[]
+        for group in ("A","U","S","F"):
+            item=members[group]; member=root/"members"/group
+            runtime=member/"runtime.json"; admission=member/"admission.json"
+            if (not runtime.is_file() or not admission.is_file() or
+                    hashlib.sha256(runtime.read_bytes()).hexdigest()!=item.get("runtime_sha256") or
+                    hashlib.sha256(admission.read_bytes()).hexdigest()!=item.get("admission_sha256")): raise QueueError("captured formal bundle member differs")
+            try: expected=json.loads(admission.read_text())["source_files"]
+            except (OSError, ValueError, KeyError, TypeError) as error: raise QueueError("captured formal bundle admission is invalid") from error
+            if expected != {name: hashlib.sha256((root/relative).read_bytes()).hexdigest() for name,relative in mapped.items()}:
+                raise QueueError("captured formal bundle source map differs from admission")
+            allowed.update({Path("members")/group/"runtime.json",Path("members")/group/"admission.json"})
+            runtimes.append(json.loads(runtime.read_text()))
+        try:
+            inherited=runtimes[0]["inherited"]; stage2=runtimes[0]["stage2_cache"]; binding=source_map_document["runtime"]
+            manifest=root/binding["inherited_source_manifest"]; runtime_files=json.loads(manifest.read_text())["files"]
+            if (not isinstance(runtime_files,dict) or hashlib.sha256(manifest.read_bytes()).hexdigest()!=inherited["source_manifest_sha256"] or
+                    hashlib.sha256((root/binding["stage2_module"]).read_bytes()).hexdigest()!=stage2["module_sha256"]): raise ValueError
+            for runtime in runtimes[1:]:
+                if runtime.get("inherited")!=inherited or runtime.get("stage2_cache")!=stage2: raise ValueError
+            for relative,digest in runtime_files.items():
+                candidate=root/binding["inherited_external_root"]/relative
+                if (not isinstance(relative,str) or not isinstance(digest,str) or Path(relative).is_absolute() or ".." in Path(relative).parts or
+                        not candidate.is_file() or hashlib.sha256(candidate.read_bytes()).hexdigest()!=digest): raise ValueError
+                allowed.add(Path(binding["inherited_external_root"])/relative)
+            allowed.update({Path(binding["inherited_source_manifest"]),Path(binding["stage2_module"])})
+            launch=json.loads((root/"launch-contract.json").read_text())
+            if (launch != {"schema":"nc_rted_captured_bundle_launch/v1","command":captured_command(),
+                           "environment":payload["execution_environment"],"cuda_visible_devices":launch.get("cuda_visible_devices")} or
+                    not isinstance(launch["cuda_visible_devices"],str) or not launch["cuda_visible_devices"]): raise ValueError
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise QueueError("captured formal bundle runtime or launch contract is invalid") from error
+        for candidate in root.rglob("*"):
+            relative=candidate.relative_to(root)
+            if "__pycache__" in relative.parts or candidate.suffix in {".pyc",".pyo"} or (candidate.is_file() and relative not in allowed):
+                raise QueueError("captured formal bundle closure contains an unadmitted file")
+            if sealed and candidate.stat().st_mode & 0o222: raise QueueError("captured formal bundle closure is writable")
+        if sealed and root.stat().st_mode & 0o222: raise QueueError("captured formal bundle root is writable")
+    if root.exists():
+        verify_capture()
+        try: _sync_capture_tree(root)
+        except OSError as error: raise QueueError("cannot durably recover immutable formal bundle inputs") from error
+    else:
+        try:
+            _document, copies=closure()
+        except OSError as error:
+            raise QueueError("cannot inspect formal bundle inputs") from error
+        reserve=int(payload.get("min_free_bytes", 0))
+        if reserve <= 0: raise QueueError("formal bundle capture lacks a disk reserve")
+        try:
+            _, attestation=__import__("nc_rted.resource_attestation", fromlist=["_bound_file"])._bound_file(payload["resource_attestation"],payload["resource_attestation_sha256"],"formal bundle resource attestation")
+            execution=attestation["execution"]
+            if execution.get("environment") != payload["execution_environment"]: raise ValueError
+            launch_bytes=json.dumps({"schema":"nc_rted_captured_bundle_launch/v1","command":captured_command(),
+                                     "environment":payload["execution_environment"],"cuda_visible_devices":execution["gpu_uuid"]},
+                                    sort_keys=True,separators=(",", ":")).encode()
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise QueueError("cannot bind captured formal bundle launch contract") from error
+        with allocation_lock(root.parent):
+            ensure_directory(root.parent, reserve)
+            block=max(4096, os.statvfs(root.parent).f_frsize)
+            directories={root}
+            for relative in copies: directories.update((root/relative).parents)
+            # Every destination consumes an allocation, even when two capture paths share a source.
+            required=capture_allocation_bytes(copies, len(directories), launch_bytes, block)
+            if shutil.disk_usage(root.parent).free < reserve + required:
+                raise QueueError("formal bundle capture would violate the admitted disk reserve")
+            root.mkdir()
+            for relative,source in copies.items():
+                target=root/relative; target.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(source,target)
+            (root/"launch-contract.json").write_bytes(launch_bytes)
+            verify_capture(sealed=False)
+            _sync_capture_tree(root); _seal_capture_tree(root)
+            verify_capture()
+    launch=json.loads((root/"launch-contract.json").read_text())
+    environment=dict(launch["environment"]); environment["PYTHONPATH"]=str(root/"src")
+    return launch["command"],environment,launch["cuda_visible_devices"]
+
 def controller_may_live(owner):
     """Default owners include host:pid; do not steal from a live controller."""
     try:
@@ -287,6 +474,40 @@ def observe_progress(queue, job, path, owner=None):
                     not isinstance(expected,dict) or artifact_document.get("identity") != expected or not payload.is_file() or payload.resolve() == Path(path).resolve() or artifact_document.get("payload_bytes") != payload.stat().st_size or artifact_document.get("payload_sha256") != hashlib.sha256(payload.read_bytes()).hexdigest()): raise ValueError
             from nc_rted.recovery import validate_checkpoint_payload
             validate_checkpoint_payload(payload, artifact_document)
+        elif transaction == "formal_bundle":
+            payload=json.loads(job["payload"])
+            boundary=Path(artifact_document.get("bundle_checkpoint", ""))
+            digest=artifact_document.get("bundle_checkpoint_sha256")
+            identities=payload.get("member_identities")
+            if (artifact_document.get("schema") != "nc_rted_formal_bundle_progress/v1" or
+                    artifact_document.get("member_identities") != identities or
+                    artifact_document.get("counter") != counter or not boundary.is_file() or
+                    not isinstance(digest,str) or hashlib.sha256(boundary.read_bytes()).hexdigest() != digest): raise ValueError
+            expected_boundary=(Path(payload["bundle_checkpoint_root"])/"commits"/
+                               ("final.json" if counter == 1000 else f"update_{counter:06d}.json"))
+            if boundary.is_symlink() or boundary.resolve() != expected_boundary.resolve(): raise ValueError
+            boundary_document=json.loads(boundary.read_text())
+            if (boundary_document.get("schema") != "nc_rted_bundle_checkpoint_v1" or
+                    boundary_document.get("completed_updates") != counter or
+                    boundary_document.get("members") != identities or
+                    set(boundary_document.get("checkpoints", {})) != {"A", "U", "S", "F"}): raise ValueError
+            roots=payload.get("checkpoint_roots")
+            if not isinstance(roots,list) or len(roots)!=4: raise ValueError
+            from nc_rted.recovery import validate_checkpoint_payload
+            for group,checkpoint_root in zip(("A","U","S","F"),roots):
+                record=boundary_document["checkpoints"][group]
+                directory=record.get("directory") if isinstance(record,dict) else None
+                manifest=Path(checkpoint_root)/str(directory)/"manifest.json"
+                state=manifest.parent/"state.pt"
+                if (directory not in ({"final"} if counter == 1000 else {f"update_{counter:06d}"}) or
+                        manifest.is_symlink() or state.is_symlink() or not manifest.is_file() or not state.is_file() or
+                        record.get("manifest_sha256") != hashlib.sha256(manifest.read_bytes()).hexdigest()): raise ValueError
+                manifest_document=json.loads(manifest.read_text())
+                if (manifest_document.get("identity") != identities[group] or
+                        manifest_document.get("completed_updates") != counter or
+                        manifest_document.get("final") != (counter == 1000)):
+                    raise ValueError
+                validate_checkpoint_payload(state, manifest_document)
         elif transaction == "media":
             ids=artifact_document.get("committed_ids")
             results=artifact_document.get("results")
@@ -343,7 +564,7 @@ def ensure_formal_directory(payload, path, label):
 def ensure_attempt_directory(payload, job):
     """Create a formal attempt only through non-symlink components on its volume."""
     path=attempt_directory(payload,job)
-    if job.get("kind") != "formal_train":
+    if job.get("kind") not in {"formal_train", "formal_bundle"}:
         path.mkdir(parents=True,exist_ok=True); return path
     return ensure_formal_directory(payload,path,"formal attempt path")
 
@@ -356,13 +577,36 @@ def ensure_checkpoint_directory(payload):
     if final.exists(): ensure_formal_directory(payload,final,"formal checkpoint path")
     return root
 
+
+def ensure_bundle_checkpoint_directories(payload):
+    """Prepare the four independent roots and their common commit root."""
+    roots=payload.get("checkpoint_roots"); common=payload.get("bundle_checkpoint_root")
+    if not isinstance(roots,list) or len(roots)!=4 or not isinstance(common,str):
+        raise QueueError("formal bundle checkpoint destinations are incomplete")
+    canonical=[ensure_formal_directory(payload,Path(value),"formal bundle member checkpoint root") for value in roots]
+    canonical.append(ensure_formal_directory(payload,Path(common),"formal bundle checkpoint root"))
+    if len(set(canonical)) != len(canonical) or any(path in other.parents or other in path.parents for index,path in enumerate(canonical) for other in canonical[index+1:]):
+        raise QueueError("formal bundle checkpoint destinations overlap")
+    for root in canonical[:4]:
+        final=root/"final"
+        if final.exists(): ensure_formal_directory(payload,final,"formal bundle checkpoint path")
+    if not isinstance(payload.get("progress_path"),str):
+        raise QueueError("formal bundle progress destination is incomplete")
+    progress=Path(payload["progress_path"])
+    ensure_formal_directory(payload,progress.parent,"formal bundle progress parent")
+    if progress.exists() and progress.is_symlink():
+        raise QueueError("formal bundle progress path is a symlink")
+    return canonical
+
 def output_records(payload, job):
     root=attempt_directory(payload,job).resolve(); records=[]
     for expected in payload["expected_outputs"]:
         try: raw=Path(expected["path"])
         except (OSError, TypeError) as exc: raise PublicationUncertain("cannot resolve declared output path") from exc
-        checkpoint=Path(payload.get("checkpoint_root", "/invalid")) / "final" / "manifest.json"
-        if raw.is_absolute() and not (job.get("kind") == "formal_train" and raw.resolve() == checkpoint.resolve()):
+        is_formal_checkpoint = (job.get("kind") in {"formal_train", "formal_bundle"} and
+                                expected.get("artifact_type") == "checkpoint" and
+                                expected.get("semantic") == "formal_training")
+        if raw.is_absolute() and not is_formal_checkpoint:
             raise ConclusiveOutputFailure("attempt outputs must use relative paths")
         try:
             artifact=raw.resolve() if raw.is_absolute() else (root/raw).resolve()
@@ -384,6 +628,7 @@ def output_records(payload, job):
 def sync_attempt_publication(run_dir, records, completion, checkpoint_root=None):
     """Durably retain all declared files and their ancestry before SQL success."""
     root=Path(run_dir).resolve()
+    checkpoint_roots=[Path(value).resolve() for value in (() if checkpoint_root is None else checkpoint_root if isinstance(checkpoint_root,(list,tuple)) else (checkpoint_root,))]
     paths=[Path(record["path"]) for record in records] + [Path(completion)]
     for path in paths:
         with path.open("rb") as handle: os.fsync(handle.fileno())
@@ -392,8 +637,8 @@ def sync_attempt_publication(run_dir, records, completion, checkpoint_root=None)
             descriptor=os.open(parent,os.O_DIRECTORY)
             try: os.fsync(descriptor)
             finally: os.close(descriptor)
-            if parent == root or (checkpoint_root is not None and parent == Path(checkpoint_root).resolve()): break
-            if root not in parent.parents and (checkpoint_root is None or Path(checkpoint_root).resolve() not in parent.parents): raise QueueError("publication path escaped admitted roots")
+            if parent == root or parent in checkpoint_roots: break
+            if root not in parent.parents and not any(candidate in parent.parents for candidate in checkpoint_roots): raise QueueError("publication path escaped admitted roots")
             parent=parent.parent
     # Make the attempt directory itself reachable from its job/run parents.
     parent=root.parent
@@ -415,6 +660,8 @@ def commit_outputs(queue, job, payload, owner=None):
                 outputs[0].get("semantic") != "formal_training" or outputs[0].get("run_identity") != payload.get("run_identity")):
             raise ConclusiveOutputFailure("formal training lacks the admitted final checkpoint contract")
         ensure_checkpoint_directory(payload)
+    if job.get("kind") == "formal_bundle":
+        ensure_bundle_checkpoint_directories(payload)
     run_dir=ensure_attempt_directory(payload, job)
     try: run_dir.mkdir(parents=True,exist_ok=True)
     except OSError as exc: raise PublicationUncertain("cannot create attempt publication directory") from exc
@@ -429,7 +676,7 @@ def commit_outputs(queue, job, payload, owner=None):
     if (produced.get("job_key") != job["job_key"] or produced.get("lease_token") != job["lease_token"] or
             produced.get("input_hash") != job.get("input_hash") or produced.get("artifacts") != records):
         raise ConclusiveOutputFailure("producer completion does not bind this attempt and inputs")
-    if job.get("kind") == "formal_train":
+    if job.get("kind") in {"formal_train", "formal_bundle"}:
         queue.completion_guard(job["job_key"],job["lease_token"])
     try:
         with completion.open("rb") as handle: os.fsync(handle.fileno())
@@ -442,7 +689,9 @@ def commit_outputs(queue, job, payload, owner=None):
             if state.is_file():
                 try: payload_records.append({"path":str(state),"checksum":hashlib.sha256(state.read_bytes()).hexdigest()})
                 except OSError as exc: raise PublicationUncertain("cannot read checkpoint payload for publication") from exc
-    try: sync_attempt_publication(run_dir, payload_records, completion, payload.get("checkpoint_root") if job.get("kind") == "formal_train" else None)
+    checkpoint_roots = (payload.get("checkpoint_root") if job.get("kind") == "formal_train" else
+                        payload.get("checkpoint_roots") if job.get("kind") == "formal_bundle" else None)
+    try: sync_attempt_publication(run_dir, payload_records, completion, checkpoint_roots)
     except OSError as exc: raise PublicationUncertain("cannot durably sync attempt publication") from exc
     durable = temporary if temporary.exists() else final if final.exists() else None
     if durable is not None:
@@ -526,7 +775,7 @@ def adopt_live(queue, owner):
                 (state == "live" and process_starttime(job["pid"]) != leader_before) or
                 (state == "group_live" and not set(current.items()) <= set(known.items()))): lock.close(); continue
         known.update(current)
-        if job.get("kind") == "formal_train":
+        if job.get("kind") in {"formal_train", "formal_bundle"}:
             candidates=([job["pid"]] if state == "live" else list(current))
             inherited_lock=False
             for pid in candidates:
@@ -635,7 +884,7 @@ def worker(queue, owner, once):
                 if once: return 1
                 continue
             process.lock.close()
-            if job.get("kind") == "formal_train" and group_state(process.pid) == "gone":
+            if job.get("kind") in {"formal_train", "formal_bundle"} and group_state(process.pid) == "gone":
                 try: queue.record_terminal_evidence(job["job_key"],job["lease_token"],process.pid,job["process_starttime"])
                 except (QueueError, HardLimit):
                     return 1
@@ -652,6 +901,7 @@ def worker(queue, owner, once):
         if "run_dir" not in payload: raise QueueError("worker payload requires data-volume run_dir")
         run_dir = ensure_attempt_directory(payload, job)
         if job.get("kind") == "formal_train": ensure_checkpoint_directory(payload)
+        if job.get("kind") == "formal_bundle": ensure_bundle_checkpoint_directories(payload)
         temporary = run_dir / "result.tmp"; final = run_dir / "result.json"
         process = None; supervisor = None; journal_path = run_dir / f"attempt-{job['attempts']}.json"
         try:
@@ -668,10 +918,12 @@ def worker(queue, owner, once):
                 queue.launch_guard(job["job_key"], job["lease_token"], lock_handle)
                 if job.get("kind") == "formal_train":
                     command, captured_environment, cuda_device=capture_formal_inputs(payload, run_dir)
+                elif job.get("kind") == "formal_bundle":
+                    command, captured_environment, cuda_device=capture_formal_bundle_inputs(payload, run_dir)
                 # This durable intent closes the crash window before Popen. A
                 # restarted worker protects it rather than risking a duplicate.
                 queue.start_attempt_journal(job["job_key"], job["lease_token"], None, None, str(payload.get("physical_gpu")), journal_path, state="LAUNCHING")
-                if job.get("kind") == "formal_train":
+                if job.get("kind") in {"formal_train", "formal_bundle"}:
                     environment=captured_environment
                 else:
                     environment=dict(os.environ)
@@ -679,6 +931,9 @@ def worker(queue, owner, once):
                 environment["CUDA_VISIBLE_DEVICES"]=cuda_device
                 environment["NC_RTED_PRODUCER_COMPLETION"]=str(run_dir / "producer_completion.json")
                 environment["NC_RTED_JOB_KEY"]=job["job_key"]; environment["NC_RTED_LEASE_TOKEN"]=job["lease_token"]; environment["NC_RTED_INPUT_HASH"]=job["input_hash"]
+                if job.get("kind") == "formal_bundle":
+                    environment["NC_RTED_PROGRESS_ROOT"]=str(run_dir)
+                    environment["NC_RTED_PROGRESS_PATH"]=payload["progress_path"]
                 process = subprocess.Popen(command, cwd=run_dir, start_new_session=True, env=environment, pass_fds=(() if lock_handle is None else (lock_handle.fileno(),)))
                 starttime=process_starttime(process.pid)
                 if starttime is None: raise RuntimeError("child PID disappeared before identity capture")
@@ -692,7 +947,7 @@ def worker(queue, owner, once):
                 state=group_state(process.pid)
                 if state != "gone":
                     raise QueueError("process group remains live" if state == "live" else "process group observation unknown")
-                if job.get("kind") == "formal_train":
+                if job.get("kind") in {"formal_train", "formal_bundle"}:
                     queue.record_terminal_evidence(job["job_key"],job["lease_token"],process.pid,job["process_starttime"])
                 commit_outputs(queue,job,payload,owner)
         except Exception as exc:

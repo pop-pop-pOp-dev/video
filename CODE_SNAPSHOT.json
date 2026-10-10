@@ -1,27 +1,53 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "snapshot_format": 27,
-  "created_at": "2026-10-10T13:14:27.991445+00:00",
-  "source_commit": "0e586a7e2fd0bd3503fcf97e8824bd7cc0391b0c",
-  "source_base_commit": "8f35ff10961699fce8660979c9d8de500f5f5f82",
+  "snapshot_format": 28,
+  "created_at": "2026-10-10T14:32:35.755116+00:00",
+  "source_commit": "48b6f4a4c9643fd1d471c99c14de78a1572fd106",
+  "source_base_commit": "0e586a7e2fd0bd3503fcf97e8824bd7cc0391b0c",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
-  "previous_published_commit": "09e3cc5ea08a01a28b15d13df7bb88d64936be53",
+  "previous_published_commit": "4a36cc87d82a267604461f477862c7f010323eed",
   "source_whitelist": {
-    "previous_snapshot_manifest_sha256": "2b2ed5c38e492f8edd1c07ed2024a058b1b507a7d8a6b7bae5def08d5889f478",
-    "accepted_xd_output_head_delta_paths": [
-      "src/nc_rted/prediction_adapters.py",
-      "tests/test_nc_rted_prediction.py"
+    "previous_snapshot_manifest_sha256": "8b1ece234fd5ffe1939eca9bbfd8d49d9c91db40a6d2e45548c322c5808ab19d",
+    "accepted_code03b_paths": [
+      "scripts/nc_rted_interleaved_formal.py",
+      "scripts/nc_rted_queue.py",
+      "src/nc_rted/formal_bundle.py",
+      "src/nc_rted/interleaved_training.py",
+      "src/nc_rted/queue.py",
+      "src/nc_rted/resource_attestation.py",
+      "src/nc_rted/worker_runtime.py",
+      "tests/test_nc_rted_interleaved_training.py",
+      "tests/test_nc_rted_queue.py"
     ],
-    "new_files": []
+    "accepted_residency_paths": [
+      "src/nc_rted/prediction_adapters.py",
+      "src/nc_rted/prediction_runtime.py"
+    ],
+    "excluded_paths": [
+      "scripts/nc_rted_vau_fast_residency_equivalence_probe.py"
+    ],
+    "new_files": [
+      "scripts/nc_rted_interleaved_formal.py",
+      "src/nc_rted/formal_bundle.py"
+    ]
   },
   "validation": {
     "full_suite_repeated": false,
     "secrets_scan": {
       "status": "PASS",
       "scoped_paths": [
+        "scripts/nc_rted_interleaved_formal.py",
+        "scripts/nc_rted_queue.py",
+        "src/nc_rted/formal_bundle.py",
+        "src/nc_rted/interleaved_training.py",
+        "src/nc_rted/queue.py",
+        "src/nc_rted/resource_attestation.py",
+        "src/nc_rted/worker_runtime.py",
+        "tests/test_nc_rted_interleaved_training.py",
+        "tests/test_nc_rted_queue.py",
         "src/nc_rted/prediction_adapters.py",
-        "tests/test_nc_rted_prediction.py"
+        "src/nc_rted/prediction_runtime.py"
       ]
     },
     "accepted_evidence": [
@@ -179,16 +205,40 @@
         "path": "reports/nc_rted/r0_gpu1_xd_mid_runtime_acceptance_v2.json",
         "sha256": "746af5c8147eba756b2d032b5ca8417f8d619969c8c89b79bc4c4cf7a4d694db",
         "required_status": "PASS_FIXED_REPRESENTATIVE_MEASUREMENT"
+      },
+      {
+        "path": "reports/nc_rted/formal_bundle_native_review_v3.json",
+        "sha256": "c03aa681ab551fa40e61dcff2926df396e04eb8a093a7dab616116df8616fedd",
+        "required_status": "PASS_STATIC_CPU_INTEGRATION"
+      },
+      {
+        "path": "reports/nc_rted/code03b_release28_integration_v1.json",
+        "sha256": "3e2ffd61278326b1435dc42f240e5f1b9b366b7739f3802aabddd9e4cb55aefa",
+        "required_status": "PASS_STATIC_CPU_INTEGRATION_NOT_ADMITTED_FOR_FORMAL_EXECUTION"
+      },
+      {
+        "path": "reports/nc_rted/vau_batch32_residency_native_review_v3.json",
+        "sha256": "29d659d9bf721501f473d97a20d130b62c737e91715c1fb7cc84f156964b1b47",
+        "required_status": "PASS_STATIC_GPU_RESIDENCY_GATE_REQUIRED"
       }
     ],
     "accepted_source_coverage": {
-      "source_commit": "0e586a7e2fd0bd3503fcf97e8824bd7cc0391b0c",
+      "source_commit": "48b6f4a4c9643fd1d471c99c14de78a1572fd106",
       "delta": [
+        "scripts/nc_rted_interleaved_formal.py",
+        "scripts/nc_rted_queue.py",
+        "src/nc_rted/formal_bundle.py",
+        "src/nc_rted/interleaved_training.py",
+        "src/nc_rted/queue.py",
+        "src/nc_rted/resource_attestation.py",
+        "src/nc_rted/worker_runtime.py",
+        "tests/test_nc_rted_interleaved_training.py",
+        "tests/test_nc_rted_queue.py",
         "src/nc_rted/prediction_adapters.py",
-        "tests/test_nc_rted_prediction.py"
+        "src/nc_rted/prediction_runtime.py"
       ],
-      "new_files": [],
-      "missing": []
+      "missing": [],
+      "physical_batch_one_included": false
     },
     "publication_ancestry_correction": "Snapshot26 derives from verified snapshot25/publication22 a9cd640; earlier manifests preserved."
   },
@@ -812,6 +862,12 @@
       "origin": "release18"
     },
     {
+      "path": "scripts/nc_rted_interleaved_formal.py",
+      "sha256": "24597c1ab7fed6f0faf6fdfe950427641bd6d27dadefca7f930431f583a56a71",
+      "bytes": 16429,
+      "origin": "source29"
+    },
+    {
       "path": "scripts/nc_rted_interleaved_gpu_diagnostic.py",
       "sha256": "5097269eafb65b883cf37f8c81ba5c581c994c7a16813cf85acd179b76779da1",
       "bytes": 21135,
@@ -849,9 +905,9 @@
     },
     {
       "path": "scripts/nc_rted_queue.py",
-      "sha256": "20e308c4125d36086eeed1b22650d97e3c4b014fb66c2d6526b69efcb133952c",
-      "bytes": 51382,
-      "origin": "release18"
+      "sha256": "467a497451cbf56ae99d3b86d4dfc8447b293300679e8938bc49ff0b070ad10a",
+      "bytes": 71050,
+      "origin": "source29"
     },
     {
       "path": "scripts/nc_rted_refresh_r0_source_bindings.py",
@@ -956,6 +1012,12 @@
       "origin": "release18"
     },
     {
+      "path": "src/nc_rted/formal_bundle.py",
+      "sha256": "f0cc6fcf83e94df22389c09bfb88110c2a5b7a240ef2799e06b21f7c6f2a0811",
+      "bytes": 4360,
+      "origin": "source29"
+    },
+    {
       "path": "src/nc_rted/frozen_vision.py",
       "sha256": "2b3cf346aa89b419fec6d870cdda5eebba9e4b75e91ec1c23fbcaafec2a14ee7",
       "bytes": 10507,
@@ -969,9 +1031,9 @@
     },
     {
       "path": "src/nc_rted/interleaved_training.py",
-      "sha256": "8499d6cd3d7b2f0c0f2a105cf1457ef263780455b470f35faa6af2ecd960e7cd",
-      "bytes": 15833,
-      "origin": "release18"
+      "sha256": "27307a73519fdfb65e14361fe2a0b955d37b51510d25d4c4742a347fa038f6ec",
+      "bytes": 16151,
+      "origin": "source29"
     },
     {
       "path": "src/nc_rted/loading.py",
@@ -1029,9 +1091,9 @@
     },
     {
       "path": "src/nc_rted/prediction_adapters.py",
-      "sha256": "9d7b71f25aee029861b60b47c8b2e8cb149c794df41e9f484d5f7caa250c635d",
-      "bytes": 17642,
-      "origin": "source26_release26"
+      "sha256": "97ac4f5bba0069f61d3fed211596c66ba5c43f46669e41e7648b6d25ad05a79b",
+      "bytes": 18337,
+      "origin": "source29"
     },
     {
       "path": "src/nc_rted/prediction_inputs.py",
@@ -1047,9 +1109,9 @@
     },
     {
       "path": "src/nc_rted/prediction_runtime.py",
-      "sha256": "08c1fdff34d2f4a64d25c7ea42c6ba2541326ea7f2b41316cff5cae1d811803a",
-      "bytes": 33404,
-      "origin": "accepted_release25"
+      "sha256": "e261767602fe99a0977021d598830f2fe7a73388994e913812e042edf0b5e0f5",
+      "bytes": 40506,
+      "origin": "source29"
     },
     {
       "path": "src/nc_rted/prediction_store.py",
@@ -1071,9 +1133,9 @@
     },
     {
       "path": "src/nc_rted/queue.py",
-      "sha256": "65cc5ac41cf616dcbffa42e9dd07bbd9bbb00156a9c5634169c316015e9193d0",
-      "bytes": 46965,
-      "origin": "release18"
+      "sha256": "43575920dc0037f90d837ae57dc91076a7c60148869ba5fddac88f88acf7e3d2",
+      "bytes": 49398,
+      "origin": "source29"
     },
     {
       "path": "src/nc_rted/recovery.py",
@@ -1083,9 +1145,9 @@
     },
     {
       "path": "src/nc_rted/resource_attestation.py",
-      "sha256": "52c971b2b4d7d8926653a8f8cb1f94e67ffe2bba998d66787118d507dd7de041",
-      "bytes": 27848,
-      "origin": "release18"
+      "sha256": "f6a625d3e163afeb02603c2eebe0afb7c089e451cf249468ac09746b786aa4a8",
+      "bytes": 40045,
+      "origin": "source29"
     },
     {
       "path": "src/nc_rted/retrieval.py",
@@ -1167,9 +1229,9 @@
     },
     {
       "path": "src/nc_rted/worker_runtime.py",
-      "sha256": "55b1e0c0bc180c998915b61b192349d69fac3afd1ad771ee3ac5ef744d567c2f",
-      "bytes": 6859,
-      "origin": "release18"
+      "sha256": "dd1aab0fcb6aa86971f5e77ae7cc3db7aa5e8073d9208ed0a01d22dfa8eeb21b",
+      "bytes": 7181,
+      "origin": "source29"
     },
     {
       "path": "tests/test_nc_rted_alignment.py",
@@ -1281,9 +1343,9 @@
     },
     {
       "path": "tests/test_nc_rted_interleaved_training.py",
-      "sha256": "d268d13af891e9c03f2747e75e597f472f34b36ac52d501b4829eab9055bab9d",
-      "bytes": 18299,
-      "origin": "release18"
+      "sha256": "e1ccca0969b60d8bc4c8b84a4630cb86854052477da70e858bca0750f2a406af",
+      "bytes": 19836,
+      "origin": "source29"
     },
     {
       "path": "tests/test_nc_rted_loading.py",
@@ -1371,9 +1433,9 @@
     },
     {
       "path": "tests/test_nc_rted_queue.py",
-      "sha256": "f7282e20f927caf173d2bccd73077c5515119e0d2f100c2e8aaa0838a3ec8fa9",
-      "bytes": 62244,
-      "origin": "release18"
+      "sha256": "f4a4d93971f0a4efa629e837707fedac467ffe7e85b9b96b15c6a718bbc88526",
+      "bytes": 91807,
+      "origin": "source29"
     },
     {
       "path": "tests/test_nc_rted_queue_lifecycle.py",

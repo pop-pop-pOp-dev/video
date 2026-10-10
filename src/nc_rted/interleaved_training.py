@@ -150,7 +150,8 @@ def clone_with_shared_frozen(baseline, frozen_parameters):
 class SameSeedBundleWorker:
     def __init__(self, bundles: Mapping[str, Bundle], frozen_provider: Callable[[str], Any], *,
                  bundle_checkpoint_root: str | Path | None = None,
-                 after_checkpoint_publication: Callable[[str, int, bool], None] | None = None):
+                 after_checkpoint_publication: Callable[[str, int, bool], None] | None = None,
+                 after_bundle_checkpoint: Callable[[int, bool, Path], None] | None = None):
         if set(bundles) != {"A", "U", "S", "F"}: raise ValueError("bundles must be A/U/S/F")
         self.bundles, self.frozen_provider = dict(bundles), frozen_provider
         reference = self.bundles["A"].trainer
@@ -184,6 +185,7 @@ class SameSeedBundleWorker:
                     for name, parameter in reference.items()):
                 raise ValueError("same-seed bundles need equal initial trainable values")
         self.after_checkpoint_publication = after_checkpoint_publication
+        self.after_bundle_checkpoint = after_bundle_checkpoint
         self.bundle_store = (BundleCheckpointStore(bundle_checkpoint_root, self.bundles)
                              if bundle_checkpoint_root is not None else None)
         if any(bundle.store is not None for bundle in self.bundles.values()) and self.bundle_store is None:
@@ -247,7 +249,10 @@ class SameSeedBundleWorker:
                     if self.after_checkpoint_publication: self.after_checkpoint_publication(group, trainer.completed_updates, final)
             if self.bundle_store and (self.bundles["A"].trainer.completed_updates % self.bundles["A"].trainer.recipe.save_interval == 0 or self.bundles["A"].trainer.completed_updates == self.bundles["A"].trainer.recipe.updates):
                 update = self.bundles["A"].trainer.completed_updates
-                self.bundle_store.commit(update, final=update == self.bundles["A"].trainer.recipe.updates)
+                final = update == self.bundles["A"].trainer.recipe.updates
+                boundary = self.bundle_store.commit(update, final=final)
+                if self.after_bundle_checkpoint:
+                    self.after_bundle_checkpoint(update, final, boundary)
             for group, report in reports.items():
                 if self.bundles[group].progress: self.bundles[group].progress(report)
             # Release the eight-sample working set before the provider starts

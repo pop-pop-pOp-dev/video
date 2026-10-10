@@ -14,12 +14,14 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
-from .resource_attestation import ResourceAttestationError, resource_lease_expiry, verify_attestation
+from .resource_attestation import (ResourceAttestationError, resource_lease_expiry,
+                                   verify_attestation, verify_bundle_attestation)
 from .worker_runtime import HeldGpuLock
 
 PENDING, RUNNING, RETRY_WAIT, SUCCEEDED, BLOCKED = "PENDING", "RUNNING", "RETRY_WAIT", "SUCCEEDED", "BLOCKED"
 RETRY_DELAYS = (300, 1200, 3600)
 FORMAL_GROUPS = ("A", "U", "S", "F")
+FORMAL_KINDS = {"formal_train", "formal_bundle"}
 SEEDS = (17, 42, 2026)
 FORMAL_DEADLINE = 1792724040  # 2026-10-23T02:54:00Z
 
@@ -203,6 +205,26 @@ class JobQueue:
                 verify_attestation(payload, row["job_key"], evidence)
             except (ResourceAttestationError, OSError, TypeError, ValueError) as error:
                 return f"formal resource attestation rejected: {error}"
+        if row["kind"] == "formal_bundle" and payload.get("command"):
+            entry = str((Path(__file__).resolve().parents[2] / "scripts" / "nc_rted_interleaved_formal.py"))
+            interpreter = payload.get("interpreter", {})
+            required = [interpreter.get("path"), entry, "--bundle", payload.get("bundle_config"),
+                        "--bundle-sha256", payload.get("bundle_config_sha256"), "--captured-root",
+                        "{queue_capture}", "--output", "bundle-report.json", "--resume", "auto"]
+            if payload.get("command") != required:
+                return "formal bundle command is not the fixed local bundle entrypoint"
+            outputs = payload.get("expected_outputs")
+            if (not isinstance(outputs, list) or len(outputs) != 5 or
+                    {item.get("artifact_type") for item in outputs} != {"checkpoint", "report"} or
+                    sum(item.get("semantic") == "formal_training" for item in outputs) != 4 or
+                    sum(item.get("semantic") == "formal_bundle" for item in outputs) != 1):
+                return "formal bundle requires four final checkpoints and one result contract"
+            evidence = {item["name"]: (item["path"], item["checksum"])
+                        for item in db.execute("SELECT name,path,checksum FROM evidence WHERE accepted=1")}
+            try:
+                verify_bundle_attestation(payload, row["job_key"], evidence)
+            except (ResourceAttestationError, OSError, TypeError, ValueError) as error:
+                return f"formal bundle resource attestation rejected: {error}"
         return None
 
     def claim(self, owner: str, lease_seconds=120):
@@ -331,13 +353,13 @@ class JobQueue:
             if not row:
                 raise LeaseLost(job_key)
             reservation=None
-            if row["kind"] == "formal_train":
+            if row["kind"] in FORMAL_KINDS:
                 reservation=db.execute("SELECT lease_id,host,physical_gpu,lock_device,lock_inode,authorized_end FROM reservations WHERE lease_token=? AND job_key=?", (token,job_key)).fetchone()
                 if reservation is None: raise QueueError("formal reservation is not bound to claimed attempt")
             failure = self._guard_failure(db, row)
             if failure:
                 raise QueueError(failure)
-            if row["kind"] == "formal_train":
+            if row["kind"] in FORMAL_KINDS:
                 if lock_handle in (None, False): raise QueueError("formal launch requires the held device lock")
                 try:
                     current=os.fstat(lock_handle.fileno())
@@ -347,7 +369,9 @@ class JobQueue:
                         canonical.st_dev != reservation["lock_device"] or canonical.st_ino != reservation["lock_inode"] or
                         not isinstance(lock_handle, HeldGpuLock) or not _fd_holds_flock(current, os.getpid(), lock_handle.fileno())):
                     raise QueueError("formal launch lost the bound device lock")
-                try: verify_attestation(json.loads(row["payload"]), job_key, {item["name"]:(item["path"],item["checksum"]) for item in db.execute("SELECT name,path,checksum FROM evidence WHERE accepted=1")}, dict(reservation))
+                try:
+                    verifier = verify_attestation if row["kind"] == "formal_train" else verify_bundle_attestation
+                    verifier(json.loads(row["payload"]), job_key, {item["name"]:(item["path"],item["checksum"]) for item in db.execute("SELECT name,path,checksum FROM evidence WHERE accepted=1")}, dict(reservation))
                 except (ResourceAttestationError, OSError, ValueError, TypeError) as error: raise QueueError(f"formal reservation rejected: {error}") from error
 
     def recovered_lock_guard(self, job_key, token, pid):
@@ -376,7 +400,7 @@ class JobQueue:
             row=db.execute("SELECT * FROM jobs WHERE job_key=? AND lease_token=? AND status=?",(job_key,token,RUNNING)).fetchone()
             if not row: raise LeaseLost(job_key)
             payload=json.loads(row["payload"])
-            if row["kind"] != "formal_train": return
+            if row["kind"] not in FORMAL_KINDS: return
             canonical_lock=_canonical_gpu_lock(payload)
             try:
                 expected_stat=canonical_lock.stat()
@@ -407,7 +431,7 @@ class JobQueue:
             except OSError as error: raise HardLimit("resource_integrity") from error
             attempt=db.execute("SELECT started_at FROM attempts WHERE job_id=? AND lease_token=?",(row["id"],token)).fetchone()
             if payload.get("run_budget_seconds") and attempt and now-attempt["started_at"] > payload["run_budget_seconds"]: raise HardLimit("budget")
-            if row["kind"] == "formal_train":
+            if row["kind"] in FORMAL_KINDS:
                 reservation=db.execute("SELECT authorized_end FROM reservations WHERE lease_token=? AND job_key=?",(token,job_key)).fetchone()
                 if reservation is None: raise HardLimit("resource_integrity")
                 if now >= reservation["authorized_end"]: raise HardLimit("rental_lease")
@@ -433,7 +457,7 @@ class JobQueue:
         with self.connect() as db:
             row=db.execute("SELECT * FROM jobs WHERE job_key=? AND lease_token=? AND status=?",(job_key,token,RUNNING)).fetchone()
             if not row: raise LeaseLost(job_key)
-            if row["kind"] != "formal_train": return
+            if row["kind"] not in FORMAL_KINDS: return
             reservation=db.execute("SELECT lease_id,host,physical_gpu,lock_device,lock_inode,authorized_end FROM reservations WHERE lease_token=? AND job_key=?",(token,job_key)).fetchone()
             if reservation is None: raise HardLimit("resource_integrity")
             payload=json.loads(row["payload"])
@@ -528,6 +552,13 @@ class JobQueue:
                         not isinstance(official, list) or not all(isinstance(item,str) and item for item in official) or len(set(official)) != len(official) or set(ids) != set(official) or
                         bindings[0] != bindings[2] or bindings[1] != bindings[3]):
                     raise QueueError("prediction artifact provenance/official-ID contract failed")
+            elif semantic == "formal_bundle":
+                if (document.get("status") != "FORMAL_BUNDLE_COMPLETE" or
+                        document.get("shared_material") != "frozen_provider_only" or
+                        document.get("members") != expected.get("member_identities") or
+                        document.get("bundle_checkpoint_root") != expected.get("bundle_checkpoint_root") or
+                        document.get("final_checkpoints") != expected.get("final_checkpoints")):
+                    raise QueueError("formal bundle result identity contract failed")
             elif semantic is not None: raise QueueError("unknown semantic artifact contract")
 
     def running_attempts(self):

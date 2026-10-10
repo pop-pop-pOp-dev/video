@@ -1,5 +1,6 @@
 import copy
 import importlib.util
+import json
 import random
 import weakref
 from pathlib import Path
@@ -103,6 +104,27 @@ def test_checkpointed_bundle_replay_matches_standalone_and_preserves_independent
         assert len({id(dict(resumed_models[g].named_parameters())[name]) for g in "AUSF"}) == 4
         assert len({id(resumed_trainers[g].master_parameters[name]) for g in "AUSF"}) == 4
     assert len({id(resumed_trainers[g].optimizer.state_dict()["state"][0]["exp_avg"]) for g in "AUSF"}) == 4
+
+
+def test_full_recipe_bundle_emits_only_common_1000_update_boundaries(tmp_path):
+    recipe = Recipe(updates=1000, accumulation=8, warmup=50, save_interval=500)
+    seed_run(17); baseline = Toy(); frozen = [p for p in baseline.parameters() if not p.requires_grad]
+    models = {group: clone_with_shared_frozen(baseline, frozen) for group in "AUSF"}
+    trainers = {group: IncrementalTrainer(models[group], [str(index) for index in range(8000)], 17, recipe)
+                for group in models}
+    stores = {group: CheckpointStore(tmp_path / group, _identity(group), min_free_bytes=0) for group in "AUSF"}
+    initial_rng = capture_rng(); boundaries = []
+    bundles = {group: Bundle(group, trainers[group],
+                             lambda sample_id, material, group=group: _loss(models[group], group, material),
+                             store=stores[group], rng=copy.deepcopy(initial_rng)) for group in "AUSF"}
+    worker = SameSeedBundleWorker(bundles, lambda _sample: torch.ones(1, 3),
+                                  bundle_checkpoint_root=tmp_path / "bundle",
+                                  after_bundle_checkpoint=lambda update, final, path:
+                                  boundaries.append((update, final, json.loads(path.read_text())["members"])))
+    worker.run()
+    assert [item[:2] for item in boundaries] == [(500, False), (1000, True)]
+    assert all(set(members) == set("AUSF") for _, _, members in boundaries)
+    assert {trainer.completed_updates for trainer in trainers.values()} == {1000}
 
 
 def test_gpu_diagnostic_requires_four_bound_runtime_members(tmp_path):

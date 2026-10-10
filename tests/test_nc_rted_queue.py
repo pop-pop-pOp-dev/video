@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -94,6 +95,262 @@ def formal_fixture(tmp_path, monkeypatch, *, real_probe=False):
     att={"schema":"nc_rted_formal_resource_attestation/v1","status":"PASS","binding":{"job_key":"formal",**{k:payload[k] for k in ("runtime_config","runtime_config_sha256","formal_admission","formal_admission_sha256","run_identity","frozen_source_sha256")},"execution_inputs":inputs},"execution":{"host":__import__("socket").gethostname(),"physical_gpu":0,"gpu_uuid":"GPU-valid","runtime":"runtime-v1","environment":environment,"interpreter":interpreter,"lease_id":"lease","lease_expires_utc_epoch":1792079990.0},"qualification":{"accepted_evidence_name":"qualification","path":str(qualification),"sha256":digest(qualification),"status":"PASS_GPU_KERNEL_AND_INHERITED_RUNTIME_IMPORTS"},"authorization":{"path":str(authorization),"sha256":digest(authorization)},"contract":{k:payload[k] for k in ("data_volume","min_free_bytes","run_budget_seconds","deadline_utc_epoch")}}
     attestation=tmp_path/"attestation.json"; attestation.write_text(json.dumps(att)); payload.update({"resource_attestation":str(attestation),"resource_attestation_sha256":digest(attestation)})
     return payload, qualification, runtime, admission, attestation, digest
+
+
+def bundle_fixture(tmp_path, monkeypatch):
+    """Four real formal manifests packaged for bundle-attestation tests."""
+    payload, qualification, runtime, admission, _attestation, digest = formal_fixture(tmp_path, monkeypatch)
+    base=json.loads(runtime.read_text()); source=payload["frozen_source_sha256"]
+    run_root=Path(payload["run_dir"]).parent/"bundle"; run_root.mkdir(parents=True,exist_ok=True)
+    members={}; identities={}
+    for group in "AUSF":
+        document=json.loads(json.dumps(base)); document["run"].update({"group":group,"run_id":f"bundle-{group}",
+            "checkpoint_root":str(run_root/"checkpoints"/group),"progress_path":str(run_root/f"{group}.progress.json")})
+        runtime_path=tmp_path/f"runtime-{group}.json"; runtime_path.write_text(json.dumps(document))
+        manifest=load_manifest(runtime_path,expected_sha256=digest(runtime_path)); identity=resource_attestation.formal_runtime_identity(manifest)
+        admission_path=tmp_path/f"admission-{group}.json"; admission_doc=json.loads(admission.read_text()); admission_doc["run_identity"]=identity
+        admission_path.write_text(json.dumps(admission_doc))
+        members[group]={"runtime":str(runtime_path),"runtime_sha256":digest(runtime_path),
+                        "admission":str(admission_path),"admission_sha256":digest(admission_path)}
+        identities[group]=identity
+    source_manifest=tmp_path/"bundle-sources.json"; source_manifest.write_text(json.dumps({"files":{}}))
+    source_map=tmp_path/"bundle-source-map.json"; source_map.write_text(json.dumps({"files":{},"runtime":{}}))
+    bundle_root=run_root/"common"; bundle=tmp_path/"bundle.json"
+    bundle.write_text(json.dumps({"schema":"nc_rted_interleaved_formal_bundle/v1","bundle_checkpoint_root":str(bundle_root),
+                                  "members":members,"source_manifest":str(source_manifest),"source_manifest_sha256":digest(source_manifest),
+                                  "captured_source_map":{"path":str(source_map),"sha256":digest(source_map)}}))
+    qualification_doc=json.loads(qualification.read_text()); now=time.time()
+    qualification_doc.update({"source_sha256":source,"workload":{"member_identities":identities,"updates":1000,"kind":"formal_bundle",
+                              "shared_preparation":"frozen_provider_only","common_recovery":True},"valid_from_utc_epoch":now-1,
+                              "valid_until_utc_epoch":1792080000.0})
+    qualification_doc["measurements"].update({"measured_at_utc_epoch":now,"seconds_per_bundle_update_upper_bound":.02,
+                                                  "common_boundary_recovery_completed":True})
+    qualification.write_text(json.dumps(qualification_doc))
+    authorization=Path(payload["_authorization_path"])
+    report="bundle-report.json"
+    checkpoints={group:str((run_root/"checkpoints"/group/"final"/"manifest.json").resolve()) for group in "AUSF"}
+    expected=[{"path":checkpoints[group],"artifact_type":"checkpoint","semantic":"formal_training","run_identity":identities[group]} for group in "AUSF"]
+    expected.append({"path":report,"artifact_type":"report","semantic":"formal_bundle","member_identities":identities,
+                     "final_checkpoints":checkpoints,"bundle_checkpoint_root":str(bundle_root.resolve())})
+    bundle_payload={"physical_gpu":0,"bundle_config":str(bundle),"bundle_config_sha256":digest(bundle),"member_identities":identities,
+                    "frozen_source_sha256":source,"bundle_evidence":"bundle","resource_authorization_evidence":"authorization",
+                    "data_volume":payload["data_volume"],"min_free_bytes":payload["min_free_bytes"],"run_budget_seconds":60,
+                    "deadline_utc_epoch":resource_attestation.FORMAL_DEADLINE,"execution_environment":payload["execution_environment"],
+                    "interpreter":payload["interpreter"],"run_dir":str(run_root/"runs"),"progress_path":str(run_root/"A.progress.json"),
+                    "checkpoint_roots":[str(run_root/"checkpoints"/group) for group in "AUSF"],"bundle_checkpoint_root":str(bundle_root),
+                    "expected_outputs":expected,"command":[payload["interpreter"]["path"],str(Path(__file__).resolve().parents[1]/"scripts"/"nc_rted_interleaved_formal.py"),
+                    "--bundle",str(bundle),"--bundle-sha256",digest(bundle),"--captured-root","{queue_capture}","--output",report,"--resume","auto"]}
+    attestation={"schema":"nc_rted_formal_bundle_resource_attestation/v1","status":"PASS",
+                 "binding":{"job_key":"bundle","bundle_config":str(bundle),"bundle_config_sha256":digest(bundle),"member_identities":identities,"frozen_source_sha256":source,
+                            "execution_inputs":{key:bundle_payload[key] for key in ("command","execution_environment","interpreter","run_dir","progress_path","checkpoint_roots","bundle_checkpoint_root","expected_outputs")}},
+                 "execution":{"host":__import__("socket").gethostname(),"physical_gpu":0,"gpu_uuid":"GPU-valid","lease_id":"lease",
+                              "lease_expires_utc_epoch":1792079990.0,"environment":payload["execution_environment"],"interpreter":payload["interpreter"]},
+                 "qualification":{"accepted_evidence_name":"qualification","path":str(qualification),"sha256":digest(qualification)},
+                 "authorization":{"path":str(authorization),"sha256":digest(authorization)},
+                 "contract":{key:bundle_payload[key] for key in ("data_volume","min_free_bytes","run_budget_seconds","deadline_utc_epoch")}}
+    attestation_path=tmp_path/"bundle-attestation.json"; attestation_path.write_text(json.dumps(attestation))
+    bundle_payload.update({"resource_attestation":str(attestation_path),"resource_attestation_sha256":digest(attestation_path)})
+    evidence={"bundle":(str(bundle),digest(bundle)),"qualification":(str(qualification),digest(qualification)),"authorization":(str(authorization),digest(authorization))}
+    return bundle_payload, qualification, authorization, attestation_path, evidence, digest
+
+
+def capturable_bundle_fixture(tmp_path, monkeypatch, *, injected=None):
+    """Extend the valid bundle fixture with the complete queue capture closure."""
+    payload, qualification, authorization, attestation, evidence, digest = bundle_fixture(tmp_path, monkeypatch)
+    repo = Path(__file__).resolve().parents[1]
+    bundle_path = Path(payload["bundle_config"]); bundle = json.loads(bundle_path.read_text())
+    source_manifest = Path(bundle["source_manifest"]); source_map = Path(bundle["captured_source_map"]["path"])
+    files = {str(path.relative_to(repo)): digest(path) for path in (repo / "src" / "nc_rted").glob("*.py")}
+    entry = repo / "scripts" / "nc_rted_interleaved_formal.py"
+    files[str(entry.relative_to(repo))] = digest(entry)
+    if injected is not None:
+        files[str(Path(injected).resolve().relative_to(repo))] = digest(Path(injected))
+    mapped = {str((repo / relative).resolve()): relative for relative in files}
+    source_manifest.write_text(json.dumps({"schema": "nc_rted_interleaved_source_manifest/v1", "files": files,
+                                           "code_sha256": hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()}))
+    source_map.write_text(json.dumps({"schema": "nc_rted_captured_source_map/v1", "files": mapped, "runtime": {"inherited_external_root": "inherited",
+                                  "inherited_source_manifest": "inherited-source-manifest.json", "stage2_module": "stage2-module.py"}}))
+    code_sha = hashlib.sha256(json.dumps({path: digest(Path(path)) for path in mapped}, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    identities = {}
+    for group, member in bundle["members"].items():
+        runtime = Path(member["runtime"]); runtime_document = json.loads(runtime.read_text())
+        runtime_document["hashes"]["code_sha256"] = code_sha; runtime.write_text(json.dumps(runtime_document)); member["runtime_sha256"] = digest(runtime)
+        identity = resource_attestation.formal_runtime_identity(load_manifest(runtime, expected_sha256=member["runtime_sha256"]))
+        identities[group] = identity
+        admission = Path(member["admission"]); document = json.loads(admission.read_text())
+        document["source_files"] = {path: digest(Path(path)) for path in mapped}; document["run_identity"] = identity
+        admission.write_text(json.dumps(document)); member["admission_sha256"] = digest(admission)
+    payload["member_identities"] = identities; payload["frozen_source_sha256"] = code_sha
+    for group, output in zip("AUSF", payload["expected_outputs"][:4]): output["run_identity"] = identities[group]
+    payload["expected_outputs"][-1]["member_identities"] = identities
+    qualification_document = json.loads(Path(qualification).read_text()); qualification_document["source_sha256"] = code_sha
+    qualification_document["workload"]["member_identities"] = identities; Path(qualification).write_text(json.dumps(qualification_document))
+    bundle["source_manifest_sha256"] = digest(source_manifest)
+    bundle["captured_source_map"]["sha256"] = digest(source_map)
+    bundle_path.write_text(json.dumps(bundle)); payload["bundle_config_sha256"] = digest(bundle_path)
+    payload["command"][payload["command"].index("--bundle-sha256") + 1] = payload["bundle_config_sha256"]
+    document = json.loads(attestation.read_text())
+    document["binding"]["bundle_config_sha256"] = payload["bundle_config_sha256"]; document["binding"]["member_identities"] = identities; document["binding"]["frozen_source_sha256"] = code_sha
+    document["qualification"]["sha256"] = digest(Path(qualification))
+    document["binding"]["execution_inputs"] = {key: payload[key] for key in ("command", "execution_environment", "interpreter", "run_dir", "progress_path", "checkpoint_roots", "bundle_checkpoint_root", "expected_outputs")}
+    attestation.write_text(json.dumps(document)); payload["resource_attestation_sha256"] = digest(attestation)
+    evidence["bundle"] = (str(bundle_path), payload["bundle_config_sha256"])
+    for path in (payload["run_dir"], payload["bundle_checkpoint_root"], *payload["checkpoint_roots"]):
+        shutil.rmtree(path, ignore_errors=True)
+    return payload, qualification, authorization, attestation, evidence, digest
+
+
+def write_bundle_lifecycle_doubles(path):
+    path.write_text('''import hashlib, json, time
+from pathlib import Path
+import nc_rted.interleaved_training as bundle_module
+import nc_rted.production_runtime as runtime_module
+import nc_rted.recovery as recovery_module
+import nc_rted.train_worker as worker_module
+class Store:
+ def __init__(self, root, identity): self.root,self.identity=Path(root),identity
+class Trainer:
+ def __init__(self): self.completed_updates=0
+class Worker:
+ def __init__(self, *args, group=None, store=None, **kwargs): self.group,self.store,self.trainer=group,(store if store is not None else args[5]),Trainer()
+ def _verify_formal_admission(self, admission): return None
+class Bundle:
+ def __init__(self, group, trainer, *args, store=None, **kwargs): self.group,self.trainer,self.store=group,trainer,store
+class Runner:
+ def __init__(self, bundles, _provider, *, after_bundle_checkpoint=None, **kwargs): self.bundles,self.callback=bundles,after_bundle_checkpoint
+ def run(self):
+  for update in (50,1000):
+   records={}
+   for group,bundle in self.bundles.items():
+    name='final' if update==1000 else f'update_{update:06d}'; directory=bundle.store.root/name; directory.mkdir(parents=True,exist_ok=True); state=directory/'state.pt'; state.write_bytes(b'cpu-double'); manifest=directory/'manifest.json'; document={'schema':'nc_rted_checkpoint_v2','identity':bundle.store.identity,'completed_updates':update,'final':update==1000,'cursor':update,'payload_bytes':state.stat().st_size,'payload_sha256':hashlib.sha256(state.read_bytes()).hexdigest()}; manifest.write_text(json.dumps(document)); records[group]={'directory':name,'manifest_sha256':hashlib.sha256(manifest.read_bytes()).hexdigest()}; bundle.trainer.completed_updates=update
+   common=next(iter(self.bundles.values())).store.root.parents[1]/'common'; boundary=common/'commits'/('final.json' if update==1000 else f'update_{update:06d}.json'); boundary.parent.mkdir(parents=True,exist_ok=True); boundary.write_text(json.dumps({'schema':'nc_rted_bundle_checkpoint_v1','members':{group:bundle.store.identity for group,bundle in self.bundles.items()},'completed_updates':update,'final':update==1000,'checkpoints':records})); self.callback(update,update==1000,boundary)
+   if update==50: time.sleep(.15)
+class Bridge:
+ def parameters(self): return []
+class Assembled:
+ def __init__(self, manifest): self.worker=type('RuntimeWorker',(),{'bridge':Bridge(),'catalog':object(),'teachers':object(),'tokenizer':object(),'provider':object(),'trainer':Trainer(),'store':Store(manifest.run['checkpoint_root'],runtime_module._checkpoint_identity(manifest,None)),'_verify_formal_admission':lambda self,_admission:None,'material_for_sample':lambda self,_sample:None})()
+runtime_module.assemble=lambda manifest,*args,**kwargs: Assembled(manifest)
+runtime_module._checkpoint_identity=lambda manifest,_catalog: json.loads((Path(__import__('sys').argv[__import__('sys').argv.index('--captured-root')+1])/'members'/manifest.run['group']/'admission.json').read_text())['run_identity']
+bundle_module.clone_with_shared_frozen=lambda bridge,_frozen: bridge
+bundle_module.Bundle=Bundle; bundle_module.SameSeedBundleWorker=Runner
+recovery_module.CheckpointStore=lambda root,identity: Store(root,identity)
+worker_module.TrainingWorker=Worker
+''')
+
+
+def test_bundle_attestation_rejects_insufficient_authorization_and_stale_runtime(tmp_path, monkeypatch):
+    payload, qualification, authorization, attestation, evidence, digest = bundle_fixture(tmp_path, monkeypatch)
+    resource_attestation.verify_bundle_attestation(payload,"bundle",evidence)
+    original_authorization=json.loads(authorization.read_text())
+    for target,field,value in ((authorization,"max_budget_seconds",1), (authorization,"min_free_bytes",payload["min_free_bytes"]+1),
+                               (authorization,"deadline_utc_epoch",resource_attestation.FORMAL_DEADLINE-1),
+                               (authorization,"lease_expires_utc_epoch",1792079989.0)):
+        document=dict(original_authorization); document[field]=value; target.write_text(json.dumps(document))
+        bound=json.loads(attestation.read_text()); bound["authorization"]["sha256"]=digest(target); attestation.write_text(json.dumps(bound))
+        payload["resource_attestation_sha256"]=digest(attestation); evidence["authorization"]=(str(target),digest(target))
+        with pytest.raises(resource_attestation.ResourceAttestationError):
+            resource_attestation.verify_bundle_attestation(payload,"bundle",evidence)
+    authorization.write_text(json.dumps(original_authorization)); bound=json.loads(attestation.read_text()); bound["authorization"]["sha256"]=digest(authorization); attestation.write_text(json.dumps(bound))
+    payload["resource_attestation_sha256"]=digest(attestation); evidence["authorization"]=(str(authorization),digest(authorization))
+    original_qualification=json.loads(qualification.read_text())
+    for mutate in (lambda item: item.update(valid_until_utc_epoch=time.time()+1),
+                   lambda item: item.update(valid_from_utc_epoch=time.time()+1),
+                   lambda item: item["measurements"].update(measured_at_utc_epoch=time.time()-resource_attestation.QUALIFICATION_MAX_AGE-1),
+                   lambda item: item["measurements"]["local_import_probe"].update(runtime_identity={"changed":"imports"})):
+        qualification_doc=json.loads(json.dumps(original_qualification)); mutate(qualification_doc); qualification.write_text(json.dumps(qualification_doc))
+        bound=json.loads(attestation.read_text()); bound["qualification"]["sha256"]=digest(qualification); attestation.write_text(json.dumps(bound))
+        payload["resource_attestation_sha256"]=digest(attestation); evidence["qualification"]=(str(qualification),digest(qualification))
+        with pytest.raises(resource_attestation.ResourceAttestationError):
+            resource_attestation.verify_bundle_attestation(payload,"bundle",evidence)
+
+
+def test_formal_bundle_capture_seals_complete_admitted_closure(tmp_path, monkeypatch):
+    payload, _qualification, _authorization, _attestation, _evidence, _digest = capturable_bundle_fixture(tmp_path, monkeypatch)
+    run = Path(payload["run_dir"]) / "bundle" / "attempt-1-token"
+    command, environment, device = queue_script.capture_formal_bundle_inputs(payload, run)
+    root = run / "immutable-inputs"
+    assert command[1] == str(root / "scripts" / "nc_rted_interleaved_formal.py")
+    assert command[command.index("--captured-root") + 1] == str(root)
+    assert environment["PYTHONPATH"] == str(root / "src") and device == "GPU-valid"
+    assert (root / "bundle.json").is_file() and not any(path.stat().st_mode & 0o222 for path in [root, *root.rglob("*")])
+
+
+def test_bundle_capture_reserve_charges_duplicate_destinations_and_full_launch_contract(tmp_path):
+    source = tmp_path / "source"; source.write_bytes(b"x")
+    block = 4096; launch = b"{" + b"x" * (2 * block) + b"}"
+    required = queue_script.capture_allocation_bytes({Path("first"): source, Path("second"): source}, 3, launch, block)
+    assert required == 2 * block + 3 * block + 3 * block
+    free = required - 1
+    assert free < queue_script.capture_allocation_bytes({Path("first"): source, Path("second"): source}, 3, launch, block)
+
+
+def test_formal_bundle_queue_lifecycle_runs_captured_entry_with_cpu_doubles(tmp_path, monkeypatch):
+    injected = Path(__file__).resolve().parents[1] / "src" / "sitecustomize.py"
+    original = injected.read_bytes() if injected.exists() else None
+    write_bundle_lifecycle_doubles(injected)
+    try:
+        payload, qualification, authorization, _attestation, _evidence, _digest = capturable_bundle_fixture(tmp_path, monkeypatch, injected=injected)
+        payload["poll_seconds"] = .05
+        queue = JobQueue(tmp_path / "queue.sqlite")
+        for name, path in (("bundle", payload["bundle_config"]), ("qualification", qualification), ("authorization", authorization)):
+            queue.add_evidence(name, path, accepted=True)
+        queue.add_job("bundle", "formal_bundle", payload)
+        import nc_rted.recovery as recovery
+        monkeypatch.setattr(recovery, "validate_checkpoint_payload", lambda *_args: {})
+        assert queue_script.worker(queue, "worker", once=True) == 0
+        row = queue.status()[0]
+        assert row["status"] == SUCCEEDED and row["progress_counter"] == 1000
+    finally:
+        injected.unlink(missing_ok=True) if original is None else injected.write_bytes(original)
+
+
+def test_formal_bundle_reconciles_durable_captured_completion(tmp_path, monkeypatch):
+    injected = Path(__file__).resolve().parents[1] / "src" / "sitecustomize.py"
+    original = injected.read_bytes() if injected.exists() else None
+    write_bundle_lifecycle_doubles(injected)
+    try:
+        payload, qualification, authorization, _attestation, _evidence, _digest = capturable_bundle_fixture(tmp_path, monkeypatch, injected=injected)
+        payload["poll_seconds"] = .05
+        queue = JobQueue(tmp_path / "queue.sqlite")
+        for name, path in (("bundle", payload["bundle_config"]), ("qualification", qualification), ("authorization", authorization)):
+            queue.add_evidence(name, path, accepted=True)
+        queue.add_job("bundle", "formal_bundle", payload)
+        import nc_rted.recovery as recovery
+        monkeypatch.setattr(recovery, "validate_checkpoint_payload", lambda *_args: {})
+        original_commit = queue_script.commit_outputs; calls = {"count": 0}
+        def interrupt_once(*args, **kwargs):
+            calls["count"] += 1
+            if calls["count"] == 1: raise queue_script.PublicationUncertain("injected post-receipt interruption")
+            return original_commit(*args, **kwargs)
+        owner = f"{os.uname().nodename}:controller"
+        monkeypatch.setattr(queue_script, "commit_outputs", interrupt_once)
+        assert queue_script.worker(queue, owner, once=True) == 1
+        assert queue.status()[0]["status"] == RUNNING
+        monkeypatch.setattr(queue_script, "commit_outputs", original_commit)
+        queue_script.reconcile_exited_attempts(queue, f"{os.uname().nodename}:recover:1")
+        assert queue.status()[0]["status"] == SUCCEEDED and calls["count"] == 1
+    finally:
+        injected.unlink(missing_ok=True) if original is None else injected.write_bytes(original)
+
+
+@pytest.mark.parametrize("mutation", ("checkpoint_identity", "report_path", "report_identity", "output_order", "run_dir"))
+def test_bundle_attestation_binds_ordered_outputs_and_execution_inputs(tmp_path, monkeypatch, mutation):
+    payload, _qualification, _authorization, attestation, evidence, digest = bundle_fixture(tmp_path, monkeypatch)
+    document=json.loads(attestation.read_text())
+    if mutation == "checkpoint_identity":
+        payload["expected_outputs"][0]["run_identity"]={"wrong":"identity"}
+    elif mutation == "report_path":
+        payload["expected_outputs"][-1]["path"]="other-report.json"
+    elif mutation == "report_identity":
+        payload["expected_outputs"][-1]["member_identities"]={"A":{"wrong":"identity"}}
+    elif mutation == "output_order":
+        payload["expected_outputs"][:4]=list(reversed(payload["expected_outputs"][:4]))
+    else:
+        payload["run_dir"]=str(tmp_path/"unapproved-formal-bundle")
+    document["binding"]["execution_inputs"]={key:payload[key] for key in ("command","execution_environment","interpreter","run_dir","progress_path","checkpoint_roots","bundle_checkpoint_root","expected_outputs")}
+    attestation.write_text(json.dumps(document)); payload["resource_attestation_sha256"]=digest(attestation)
+    with pytest.raises(resource_attestation.ResourceAttestationError):
+        resource_attestation.verify_bundle_attestation(payload,"bundle",evidence)
 
 
 def add_ready(queue, key="job", **payload):
@@ -810,3 +1067,91 @@ def test_semantic_artifact_contracts_require_final_identity_and_prediction_denom
     queue.validate_artifacts([contract],[{'path':str(prediction),'checksum':checksum}])
     with pytest.raises(Exception): queue.validate_artifacts([{**contract,'model_hash':''}],[{'path':str(prediction),'checksum':checksum}])
     with pytest.raises(Exception): queue.validate_artifacts([{'path':str(prediction),'artifact_type':'prediction','semantic':'prediction','denominator':3}],[{'path':str(prediction),'checksum':checksum}])
+
+
+def test_formal_bundle_result_contract_requires_all_member_identities(tmp_path):
+    identities = {group: {"run_id": group, "group": group} for group in "AUSF"}
+    checkpoints = {group: str(tmp_path / group / "final" / "manifest.json") for group in "AUSF"}
+    report = tmp_path / "bundle-report.json"
+    report.write_text(json.dumps({"status": "FORMAL_BUNDLE_COMPLETE", "shared_material": "frozen_provider_only",
+                                  "members": identities, "final_checkpoints": checkpoints,
+                                  "bundle_checkpoint_root": str(tmp_path / "common")}))
+    checksum = __import__("hashlib").sha256(report.read_bytes()).hexdigest()
+    expected = {"path": str(report), "artifact_type": "report", "checksum": checksum,
+                "semantic": "formal_bundle", "member_identities": identities,
+                "final_checkpoints": checkpoints, "bundle_checkpoint_root": str(tmp_path / "common")}
+    JobQueue(tmp_path / "queue.sqlite").validate_artifacts([expected], [{"path": str(report), "checksum": checksum}])
+    invalid = json.loads(report.read_text()); invalid["members"].pop("F"); report.write_text(json.dumps(invalid))
+    checksum = __import__("hashlib").sha256(report.read_bytes()).hexdigest()
+    with pytest.raises(Exception):
+        JobQueue(tmp_path / "second.sqlite").validate_artifacts([{**expected, "checksum": checksum}], [{"path": str(report), "checksum": checksum}])
+
+
+def test_formal_bundle_progress_requires_one_complete_common_boundary(tmp_path, monkeypatch):
+    """Only the queue-bound common commit may advance a bundle attempt."""
+    queue=JobQueue(tmp_path/"queue.sqlite")
+    run_root=tmp_path/"runs"; progress=tmp_path/"progress.json"; common=tmp_path/"common"
+    identities={group:{"run_id":group,"group":group} for group in "AUSF"}
+    roots=[tmp_path/group for group in "AUSF"]
+    payload={"run_dir":str(run_root),"progress_path":str(progress),"bundle_checkpoint_root":str(common),
+             "checkpoint_roots":[str(root) for root in roots],"member_identities":identities,
+             "physical_gpu":0,"command":["/bin/true"],"expected_outputs":[{"path":"/dev/null"}]}
+    queue.add_job("bundle","smoke",payload); job=queue.claim("worker"); assert job is not None
+    job["kind"]="formal_bundle"; job["payload"]=json.dumps(payload)
+    attempt=queue_script.attempt_directory(payload,job); attempt.mkdir(parents=True)
+    records={}
+    for group,root in zip("AUSF",roots):
+        directory=root/"update_000500"; directory.mkdir(parents=True); state=directory/"state.pt"; state.write_bytes(b"state")
+        manifest=directory/"manifest.json"; manifest.write_text(json.dumps({"schema":"nc_rted_checkpoint_v2","identity":identities[group],"completed_updates":500,"final":False}))
+        records[group]={"directory":"update_000500","manifest_sha256":hashlib.sha256(manifest.read_bytes()).hexdigest()}
+    boundary=common/"commits"/"update_000500.json"; boundary.parent.mkdir(parents=True)
+    boundary.write_text(json.dumps({"schema":"nc_rted_bundle_checkpoint_v1","members":identities,
+                                    "completed_updates":500,"final":False,"checkpoints":records}))
+    receipt=attempt/"bundle-progress-000500.json"
+    receipt.write_text(json.dumps({"schema":"nc_rted_formal_bundle_progress/v1","job_key":"bundle","lease_token":job["lease_token"],
+                                   "counter":500,"member_identities":identities,"bundle_checkpoint":str(boundary),
+                                   "bundle_checkpoint_sha256":hashlib.sha256(boundary.read_bytes()).hexdigest()}))
+    commit=attempt/"bundle-progress-commit-000500.json"
+    commit.write_text(json.dumps({"schema":"nc_rted_progress_commit_v1","job_key":"bundle","lease_token":job["lease_token"],
+                                  "counter":500,"transaction_type":"formal_bundle","artifact_path":str(receipt),
+                                  "artifact_sha256":hashlib.sha256(receipt.read_bytes()).hexdigest()}))
+    progress.write_text(json.dumps({"counter":500,"job_key":"bundle","lease_token":job["lease_token"],"committed_path":str(commit)}))
+    import nc_rted.recovery as recovery
+    monkeypatch.setattr(recovery,"validate_checkpoint_payload",lambda *_args: {})
+    queue_script.observe_progress(queue,job,progress)
+    assert queue.status()[0]["progress_counter"] == 500
+    records.pop("F"); boundary.write_text(json.dumps({"schema":"nc_rted_bundle_checkpoint_v1","members":identities,
+                                                        "completed_updates":500,"final":False,"checkpoints":records}))
+    receipt.write_text(json.dumps({"schema":"nc_rted_formal_bundle_progress/v1","job_key":"bundle","lease_token":job["lease_token"],
+                                   "counter":501,"member_identities":identities,"bundle_checkpoint":str(boundary),
+                                   "bundle_checkpoint_sha256":hashlib.sha256(boundary.read_bytes()).hexdigest()}))
+    commit.write_text(json.dumps({"schema":"nc_rted_progress_commit_v1","job_key":"bundle","lease_token":job["lease_token"],
+                                  "counter":501,"transaction_type":"formal_bundle","artifact_path":str(receipt),
+                                  "artifact_sha256":hashlib.sha256(receipt.read_bytes()).hexdigest()}))
+    progress.write_text(json.dumps({"counter":501,"job_key":"bundle","lease_token":job["lease_token"],"committed_path":str(commit)}))
+    queue_script.observe_progress(queue,job,progress)
+    assert queue.status()[0]["progress_counter"] == 500
+
+
+def test_formal_bundle_completion_binds_four_checkpoints_and_separate_report(tmp_path, monkeypatch):
+    queue=JobQueue(tmp_path/"queue.sqlite"); roots=[tmp_path/"checkpoints"/group for group in "AUSF"]
+    payload={"run_dir":str(tmp_path/"runs"),"data_volume":str(tmp_path),"progress_path":str(tmp_path/"progress.json"),
+             "checkpoint_roots":[str(path) for path in roots],"bundle_checkpoint_root":str(tmp_path/"common"),
+             "physical_gpu":0,"command":["/bin/true"],"expected_outputs":[{"path":"bundle-report.json"}]}
+    queue.add_job("bundle","smoke",payload); job=queue.claim("worker"); assert job is not None
+    job["kind"]="formal_bundle"; attempt=queue_script.ensure_attempt_directory(payload,job)
+    report=attempt/"bundle-report.json"; report.write_text(json.dumps({"status":"FORMAL_BUNDLE_COMPLETE"}))
+    records=[]
+    for root in roots:
+        manifest=root/"final"/"manifest.json"; manifest.parent.mkdir(parents=True); manifest.write_text("{}")
+        records.append({"path":str(manifest),"checksum":hashlib.sha256(manifest.read_bytes()).hexdigest()})
+    records.append({"path":str(report),"checksum":hashlib.sha256(report.read_bytes()).hexdigest()})
+    monkeypatch.setattr(queue_script,"output_records",lambda *_args: records)
+    completion=attempt/"producer_completion.json"
+    completion.write_text(json.dumps({"job_key":"bundle","lease_token":job["lease_token"],"input_hash":job["input_hash"],"artifacts":records[:-1]}))
+    with pytest.raises(Exception,match="producer completion"):
+        queue_script.commit_outputs(queue,job,payload)
+    completion.write_text(json.dumps({"job_key":"bundle","lease_token":job["lease_token"],"input_hash":job["input_hash"],"artifacts":records}))
+    queue_script.commit_outputs(queue,job,payload)
+    row=queue.status()[0]
+    assert row["status"] == SUCCEEDED and (attempt/"result.json").is_file() and report.name != "result.json"

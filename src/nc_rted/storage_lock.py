@@ -196,6 +196,15 @@ def ensure_directory(path, reserve):
         if shutil.disk_usage(ancestor).free < reserve + (2 * missing + 2) * block:
             raise OSError("disk hard limit: directory creation must preserve reserve")
         path.mkdir(parents=True, exist_ok=True)
+        # Directory entries are part of the durable publication contract.
+        current = path.resolve()
+        while True:
+            fd = os.open(current, os.O_DIRECTORY)
+            try: os.fsync(fd)
+            finally: os.close(fd)
+            if current == ancestor:
+                break
+            current = current.parent
 
 
 def open_lock_file(path, reserve):

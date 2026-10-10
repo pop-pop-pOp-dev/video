@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Standalone NC-RTED queue controller; never receives test labels or metrics."""
-import argparse, contextlib, hashlib, json, os, signal, sqlite3, subprocess, sys, time
+import argparse, contextlib, hashlib, json, os, shutil, signal, sqlite3, subprocess, sys, time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from nc_rted.queue import ArtifactReadUncertain, HardLimit, JobQueue, QueueError
 from nc_rted.recovery import CheckpointReadUncertain, RecoveryError
+from nc_rted.storage_lock import allocation_lock, ensure_directory
 from nc_rted.worker_runtime import acquire_supervisor_lock, attempt_state, gpu_lock, group_live, group_members, group_state, process_live, process_starttime, write_journal
 
 class ConclusiveOutputFailure(QueueError):
@@ -16,6 +17,193 @@ class PublicationUncertain(QueueError):
 def poll_seconds(payload):
     value = payload.get("poll_seconds", 5)
     return min(5, max(.05, float(value))) if isinstance(value, (int, float)) else 5
+
+def _sync_capture_tree(root):
+    """Sync captured files plus every directory entry that makes them reachable."""
+    for path in sorted(root.rglob("*")):
+        if path.is_file():
+            with path.open("rb") as handle: os.fsync(handle.fileno())
+        elif path.is_dir():
+            descriptor=os.open(path,os.O_DIRECTORY); os.fsync(descriptor); os.close(descriptor)
+    parent=root
+    while True:
+        descriptor=os.open(parent,os.O_DIRECTORY)
+        try: os.fsync(descriptor)
+        finally: os.close(descriptor)
+        if parent == parent.parent: break
+        parent=parent.parent
+
+
+def _seal_capture_tree(root):
+    """Make the verified closure read-only for the trusted local operator."""
+    for path in sorted(root.rglob("*"), reverse=True):
+        path.chmod(0o444 if path.is_file() else 0o555)
+    root.chmod(0o555)
+    _sync_capture_tree(root)
+
+
+def capture_formal_inputs(payload, run_dir):
+    """Copy validated launch inputs before Popen so later path replacement cannot alter code."""
+    root=Path(run_dir)/"immutable-inputs"
+    runtime=Path(payload["runtime_config"]); admission=Path(payload["formal_admission"])
+    repo=Path(__file__).resolve().parents[1]
+    def captured_command():
+        command=list(payload["command"])
+        command[1]=str(root/"scripts"/"nc_rted_train.py")
+        command[command.index("--config")+1]=str(root/"runtime.json")
+        command[command.index("--admission")+1]=str(root/"admission.json")
+        command.extend(["--captured-source-map",str(root/"source-map.json")])
+        return command
+    def closure():
+        try:
+            raw=admission.read_bytes()
+            if hashlib.sha256(raw).hexdigest() != payload["formal_admission_sha256"]: raise QueueError("formal admission changed before capture")
+            expected=json.loads(raw).get("source_files", {})
+        except (OSError, ValueError) as error: raise QueueError("formal admission is invalid for capture") from error
+        if not isinstance(expected, dict): raise QueueError("formal admission lacks source closure")
+        paths={}
+        for original, digest in expected.items():
+            if not isinstance(original, str) or not isinstance(digest, str) or len(digest) != 64:
+                raise QueueError("formal source closure is invalid")
+            try: relative=Path(original).resolve().relative_to(repo)
+            except ValueError as error: raise QueueError("formal source closure escapes the executable repository") from error
+            if relative.parts[0] not in {"src", "scripts"}:
+                raise QueueError("formal source closure has an unsupported repository path")
+            paths[relative]=Path(original)
+        if not paths: raise QueueError("formal source closure has no repository files")
+        return expected, paths
+    def verify_capture(sealed=True):
+        if not root.is_dir(): raise QueueError("immutable formal input path is not a directory")
+        if (not (root/"runtime.json").is_file() or not (root/"admission.json").is_file() or
+                hashlib.sha256((root/"runtime.json").read_bytes()).hexdigest() != payload["runtime_config_sha256"] or
+                hashlib.sha256((root/"admission.json").read_bytes()).hexdigest() != payload["formal_admission_sha256"]):
+            raise QueueError("captured formal configuration differs from the admitted closure")
+        try: admission_document=json.loads((root/"admission.json").read_text())
+        except (OSError, ValueError) as error: raise QueueError("captured formal admission is invalid") from error
+        expected=admission_document.get("source_files", {})
+        if not isinstance(expected, dict): raise QueueError("captured formal admission lacks source closure")
+        allowed={Path("runtime.json"), Path("admission.json"), Path("source-map.json"), Path("launch-contract.json")}
+        for original, digest in expected.items():
+            if not isinstance(original, str) or not isinstance(digest, str): raise QueueError("captured formal source closure is invalid")
+            original_path=Path(original)
+            try: relative=original_path.resolve().relative_to(repo)
+            except ValueError as error: raise QueueError("captured formal source closure escapes repository") from error
+            captured=root/relative
+            if not captured.is_file() or hashlib.sha256(captured.read_bytes()).hexdigest() != digest:
+                raise QueueError("captured formal source differs from admitted closure")
+            allowed.add(relative)
+        try:
+            source_map=json.loads((root/"source-map.json").read_text())
+        except (OSError, ValueError) as error: raise QueueError("captured formal source map is invalid") from error
+        try:
+            runtime_document=json.loads((root/"runtime.json").read_text())
+            inherited=runtime_document["inherited"]; stage2=runtime_document["stage2_cache"]
+            runtime_files=json.loads((root/"inherited-source-manifest.json").read_text())["files"]
+            runtime_expected={"inherited_external_root":"inherited","inherited_source_manifest":"inherited-source-manifest.json","stage2_module":"stage2-module.py"}
+            if (not isinstance(runtime_files,dict) or source_map != {"schema":"nc_rted_captured_source_map/v1", "files":{name:str(Path(name).resolve().relative_to(repo)) for name in expected},"runtime":runtime_expected} or
+                    hashlib.sha256((root/"inherited-source-manifest.json").read_bytes()).hexdigest() != inherited["source_manifest_sha256"] or
+                    hashlib.sha256((root/"stage2-module.py").read_bytes()).hexdigest() != stage2["module_sha256"]): raise ValueError
+            for relative, digest in runtime_files.items():
+                candidate=root/"inherited"/relative
+                if (not isinstance(relative,str) or not isinstance(digest,str) or Path(relative).is_absolute() or ".." in Path(relative).parts or
+                        not candidate.is_file() or hashlib.sha256(candidate.read_bytes()).hexdigest() != digest): raise ValueError
+                allowed.add(Path("inherited")/relative)
+            allowed.update({Path("inherited-source-manifest.json"),Path("stage2-module.py")})
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise QueueError("captured formal runtime source closure is invalid") from error
+        if source_map.get("files") != {name:str(Path(name).resolve().relative_to(repo)) for name in expected}:
+            raise QueueError("captured formal source map differs from admitted closure")
+        try:
+            launch=json.loads((root/"launch-contract.json").read_text())
+            if (launch.get("schema") != "nc_rted_captured_launch/v1" or launch.get("command") != captured_command() or
+                    launch.get("environment") != payload["execution_environment"] or not isinstance(launch.get("cuda_visible_devices"),str) or not launch["cuda_visible_devices"]): raise ValueError
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise QueueError("captured formal launch contract is invalid") from error
+        for captured in root.rglob("*"):
+            relative=captured.relative_to(root)
+            if "__pycache__" in relative.parts or captured.suffix in {".pyc", ".pyo"}:
+                raise QueueError("captured formal closure contains bytecode")
+            if captured.is_file() and relative not in allowed:
+                raise QueueError("captured formal closure contains an unadmitted file")
+            if sealed and captured.stat().st_mode & 0o222:
+                raise QueueError("captured formal closure is writable")
+        if sealed and root.stat().st_mode & 0o222:
+            raise QueueError("captured formal closure root is writable")
+    if root.exists():
+        # A controller can crash after the durable capture but before Popen.
+        # Reuse only the exact, independently verified closure for that attempt.
+        verify_capture()
+        try: _sync_capture_tree(root)
+        except OSError as error: raise QueueError("cannot durably recover immutable formal inputs") from error
+    else:
+        try:
+            expected, paths=closure()
+            inputs=[runtime, admission, *paths.values()]
+            if not runtime.is_file() or hashlib.sha256(runtime.read_bytes()).hexdigest() != payload["runtime_config_sha256"]:
+                raise QueueError("runtime configuration changed before capture")
+            try:
+                runtime_document=json.loads(runtime.read_text()); inherited=runtime_document["inherited"]; stage2=runtime_document["stage2_cache"]
+                manifest=Path(inherited["source_manifest"]); runtime_files=json.loads(manifest.read_text())["files"]; external=Path(inherited["external_root"]); stage_module=Path(stage2["module"])
+                if (hashlib.sha256(manifest.read_bytes()).hexdigest() != inherited["source_manifest_sha256"] or not isinstance(runtime_files,dict) or
+                        not stage_module.is_file() or hashlib.sha256(stage_module.read_bytes()).hexdigest() != stage2["module_sha256"]): raise ValueError
+                inherited_inputs=[]
+                for relative, digest in runtime_files.items():
+                    source_file=external/relative
+                    if (not isinstance(relative,str) or not isinstance(digest,str) or Path(relative).is_absolute() or ".." in Path(relative).parts or
+                            not source_file.is_file() or hashlib.sha256(source_file.read_bytes()).hexdigest() != digest): raise ValueError
+                    inherited_inputs.append(source_file)
+                inputs.extend([manifest, stage_module, *inherited_inputs])
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                raise QueueError("runtime source closure changed before capture") from error
+            reserve=int(payload.get("min_free_bytes", 0))
+            if reserve <= 0: raise QueueError("formal capture lacks a disk reserve")
+            with allocation_lock(root.parent):
+                ensure_directory(root.parent, reserve)
+                block=max(4096, os.statvfs(root.parent).f_frsize)
+                # Every copied file and each newly created directory consumes
+                # complete allocation blocks; reserve the exact bounded closure.
+                directories={root}
+                for relative in paths:
+                    directories.update(root/parent for parent in relative.parents)
+                required=sum(((path.stat().st_size + block - 1) // block) * block for path in inputs)
+                required += len(directories) * block
+                if shutil.disk_usage(root.parent).free < reserve + required:
+                    raise QueueError("formal capture would violate the admitted disk reserve")
+                root.mkdir()
+                shutil.copy2(runtime,root/"runtime.json"); shutil.copy2(admission,root/"admission.json")
+                for relative, original in paths.items():
+                    destination=root/relative; destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(original,destination)
+                runtime_document=json.loads(runtime.read_text()); inherited=runtime_document["inherited"]; stage2=runtime_document["stage2_cache"]
+                manifest=Path(inherited["source_manifest"]); runtime_files=json.loads(manifest.read_text())["files"]; external=Path(inherited["external_root"])
+                if hashlib.sha256(manifest.read_bytes()).hexdigest() != inherited["source_manifest_sha256"] or not isinstance(runtime_files,dict): raise QueueError("runtime inherited source manifest changed before capture")
+                shutil.copy2(manifest,root/"inherited-source-manifest.json")
+                for relative, digest in runtime_files.items():
+                    source_file=external/relative; destination=root/"inherited"/relative
+                    if (not isinstance(relative,str) or not isinstance(digest,str) or Path(relative).is_absolute() or ".." in Path(relative).parts or
+                            not source_file.is_file() or hashlib.sha256(source_file.read_bytes()).hexdigest() != digest): raise QueueError("runtime inherited source differs from manifest")
+                    destination.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(source_file,destination)
+                stage_module=Path(stage2["module"])
+                if not stage_module.is_file() or hashlib.sha256(stage_module.read_bytes()).hexdigest() != stage2["module_sha256"]: raise QueueError("runtime resolver source changed before capture")
+                shutil.copy2(stage_module,root/"stage2-module.py")
+                (root/"source-map.json").write_text(json.dumps({"schema":"nc_rted_captured_source_map/v1", "files":{str(original):str(relative) for relative,original in paths.items()},"runtime":{"inherited_external_root":"inherited","inherited_source_manifest":"inherited-source-manifest.json","stage2_module":"stage2-module.py"}},sort_keys=True,separators=(",", ":")))
+                try:
+                    _, attestation=__import__("nc_rted.resource_attestation", fromlist=["_bound_file"])._bound_file(payload["resource_attestation"],payload["resource_attestation_sha256"],"resource attestation")
+                    execution=attestation["execution"]
+                    if execution.get("environment") != payload["execution_environment"]: raise ValueError
+                    gpu_uuid=execution["gpu_uuid"]
+                except (OSError, ValueError, KeyError, TypeError) as error:
+                    raise QueueError("cannot bind captured formal launch contract") from error
+                (root/"launch-contract.json").write_text(json.dumps({"schema":"nc_rted_captured_launch/v1","command":captured_command(),"environment":payload["execution_environment"],"cuda_visible_devices":gpu_uuid},sort_keys=True,separators=(",", ":")))
+                verify_capture(sealed=False)
+                _sync_capture_tree(root)
+                _seal_capture_tree(root)
+                verify_capture()
+        except OSError as error:
+            raise QueueError("cannot capture immutable formal launch inputs") from error
+    launch=json.loads((root/"launch-contract.json").read_text())
+    environment=dict(launch["environment"]); environment["PYTHONPATH"]=str(root/"src")
+    return launch["command"], environment, launch["cuda_visible_devices"]
 
 def controller_may_live(owner):
     """Default owners include host:pid; do not steal from a live controller."""
@@ -127,15 +315,58 @@ def artifact_records(payload):
 def attempt_directory(payload, job):
     return Path(payload["run_dir"]) / job["job_key"] / f"attempt-{job['attempts']}-{job['lease_token']}"
 
+
+def ensure_formal_directory(payload, path, label):
+    """Create one formal destination through canonical, non-symlink components."""
+    volume=Path(payload["data_volume"]).resolve()
+    try: volume_device=volume.stat().st_dev
+    except OSError as error: raise QueueError(f"{label} volume is unavailable") from error
+    path=Path(path)
+    try: relative=path.relative_to(volume)
+    except ValueError as error: raise QueueError(f"{label} escapes approved volume") from error
+    if any(component in {"", ".", ".."} for component in relative.parts):
+        raise QueueError(f"{label} is not canonical")
+    current=volume
+    for component in relative.parts:
+        current=current/component
+        if current.exists():
+            if current.is_symlink() or not current.is_dir(): raise QueueError(f"{label} contains a symlink or non-directory")
+        else:
+            current.mkdir()
+            descriptor=os.open(current.parent,os.O_DIRECTORY); os.fsync(descriptor); os.close(descriptor)
+        try:
+            if current.stat().st_dev != volume_device: raise QueueError(f"{label} is on an unapproved filesystem")
+        except OSError as error: raise QueueError(f"{label} cannot be inspected") from error
+    return path
+
+
+def ensure_attempt_directory(payload, job):
+    """Create a formal attempt only through non-symlink components on its volume."""
+    path=attempt_directory(payload,job)
+    if job.get("kind") != "formal_train":
+        path.mkdir(parents=True,exist_ok=True); return path
+    return ensure_formal_directory(payload,path,"formal attempt path")
+
+
+def ensure_checkpoint_directory(payload):
+    root=ensure_formal_directory(payload,Path(payload["checkpoint_root"]),"formal checkpoint root")
+    final=root / "final"
+    # CheckpointStore publishes this directory atomically and refuses to
+    # overwrite it, so validate an existing final without creating an empty one.
+    if final.exists(): ensure_formal_directory(payload,final,"formal checkpoint path")
+    return root
+
 def output_records(payload, job):
     root=attempt_directory(payload,job).resolve(); records=[]
     for expected in payload["expected_outputs"]:
         try: raw=Path(expected["path"])
         except (OSError, TypeError) as exc: raise PublicationUncertain("cannot resolve declared output path") from exc
-        if raw.is_absolute(): raise ConclusiveOutputFailure("attempt outputs must use relative paths")
+        checkpoint=Path(payload.get("checkpoint_root", "/invalid")) / "final" / "manifest.json"
+        if raw.is_absolute() and not (job.get("kind") == "formal_train" and raw.resolve() == checkpoint.resolve()):
+            raise ConclusiveOutputFailure("attempt outputs must use relative paths")
         try:
-            artifact=(root/raw).resolve()
-            if root not in artifact.parents or not artifact.is_file(): raise ConclusiveOutputFailure("missing attempt-local declared output")
+            artifact=raw.resolve() if raw.is_absolute() else (root/raw).resolve()
+            if (not raw.is_absolute() and root not in artifact.parents) or not artifact.is_file(): raise ConclusiveOutputFailure("missing declared output")
             if artifact.is_symlink(): raise ConclusiveOutputFailure("attempt output cannot be a symlink")
             with artifact.open("rb") as handle: os.fsync(handle.fileno())
             records.append({"path":str(artifact),"checksum":hashlib.sha256(artifact.read_bytes()).hexdigest()})
@@ -143,14 +374,14 @@ def output_records(payload, job):
     try:
         descriptor=os.open(root,os.O_DIRECTORY); os.fsync(descriptor); os.close(descriptor)
     except OSError as exc: raise PublicationUncertain("cannot sync attempt output directory") from exc
-    translated=[{**expected,"path":str((root/Path(expected['path'])).resolve())} for expected in payload["expected_outputs"]]
+    translated=[{**expected,"path":str(Path(expected['path']).resolve() if Path(expected['path']).is_absolute() else (root/Path(expected['path'])).resolve())} for expected in payload["expected_outputs"]]
     try: JobQueue.validate_artifacts(translated,records)
     except (ArtifactReadUncertain, CheckpointReadUncertain) as exc: raise PublicationUncertain(str(exc)) from exc
     except OSError as exc: raise PublicationUncertain("cannot inspect declared output metadata") from exc
     except QueueError as exc: raise ConclusiveOutputFailure(str(exc)) from exc
     return records
 
-def sync_attempt_publication(run_dir, records, completion):
+def sync_attempt_publication(run_dir, records, completion, checkpoint_root=None):
     """Durably retain all declared files and their ancestry before SQL success."""
     root=Path(run_dir).resolve()
     paths=[Path(record["path"]) for record in records] + [Path(completion)]
@@ -161,8 +392,8 @@ def sync_attempt_publication(run_dir, records, completion):
             descriptor=os.open(parent,os.O_DIRECTORY)
             try: os.fsync(descriptor)
             finally: os.close(descriptor)
-            if parent == root: break
-            if root not in parent.parents: raise QueueError("publication path escaped attempt root")
+            if parent == root or (checkpoint_root is not None and parent == Path(checkpoint_root).resolve()): break
+            if root not in parent.parents and (checkpoint_root is None or Path(checkpoint_root).resolve() not in parent.parents): raise QueueError("publication path escaped admitted roots")
             parent=parent.parent
     # Make the attempt directory itself reachable from its job/run parents.
     parent=root.parent
@@ -178,7 +409,13 @@ def sync_attempt_publication(run_dir, records, completion):
 def commit_outputs(queue, job, payload, owner=None):
     if job.get("kind") == "prediction" and not any(item.get("artifact_type") == "prediction" and item.get("semantic") == "prediction" for item in payload.get("expected_outputs", [])):
         raise ConclusiveOutputFailure("prediction job lacks required prediction provenance contract")
-    run_dir=attempt_directory(payload, job)
+    if job.get("kind") == "formal_train":
+        outputs=payload.get("expected_outputs")
+        if (not isinstance(outputs,list) or len(outputs)!=1 or outputs[0].get("path") != str((Path(payload["checkpoint_root"])/"final"/"manifest.json").resolve()) or
+                outputs[0].get("semantic") != "formal_training" or outputs[0].get("run_identity") != payload.get("run_identity")):
+            raise ConclusiveOutputFailure("formal training lacks the admitted final checkpoint contract")
+        ensure_checkpoint_directory(payload)
+    run_dir=ensure_attempt_directory(payload, job)
     try: run_dir.mkdir(parents=True,exist_ok=True)
     except OSError as exc: raise PublicationUncertain("cannot create attempt publication directory") from exc
     temporary, final=run_dir / "result.tmp", run_dir / "result.json"
@@ -192,6 +429,8 @@ def commit_outputs(queue, job, payload, owner=None):
     if (produced.get("job_key") != job["job_key"] or produced.get("lease_token") != job["lease_token"] or
             produced.get("input_hash") != job.get("input_hash") or produced.get("artifacts") != records):
         raise ConclusiveOutputFailure("producer completion does not bind this attempt and inputs")
+    if job.get("kind") == "formal_train":
+        queue.completion_guard(job["job_key"],job["lease_token"])
     try:
         with completion.open("rb") as handle: os.fsync(handle.fileno())
     except OSError as exc: raise PublicationUncertain("cannot sync producer completion") from exc
@@ -203,7 +442,7 @@ def commit_outputs(queue, job, payload, owner=None):
             if state.is_file():
                 try: payload_records.append({"path":str(state),"checksum":hashlib.sha256(state.read_bytes()).hexdigest()})
                 except OSError as exc: raise PublicationUncertain("cannot read checkpoint payload for publication") from exc
-    try: sync_attempt_publication(run_dir, payload_records, completion)
+    try: sync_attempt_publication(run_dir, payload_records, completion, payload.get("checkpoint_root") if job.get("kind") == "formal_train" else None)
     except OSError as exc: raise PublicationUncertain("cannot durably sync attempt publication") from exc
     durable = temporary if temporary.exists() else final if final.exists() else None
     if durable is not None:
@@ -287,6 +526,17 @@ def adopt_live(queue, owner):
                 (state == "live" and process_starttime(job["pid"]) != leader_before) or
                 (state == "group_live" and not set(current.items()) <= set(known.items()))): lock.close(); continue
         known.update(current)
+        if job.get("kind") == "formal_train":
+            candidates=([job["pid"]] if state == "live" else list(current))
+            inherited_lock=False
+            for pid in candidates:
+                try:
+                    queue.recovered_lock_guard(job["job_key"],job["lease_token"],pid)
+                    inherited_lock=True; break
+                except QueueError:
+                    continue
+            if not inherited_lock:
+                lock.close(); continue
         payload=json.loads(job["payload"])
         queue.update_attempt_journal(job["job_key"],job["lease_token"],job["pid"],job["process_starttime"],str(payload.get("physical_gpu")),job["journal_path"],member_identities=known)
         process = type("Adopted", (), {"pid":job["pid"], "group_only":state == "group_live", "known_members":known, "journal_path":Path(job["journal_path"]), "lock":lock, "poll":lambda self: None})()
@@ -385,6 +635,10 @@ def worker(queue, owner, once):
                 if once: return 1
                 continue
             process.lock.close()
+            if job.get("kind") == "formal_train" and group_state(process.pid) == "gone":
+                try: queue.record_terminal_evidence(job["job_key"],job["lease_token"],process.pid,job["process_starttime"])
+                except (QueueError, HardLimit):
+                    return 1
             reconcile_exited_attempts(queue,owner)
             if group_state(process.pid) != "gone":
                 return 1
@@ -396,8 +650,9 @@ def worker(queue, owner, once):
             time.sleep(60); continue
         payload = json.loads(job["payload"]); command = payload["command"]
         if "run_dir" not in payload: raise QueueError("worker payload requires data-volume run_dir")
-        run_dir = attempt_directory(payload, job)
-        run_dir.mkdir(parents=True, exist_ok=True); temporary = run_dir / "result.tmp"; final = run_dir / "result.json"
+        run_dir = ensure_attempt_directory(payload, job)
+        if job.get("kind") == "formal_train": ensure_checkpoint_directory(payload)
+        temporary = run_dir / "result.tmp"; final = run_dir / "result.json"
         process = None; supervisor = None; journal_path = run_dir / f"attempt-{job['attempts']}.json"
         try:
             supervisor=acquire_supervisor_lock(run_dir)
@@ -407,10 +662,21 @@ def worker(queue, owner, once):
                     queue.release_unstarted(job["job_key"], job["lease_token"], "GPU lock busy")
                     if once: return 0
                     continue
+                # The lock closes the local-device race. Revalidate every
+                # immutable attestation binding immediately before Popen.
+                queue.bind_reservation(job["job_key"], job["lease_token"], lock_handle)
+                queue.launch_guard(job["job_key"], job["lease_token"], lock_handle)
+                if job.get("kind") == "formal_train":
+                    command, captured_environment, cuda_device=capture_formal_inputs(payload, run_dir)
                 # This durable intent closes the crash window before Popen. A
                 # restarted worker protects it rather than risking a duplicate.
                 queue.start_attempt_journal(job["job_key"], job["lease_token"], None, None, str(payload.get("physical_gpu")), journal_path, state="LAUNCHING")
-                environment=dict(os.environ); environment["CUDA_VISIBLE_DEVICES"]=str(payload["physical_gpu"])
+                if job.get("kind") == "formal_train":
+                    environment=captured_environment
+                else:
+                    environment=dict(os.environ)
+                    cuda_device=str(payload["physical_gpu"])
+                environment["CUDA_VISIBLE_DEVICES"]=cuda_device
                 environment["NC_RTED_PRODUCER_COMPLETION"]=str(run_dir / "producer_completion.json")
                 environment["NC_RTED_JOB_KEY"]=job["job_key"]; environment["NC_RTED_LEASE_TOKEN"]=job["lease_token"]; environment["NC_RTED_INPUT_HASH"]=job["input_hash"]
                 process = subprocess.Popen(command, cwd=run_dir, start_new_session=True, env=environment, pass_fds=(() if lock_handle is None else (lock_handle.fileno(),)))
@@ -426,6 +692,8 @@ def worker(queue, owner, once):
                 state=group_state(process.pid)
                 if state != "gone":
                     raise QueueError("process group remains live" if state == "live" else "process group observation unknown")
+                if job.get("kind") == "formal_train":
+                    queue.record_terminal_evidence(job["job_key"],job["lease_token"],process.pid,job["process_starttime"])
                 commit_outputs(queue,job,payload,owner)
         except Exception as exc:
             protective=isinstance(exc, HardLimit)

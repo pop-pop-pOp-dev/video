@@ -22,6 +22,7 @@ from .recovery import CheckpointStore
 from .task_inputs import (FrozenTaskContext, InheritedTaskTokenizer, TaskInputError,
                           TrainingCatalog, TrainingTask, sha256_file, teacher_batch,
                           validate_observation_scope)
+from .captured_sources import CapturedSourceError, validate_admitted_sources
 from .training import IncrementalTrainer, Recipe, publish_progress, seed_run
 
 
@@ -86,7 +87,8 @@ class TeacherIndex:
 class TrainingWorker:
     def __init__(self, bridge: EvidenceSlowBridge, catalog: TrainingCatalog, teachers: TeacherIndex,
                  tokenizer: InheritedTaskTokenizer, provider: FrozenSampleProvider,
-                 store: CheckpointStore, *, group: str, seed: int, recipe: Recipe = Recipe()):
+                 store: CheckpointStore, *, group: str, seed: int, recipe: Recipe = Recipe(),
+                 captured_sources: dict[str, Path] | None = None):
         if group not in {"A", "U", "S", "F"} or str(seed) != store.identity["seed"] or group != store.identity["group"]:
             raise TaskInputError("worker and checkpoint run identity differ")
         if catalog.identity != store.identity["data_sha256"]:
@@ -96,6 +98,7 @@ class TrainingWorker:
         self.bridge, self.catalog, self.teachers = bridge, catalog, teachers
         self.tokenizer, self.provider, self.store = tokenizer, provider, store
         self.group, self.seed = group, seed
+        self.captured_sources = captured_sources
         self.trainer = IncrementalTrainer(bridge, list(catalog.tasks), seed, recipe)
 
     def loss_for_sample(self, sample_id: str) -> torch.Tensor:
@@ -160,13 +163,7 @@ class TrainingWorker:
         files = admission.get("source_files")
         if not isinstance(files, dict) or not files:
             raise TaskInputError("formal admission has no source-file binding")
-        source_digest = hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-        if source_digest != self.store.identity["code_sha256"]:
-            raise TaskInputError("source manifest and run identity differ")
-        root = Path(__file__).parent
-        required = {str(path.resolve()) for path in root.glob("*.py")}
-        if not required.issubset(files):
-            raise TaskInputError("formal admission omits NC-RTED runtime source")
-        for name, digest in files.items():
-            if sha256_file(name) != digest:
-                raise TaskInputError(f"accepted implementation changed: {name}")
+        try:
+            validate_admitted_sources(files, self.store.identity["code_sha256"], set(Path(__file__).parent.glob("*.py")), self.captured_sources)
+        except CapturedSourceError as error:
+            raise TaskInputError(str(error)) from error

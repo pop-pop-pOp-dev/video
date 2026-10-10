@@ -1,1057 +1,1365 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "created_at": "2026-10-10T04:30:48.974722+00:00",
-  "source_commit": "e4e9b3a8a2a57ba5c569b97ee8fab4f68f660a5f",
+  "snapshot_format": 17,
+  "created_at": "2026-10-10T07:32:11.546834+00:00",
+  "source_commit": "696bf0407a6bacc9fc170ca1422239fdb0e8a378",
+  "source_base_commit": "d764e853b81cc51b7051913e35d0d0b6af25d0c0",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
-  "previous_publication_commit": "05df7a36f4dfd097c5d1ee4731151c338612090d",
+  "previous_published_commit": "c209b06c54255213c72882fad11df866c239e012",
+  "source_whitelist": {
+    "previous_snapshot_manifest_sha256": "7b226f9d90f3e2541ce9284a2f7c80e61a96fad5dcb400a17e5a385bbd57228c",
+    "previous_content_paths": 198,
+    "release18_accepted_delta_paths": [
+      "scripts/nc_rted_attest_formal_resources.py",
+      "scripts/nc_rted_queue.py",
+      "scripts/nc_rted_train.py",
+      "src/nc_rted/captured_sources.py",
+      "src/nc_rted/production_runtime.py",
+      "src/nc_rted/queue.py",
+      "src/nc_rted/resource_attestation.py",
+      "src/nc_rted/storage_lock.py",
+      "src/nc_rted/train_worker.py",
+      "tests/test_nc_rted_queue.py",
+      "tests/test_nc_rted_resource_contract.py"
+    ],
+    "retained_prior_snapshot_paths": [
+      "THIRD_PARTY.md",
+      "external/ReactVAU-paper/LICENSE",
+      "external/ReactVAU-paper/README.md",
+      "external/ReactVAU-paper/eval_utils/hivau/eval_ans_hivau.py",
+      "external/ReactVAU-paper/eval_utils/hivau/eval_reactvau_hivau.py",
+      "external/ReactVAU-paper/eval_utils/hivau/hivau_utils.py",
+      "external/ReactVAU-paper/eval_utils/hivau/reactvau_inference.py",
+      "external/ReactVAU-paper/eval_utils/hivau/run_reactvau_vau.py",
+      "external/ReactVAU-paper/eval_utils/hivau/transform_metric.py",
+      "external/ReactVAU-paper/eval_utils/vad/detect_utils.py",
+      "external/ReactVAU-paper/eval_utils/vad/eval_paligemma_detection.py",
+      "external/ReactVAU-paper/eval_utils/vad/eval_reactvau_detection.py",
+      "external/ReactVAU-paper/llava/__init__.py",
+      "external/ReactVAU-paper/llava/constants.py",
+      "external/ReactVAU-paper/llava/conversation.py",
+      "external/ReactVAU-paper/llava/dist_utils.py",
+      "external/ReactVAU-paper/llava/mm_utils.py",
+      "external/ReactVAU-paper/llava/model/__init__.py",
+      "external/ReactVAU-paper/llava/model/apply_delta.py",
+      "external/ReactVAU-paper/llava/model/builder.py",
+      "external/ReactVAU-paper/llava/model/consolidate.py",
+      "external/ReactVAU-paper/llava/model/language_model/llava_qwen.py",
+      "external/ReactVAU-paper/llava/model/llava_arch.py",
+      "external/ReactVAU-paper/llava/model/make_delta.py",
+      "external/ReactVAU-paper/llava/model/multimodal_encoder/builder.py",
+      "external/ReactVAU-paper/llava/model/multimodal_encoder/clip_encoder.py",
+      "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/__init__.py",
+      "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/flash_attention_class.py",
+      "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/pos_embed.py",
+      "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/vit_scale_clean.py",
+      "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2_encoder.py",
+      "external/ReactVAU-paper/llava/model/multimodal_encoder/siglip_encoder.py",
+      "external/ReactVAU-paper/llava/model/multimodal_encoder/umt/vit.py",
+      "external/ReactVAU-paper/llava/model/multimodal_encoder/umt_encoder.py",
+      "external/ReactVAU-paper/llava/model/multimodal_projector/builder.py",
+      "external/ReactVAU-paper/llava/model/multimodal_projector/memory_manager.py",
+      "external/ReactVAU-paper/llava/model/multimodal_projector/projector_FSTW_PEMF.py",
+      "external/ReactVAU-paper/llava/model/multimodal_projector/tome16_mlp.py",
+      "external/ReactVAU-paper/llava/model/multimodal_projector/tome64_mlp.py",
+      "external/ReactVAU-paper/llava/model/utils.py",
+      "external/ReactVAU-paper/llava/serialize_utils.py",
+      "external/ReactVAU-paper/llava/train/llava_trainer.py",
+      "external/ReactVAU-paper/llava/train/llava_trainer_eval.py",
+      "external/ReactVAU-paper/llava/train/reactvau_stage2_cache_adapter.py",
+      "external/ReactVAU-paper/llava/train/train.py",
+      "external/ReactVAU-paper/llava/train/train_mem.py",
+      "external/ReactVAU-paper/llava/train/train_mem_stage2_cache.py",
+      "external/ReactVAU-paper/llava/train/train_mem_stage2_capacity_two_step.py",
+      "external/ReactVAU-paper/llava/train/train_mem_stage2_capacity_zero3_two_step.py",
+      "external/ReactVAU-paper/llava/train/train_mem_stage2_full_seeded.py",
+      "external/ReactVAU-paper/llava/train/train_mem_stage2_zero3_mixed_runtime_checkpoint.py",
+      "external/ReactVAU-paper/llava/utils.py",
+      "external/ReactVAU-paper/llava/video_utils.py",
+      "external/ReactVAU-paper/requirements.txt",
+      "external/ReactVAU-paper/vad/generate_detection_dataset.py",
+      "external/ReactVAU-paper/vad/generate_paligemma_train_data.py",
+      "external/ReactVAU-paper/vad/get_prompt.py",
+      "external/ReactVAU-paper/vad/paper_binary_loss.py",
+      "external/ReactVAU-paper/vad/train_paligemma_vad_384.py"
+    ],
+    "main_governance_paths": [
+      "AGENTS.md",
+      "AGENT_BOARD.md"
+    ]
+  },
   "validation": {
     "full_suite_repeated": false,
-    "focused_checks": {
-      "r0_final": 17,
-      "bundle_final": 21,
-      "caption_identity_cache_publication": 14,
-      "caption_final_retry": 3
+    "secrets_scan": {
+      "status": "PASS",
+      "scoped_paths": [
+        "AGENTS.md",
+        "AGENT_BOARD.md",
+        "scripts/nc_rted_attest_formal_resources.py",
+        "scripts/nc_rted_queue.py",
+        "scripts/nc_rted_train.py",
+        "src/nc_rted/captured_sources.py",
+        "src/nc_rted/production_runtime.py",
+        "src/nc_rted/queue.py",
+        "src/nc_rted/resource_attestation.py",
+        "src/nc_rted/storage_lock.py",
+        "src/nc_rted/train_worker.py",
+        "tests/test_nc_rted_queue.py",
+        "tests/test_nc_rted_resource_contract.py"
+      ]
     },
-    "secrets_scan": "PASS",
-    "independent_reviews_sha256": {
-      "caption_segment_lease_native_review_v5.json": "aad6d58eeda23c1cc89f6520c8d4565535b1d3fb736bc559ed30aebc9ad9e9f8",
-      "caption_config_v4_native_delta_review.json": "1b5c871a22fb1c6a7bfdaa2af465dad783994374c15970b60a2f2be9dc09e578",
-      "r0_builder_and_converter_native_review_v6.json": "347f510c28a5f05539d80ada11d44feb84da8ccf483079f27b5c1a078c2eaf16",
-      "interleaved_training_native_review_v4.json": "d0092e96e85986fd1ac12abe73441b3aa91da5eb71cb0a3a6cc76c73be6291dc"
-    },
-    "actual_caption_derived_smoke_sha256": "0b461cd4ff13bc7117c94434bcee65dc8a0cc074a6fd41ca715aa0ffcc9b624a",
-    "prior_validation_inherited_from_snapshot_sha256": "2ef34ada1e8275a92f5174de0adbaede967c66b53bf57ab53e7fe25e04bd7038",
-    "explicit_accepted_code_commit": "e4e9b3a8a2a57ba5c569b97ee8fab4f68f660a5f",
-    "unreviewed_main_commits_excluded": [
-      "0aac2c1",
-      "5a871ca"
-    ]
+    "accepted_evidence": [
+      {
+        "path": "reports/nc_rted/code03_release18_integration_v1.json",
+        "sha256": "b5d19896a269f2347f0cc1b1a6dcfcb46a0034c527c20fdc02fd94ac9870bda1",
+        "required_status": "INTEGRATED_ACCEPTED_STATIC_CODE"
+      },
+      {
+        "path": "reports/nc_rted/formal_resource_attestation_native_review_v5.json",
+        "sha256": "76f91583d8105b1f920b7deaaf4d0c256d0b4c850f7e256d5a32849468dfa7f4",
+        "required_status": "PASS_STATIC"
+      },
+      {
+        "path": "reports/nc_rted/observation_hotpath_native_review_v1.json",
+        "sha256": "7314e28b4921ea4416eaa1ceb3dbac714976c00ec8e2d267576afeb20090f265",
+        "required_status": "PASS_STATIC"
+      },
+      {
+        "path": "reports/nc_rted/observation_exact_gpu_speed_equivalence_v1.json",
+        "sha256": "c3feb6b52d68ab81160cf2d22595f8e36192bce810ce9afd9e98eb0bb484af0d",
+        "required_status": "PASS_EQUIVALENCE"
+      },
+      {
+        "path": "reports/nc_rted/github_publication_api_v13.json",
+        "sha256": "335f1653de79bf71a14028a774402646f461253c5993d214ebf794f326904d0e",
+        "required_status": "PUBLISHED_REMOTE_COMMIT_AND_ALL_FILE_HASHES_VERIFIED"
+      }
+    ],
+    "hotpath_release18_sha256": {
+      "src/nc_rted/detector.py": "4dffd4c50ffa8861e7f34289b382fe868e8316fbd7587dfb5c0bfc5f1f3d8a0c",
+      "src/nc_rted/frozen_vision.py": "c3ad91f54e8b9b39af0843246a16e667eec37ad0fe41abf62d65068e16c94f74"
+    }
   },
   "remaining": [
     "complete6000 observations and sealed crossfit teachers",
     "complete2000 caption preparation",
-    "accept real training manifest builder/protocol binding",
-    "repair and accept per-model staged prediction plan and runtime probe",
-    "accept formal resource attestation/queue guard",
-    "actual resource diagnostics and formal admission",
-    "12 training runs and13 full blind evaluations/statistics"
-  ],
-  "changed_scoped_files": [
-    "AGENTS.md",
-    "AGENT_BOARD.md",
-    "scripts/nc_rted_build_caption_preparation_manifest.py",
-    "scripts/nc_rted_build_r0_blind_manifest.py",
-    "scripts/nc_rted_convert_blind_fast_snapshot.py",
-    "scripts/nc_rted_interleaved_gpu_diagnostic.py",
-    "src/nc_rted/bounded_stage2_cache.py",
-    "src/nc_rted/caption_observation_cache.py",
-    "src/nc_rted/interleaved_training.py",
-    "src/nc_rted/media_observer.py",
-    "src/nc_rted/production_runtime.py",
-    "src/nc_rted/recovery.py",
-    "src/nc_rted/train_worker.py",
-    "src/nc_rted/training.py",
-    "tests/test_nc_rted_bounded_stage2_cache.py",
-    "tests/test_nc_rted_caption_observation_cache.py",
-    "tests/test_nc_rted_caption_preparation_manifest.py",
-    "tests/test_nc_rted_interleaved_training.py",
-    "tests/test_nc_rted_media_observer.py",
-    "tests/test_nc_rted_production_runtime.py",
-    "tests/test_nc_rted_r0_blind_manifest.py"
+    "complete actual resource diagnostics and formal admission",
+    "complete formal12training13completeevaluations/statistics"
   ],
   "files": [
     {
       "path": ".gitignore",
-      "sha256": "74b791acda9d6db6c1ad3db2036c854aa17e56477b6e0361e0839eba24a93a27",
-      "bytes": 194
+      "sha256": "7baed9de781cdfae296612653a9502dc6905edf9a9b2aabe02f3f674f3f25e38",
+      "bytes": 334,
+      "origin": "release18"
     },
     {
       "path": "AGENTS.md",
-      "sha256": "ae960a09e4165735d4fae9c1f6338822f2ad4ba91170235eb7edd9387901d70c",
-      "bytes": 6631
+      "sha256": "f3e435eb1124b8e0a5a9803773421efa4dc87caa9fd3a43260d2cc0003b68d4a",
+      "bytes": 7797,
+      "origin": "main_governance"
     },
     {
       "path": "AGENT_BOARD.md",
-      "sha256": "817ce43d30872765e0995d9031db83a0d816c799ca5472a8c28dece8d7fb9814",
-      "bytes": 54127
+      "sha256": "9fa96385fe8c9d30142f1f5f5954d7aadb0069c4e2200f6b724bbd23f79fd641",
+      "bytes": 106488,
+      "origin": "main_governance"
     },
     {
       "path": "README.md",
-      "sha256": "4b4dfe4e0614e049bfd3db20deaa3745c0888ce23dcd52cbfbe54e0a9c986125",
-      "bytes": 8699
+      "sha256": "44a6fba3383b16ba100fae4843b42d07b66205869065a520656680a4b793e9c8",
+      "bytes": 2239,
+      "origin": "release18"
     },
     {
       "path": "THIRD_PARTY.md",
       "sha256": "33b2b24c74ca96456cfae5703ca54533c98091497420fce347f0957eb2dd599f",
-      "bytes": 569
+      "bytes": 569,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "configs/nc_rted/environment_4090_reference.json",
       "sha256": "ed1118070bdabe1d37d519c635bcee3c813ebb52c15ffebbf695e7fb60991cb8",
-      "bytes": 643
+      "bytes": 643,
+      "origin": "release18"
     },
     {
       "path": "configs/nc_rted/model.yaml",
       "sha256": "378af354306a7b25391c8517dfdb082b032820b0f89f228b214801be26d43e9a",
-      "bytes": 624
+      "bytes": 624,
+      "origin": "release18"
     },
     {
       "path": "configs/nc_rted/training.yaml",
       "sha256": "aebba036380bc47d7b007554234c106df8312f6c6e800b33283870add9f75b08",
-      "bytes": 760
+      "bytes": 760,
+      "origin": "release18"
     },
     {
       "path": "docs/EXPERIMENT_SPEC.md",
       "sha256": "6c1a5fe8da3220f156000341fd01b3f1c6f7d1916e089d4ce3f1127fcd349bcf",
-      "bytes": 26209
+      "bytes": 26209,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_BLIND_PREDICTION_CONTRACT.md",
       "sha256": "d6a6a864ceec3b1b6c51fc41c0a3aa88e95fcf456cf4d6ab42a42ec75563acca",
-      "bytes": 4265
+      "bytes": 4265,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_CAPTION_PROVIDER_CONTRACT.md",
       "sha256": "a45354a2496632190a09c04860d3f84b6ece1a3df9eb5f233a082083c665a858",
-      "bytes": 4372
+      "bytes": 4372,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_CODE_CONTRACT.md",
       "sha256": "8652debbe1bde3451e9c3571fbbf888c26d31624c155086b35f482fc0a4a864c",
-      "bytes": 2263
+      "bytes": 2263,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_CODE_DESIGN.md",
       "sha256": "80cc1a2a3e1b1e8cb0ec20e37a3e4f87a671142732efd09f51c41382d24c62cf",
-      "bytes": 23298
+      "bytes": 23298,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_DETECTION_PROVIDER_CONTRACT.md",
       "sha256": "75c2c115091ec2c9eb220338e75875dacbf58ad5476427a4b35f2bfc95be2f21",
-      "bytes": 3317
+      "bytes": 3317,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_DETECTOR_CACHE_CONTRACT.md",
       "sha256": "3fa8ae9470f4d265851ec4e825971aef9857b1fa5daee3a0c80f103f00a2373f",
-      "bytes": 3192
+      "bytes": 3192,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_FEATURE_CONTRACT.md",
       "sha256": "6e3415d353ead27e26cb9b374754e036f4a90772bef36a012ab199f37c1f1cf1",
-      "bytes": 3277
+      "bytes": 3277,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_FROZEN_OBSERVATION_NUMERICS.md",
       "sha256": "0c8df90956e9038f382238e72dc6ab611bbe6ffe120b621284592c5beaa57520",
-      "bytes": 3474
+      "bytes": 3474,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_IMPLEMENTATION_HANDOFF.md",
       "sha256": "c1379708f54345ec59b33bf30badc716d6d3856a6581a2be221944c3b82a3b21",
-      "bytes": 2741
+      "bytes": 2741,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_MEDIA_OBSERVER_CONTRACT.md",
       "sha256": "284bf6231276c438e5cf8c62516ca237debed9561cf49d5a86192351604f8e64",
-      "bytes": 5181
+      "bytes": 5181,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_NUMERICAL_POLICY.md",
       "sha256": "74eda189e6d66254026b5fa03e78330da9039550875fa09e88011f7f28515adb",
-      "bytes": 1489
+      "bytes": 1489,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_OBSERVATION_CONTRACT.md",
       "sha256": "b0d816fde5d5aa2bf68b1a99406960697157d64fa14d7e165e1f1bf363388290",
-      "bytes": 2763
+      "bytes": 2763,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_OBSERVATION_EXTRACTION_CONTRACT.md",
       "sha256": "bcb6a99a3137b49bc872948fcb49fdf4d862666cb10b51cdd50b0967809b3aa5",
-      "bytes": 6183
+      "bytes": 6183,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md",
       "sha256": "b81ecd61fdbb9117633202d869355d1750e6ae0365f57e9a158ba6a75aeae2d3",
-      "bytes": 9769
+      "bytes": 9769,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_QUEUE_CONTRACT.md",
       "sha256": "ab15d348fe581cc669a7735e433e9def4e6f001b6c7994098f5f167e3589119b",
-      "bytes": 3824
+      "bytes": 3824,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_RETRIEVAL_CONTRACT.md",
       "sha256": "545db921d7c1e6b3fc4d2c45f932759d913d8414d25008d162605da147c7c28b",
-      "bytes": 3173
+      "bytes": 3173,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_STATISTICS_CONTRACT.md",
       "sha256": "9b37d61e7983d0dfd3c8795b04f0d2938fe3c7450070265a6cad87ec7f94d666",
-      "bytes": 3045
+      "bytes": 3045,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_TASK_INPUT_CONTRACT.md",
       "sha256": "c277dd6c99bb7170a1bafc2ab94d5e78a693565824095ca7c8e05dd266de5d9b",
-      "bytes": 3389
+      "bytes": 3389,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_TEACHER_PIPELINE_CONTRACT.md",
       "sha256": "d848831403c9b449b9af8d625c6e8bbec1cbd6a63c26fb4670148a163e03d953",
-      "bytes": 4808
+      "bytes": 4808,
+      "origin": "release18"
     },
     {
       "path": "docs/NC_RTED_TRACKING_CONTRACT.md",
       "sha256": "4d2fae9683df03b117454a514086bb1b9260761192a80748fc97e00acb34c2ab",
-      "bytes": 1886
+      "bytes": 1886,
+      "origin": "release18"
     },
     {
       "path": "external/ReactVAU-paper/LICENSE",
       "sha256": "46f679504a567e2acc18d24ddf1b3db3dc1b242365ec8e2a579706e1805a7559",
-      "bytes": 4153
+      "bytes": 4153,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/README.md",
       "sha256": "10918fbc2129bea6ac4c3a24e7ba780faa3fe985a1b8ec87fb50de52beeaafd4",
-      "bytes": 19570
+      "bytes": 19570,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/eval_utils/hivau/eval_ans_hivau.py",
       "sha256": "a1e41c198f1d3685f512ca299c936eedbe157d451984b8c68145fedbdf47a0c4",
-      "bytes": 2438
+      "bytes": 2438,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/eval_utils/hivau/eval_reactvau_hivau.py",
       "sha256": "71135248f644fc89d5418768bd9fa04972ed9ce9a92e5d0304c6051522879a89",
-      "bytes": 52508
+      "bytes": 52508,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/eval_utils/hivau/hivau_utils.py",
       "sha256": "9201fd72b353e1f38ad13026c6d2b9f2d85c749eb39023af1ec081fac0d4e2cc",
-      "bytes": 11495
+      "bytes": 11495,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/eval_utils/hivau/reactvau_inference.py",
       "sha256": "0be6e03846f343f318c60bbcf3997d5f5f375e5b851f90d6ff9d97859131e0a5",
-      "bytes": 33376
+      "bytes": 33376,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/eval_utils/hivau/run_reactvau_vau.py",
       "sha256": "258be5ba13b44c6ca11cdb94fa4a5ab412b589e5f2fa74c2e0a0235ed4f6bc88",
-      "bytes": 10176
+      "bytes": 10176,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/eval_utils/hivau/transform_metric.py",
       "sha256": "2aaf8482483d492e03451ce47d9cdc825c3d859f7e5760f3cf8ab4d7216caaf9",
-      "bytes": 7102
+      "bytes": 7102,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/eval_utils/vad/detect_utils.py",
       "sha256": "32b68d22746d4dc152283fc499f7eccc47e58e9832a80031c24a1ebfd5cdd106",
-      "bytes": 10516
+      "bytes": 10516,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/eval_utils/vad/eval_paligemma_detection.py",
       "sha256": "9b99e2c4d269d27a1454dfab30512e5a257f33fbfef826856f5664a0c542ec49",
-      "bytes": 43101
+      "bytes": 43101,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/eval_utils/vad/eval_reactvau_detection.py",
       "sha256": "64657577a97a35f6b28d434d164da65d809a25f34f19d5bdad03133a12e889eb",
-      "bytes": 84072
+      "bytes": 84072,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/__init__.py",
       "sha256": "8aced7eeb5c36ffd36bec4b6d38a30359efe0e2ca692664b27d9e8d35bba0a5d",
-      "bytes": 218
+      "bytes": 218,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/constants.py",
       "sha256": "2c5a8a659b3c5c1c70360808ae901511db67da8fbe331e1329cd754f6f3a0879",
-      "bytes": 293
+      "bytes": 293,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/conversation.py",
       "sha256": "aae43b46aedf4862ea8eb1432ac0ae87c0aa4f332c508dfe07bf403bbf2c73f2",
-      "bytes": 22577
+      "bytes": 22577,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/dist_utils.py",
       "sha256": "bcfe992ea132ad6ebd2017980f7fb88296fd22c3304955057e62eb101d3392b5",
-      "bytes": 2716
+      "bytes": 2716,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/mm_utils.py",
       "sha256": "197323ac8f7ca6f056ab265989a3e24f1da65e77835ec35beb9439136300c492",
-      "bytes": 22905
+      "bytes": 22905,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/__init__.py",
       "sha256": "28d6b4d79e87eaa96c939d5aa16ba121e8456a97c500ac913857c22b5fb75f85",
-      "bytes": 440
+      "bytes": 440,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/apply_delta.py",
       "sha256": "d8fe7f8d7f89b03b22ca2b0165d0c572d88e312e4f3d57bc77192b2ba33bd7d4",
-      "bytes": 1932
+      "bytes": 1932,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/builder.py",
       "sha256": "9250112af3f4cff4928476e083029f1ae89e359c3bc31b167fd484ef60c12842",
-      "bytes": 25399
+      "bytes": 25399,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/consolidate.py",
       "sha256": "7382809f80ea8b27381215a6a7a79e7f1a1c3595f2ff696cab2be51014ede20b",
-      "bytes": 915
+      "bytes": 915,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/language_model/llava_qwen.py",
       "sha256": "5abe6148532e3e66d8e602b226656db55633350eda2e235966fc3b276f159a2e",
-      "bytes": 8992
+      "bytes": 8992,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/llava_arch.py",
       "sha256": "787dc95b802bb100f8115c8ba1a64936fa5544767721ece99efd3233f96360d6",
-      "bytes": 79041
+      "bytes": 79041,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/make_delta.py",
       "sha256": "9cc84e226715680c476e89f64cc0f25f0e3e3e245620779e0541f0939196758c",
-      "bytes": 2251
+      "bytes": 2251,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/builder.py",
       "sha256": "5f1a5b8de7786ead12c87d65dc4f095706ee71491c9a17b464e6a6333a5edc91",
-      "bytes": 1621
+      "bytes": 1621,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/clip_encoder.py",
       "sha256": "1ca15402531773b2f81acc6bbc54078e72b48805903f41960bc23d08310c5fd5",
-      "bytes": 7275
+      "bytes": 7275,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/__init__.py",
       "sha256": "1f21db16f8c826674cd1196de7e98d70035eba3be03c196a9cb471d533c0ec98",
-      "bytes": 61
+      "bytes": 61,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/flash_attention_class.py",
       "sha256": "88e2853b0545d8f3dfe832d787e9d8193211b20cc4b39c118f0b9b3c583e1247",
-      "bytes": 3377
+      "bytes": 3377,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/pos_embed.py",
       "sha256": "d0dbe1f563306c22e5a25042034356a2b0a733a6cba2d613d7baaf44848c4226",
-      "bytes": 13735
+      "bytes": 13735,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2/vit_scale_clean.py",
       "sha256": "315936c8eac45890b7f78df8c27e5b234a915454dbf329d7ed79f7c06c217c80",
-      "bytes": 26044
+      "bytes": 26044,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/internvideo2_encoder.py",
       "sha256": "fcf6b76cf18add3203c39ed985477235bb0769f7404d5ee10c57b7f36151a815",
-      "bytes": 8091
+      "bytes": 8091,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/siglip_encoder.py",
       "sha256": "3e2c73fe3a2214eacaa6aa65ecdf6ad0bb44a2d63d3675fdddd954a65b2c497f",
-      "bytes": 26271
+      "bytes": 26271,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/umt/vit.py",
       "sha256": "27b6f57c14119dde43238662a5a1c1507ce63ca2e27cb8389c463bbfeb0c3bbd",
-      "bytes": 17981
+      "bytes": 17981,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_encoder/umt_encoder.py",
       "sha256": "5418bf363981e966a01a1de20aa62b1d6d5cfdfa553ebaf4a305efb43d19f314",
-      "bytes": 7834
+      "bytes": 7834,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_projector/builder.py",
       "sha256": "63a05fe44d7b9298b207a244e9597284a0950a840ff32cdd40f2edeefa042c40",
-      "bytes": 2399
+      "bytes": 2399,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_projector/memory_manager.py",
       "sha256": "d0e5129eb5a6d66c36a4c338307bb1d9fdcf010daddfa1c586cbc5662dee527e",
-      "bytes": 26863
+      "bytes": 26863,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_projector/projector_FSTW_PEMF.py",
       "sha256": "84ed9a6ef3455d21a9812ba0a87477b047ae66b29d175ab360750a1a5ec403a4",
-      "bytes": 14045
+      "bytes": 14045,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_projector/tome16_mlp.py",
       "sha256": "31088b67599aedb8047d4268658dbe9a288290bafc517c3fac7b590e5cbe344c",
-      "bytes": 11587
+      "bytes": 11587,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/multimodal_projector/tome64_mlp.py",
       "sha256": "a02d5eaa648cef7e2794095b0aa99ea983801a8073c1a28034b234b59c9e0cc4",
-      "bytes": 11587
+      "bytes": 11587,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/model/utils.py",
       "sha256": "a7f596b827dcae1d9563b474c5af353273fc7a5dcaa52d230e9833adef89f2bb",
-      "bytes": 927
+      "bytes": 927,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/serialize_utils.py",
       "sha256": "b9c27f5d1c895c3a0b7687c126321a87b93547673def624d36a591aa38b42336",
-      "bytes": 6440
+      "bytes": 6440,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/train/llava_trainer.py",
       "sha256": "fc9b49d2994dce30e0d75f2c35c9afe9978b326a610f4557d227ad408c5aec2f",
-      "bytes": 25159
+      "bytes": 25159,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/train/llava_trainer_eval.py",
       "sha256": "ecbd445d1c8fcd14280e5b77109deb74b4fc58b8de8131348d02bffb281c65ea",
-      "bytes": 3439
+      "bytes": 3439,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/train/reactvau_stage2_cache_adapter.py",
       "sha256": "439ab5a5568b3765183df96362526b5d7c7a5fcd708faee367bef0ad2846f5fd",
-      "bytes": 2209
+      "bytes": 2209,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/train/train.py",
       "sha256": "33837188c7e0d9059300f96a295c6a2fb68b0d71d555f84b594140720b88eb71",
-      "bytes": 83941
+      "bytes": 83941,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/train/train_mem.py",
       "sha256": "72d7f83ac802410fa33db57e3b4dfca5247f235091154e4126f261b2d41ac862",
-      "bytes": 156
+      "bytes": 156,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/train/train_mem_stage2_cache.py",
       "sha256": "60e5a183d2212bd579214da2ba7fe87a96f58d0bb574ebd6c9c59f4655500c7b",
-      "bytes": 1644
+      "bytes": 1644,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/train/train_mem_stage2_capacity_two_step.py",
       "sha256": "64193bf176957331197813d0f524559b044ac8061b2548f1aa2f179ee04156b4",
-      "bytes": 14217
+      "bytes": 14217,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/train/train_mem_stage2_capacity_zero3_two_step.py",
       "sha256": "d31febac868ccc4f6f36df386b0648184366dfd81c1d2c5a0d927db5f4ff2496",
-      "bytes": 6574
+      "bytes": 6574,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/train/train_mem_stage2_full_seeded.py",
       "sha256": "2229d45f1206395bec8374ed912857cc49ec9e25fe8ff790d3bc39135c5d4491",
-      "bytes": 1191
+      "bytes": 1191,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/train/train_mem_stage2_zero3_mixed_runtime_checkpoint.py",
       "sha256": "01cf8489bf341ddea514ffe1b5626bb5545e3784dd9869705d35646d067d0125",
-      "bytes": 3562
+      "bytes": 3562,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/utils.py",
       "sha256": "386c702d2701f421232c3ed211749a0109fbb1b0428b1f542aad79fe61fd6ebb",
-      "bytes": 6342
+      "bytes": 6342,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/llava/video_utils.py",
       "sha256": "edc8a2074fceaaa6f92682dde83f94e2617d6b433842f3ae3c901be43ac8c26a",
-      "bytes": 18759
+      "bytes": 18759,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/requirements.txt",
       "sha256": "ce9ce1da2e80a08c6bbf8745c9bfdf28d92aa118623fb99081a768597ba1959b",
-      "bytes": 618
+      "bytes": 618,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/vad/generate_detection_dataset.py",
       "sha256": "94c4c6cfd7e2a4104a9bb3462fa695265afb29ac330ff7b7996607da56c511b1",
-      "bytes": 5724
+      "bytes": 5724,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/vad/generate_paligemma_train_data.py",
       "sha256": "8159d3b84cc7f54503b9b237917994be5035088ffb6ebd4ef9c73aca3c277012",
-      "bytes": 37457
+      "bytes": 37457,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/vad/get_prompt.py",
       "sha256": "0152e8bf0b844adbcab6dfd1e32395fe56b9ee29f18514250bac79aa5f84510b",
-      "bytes": 2439
+      "bytes": 2439,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/vad/paper_binary_loss.py",
       "sha256": "c7cfe6543be12644d23994dd49c6ed09ac5aaed7820861af13a41a0e4abcde16",
-      "bytes": 2017
+      "bytes": 2017,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "external/ReactVAU-paper/vad/train_paligemma_vad_384.py",
       "sha256": "7774d9fc641c84016b0c3795f019150f4e4e6e8ea80d57bb2ecdf8d8e76c436e",
-      "bytes": 51318
+      "bytes": 51318,
+      "origin": "prior_snapshot_retained"
     },
     {
       "path": "pyproject.toml",
       "sha256": "d793048dd948ca82ae0469ec018e9bbb92f8565cc2d0e69831df672f4bb20f29",
-      "bytes": 585
+      "bytes": 585,
+      "origin": "release18"
+    },
+    {
+      "path": "scripts/nc_rted_attest_formal_resources.py",
+      "sha256": "74d220c3b85ca110e4880108b4d1c7e1fb031cca382de315d9c204025b7f47ee",
+      "bytes": 12006,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_bounded_stage2_cpu_validation.py",
       "sha256": "2508e2c5eff5cbd54346915de0385325ecdfda985f17aac4ba4d06132251f99c",
-      "bytes": 7698
+      "bytes": 7698,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_build_caption_preparation_manifest.py",
       "sha256": "f0126f63f9ccbfd7f9e8c690c16a012beddb8235b31c09f1cf2e829a674e9705",
-      "bytes": 21081
+      "bytes": 21081,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_build_manifests.py",
       "sha256": "bad0e780869983b456ba9d9aa441e18c464f553d30d0ad1924b130d8ad103351",
-      "bytes": 3482
+      "bytes": 3482,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_build_r0_blind_manifest.py",
       "sha256": "923f8b1f2c2e6d742180b55c05b922232edca0229852ea6f2e35177087cd044c",
-      "bytes": 31160
+      "bytes": 31160,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_build_teacher.py",
       "sha256": "99227112e961a7c6b01096e98d556979786cd35cd2251b691cd68b07827cf9f9",
-      "bytes": 1589
+      "bytes": 1589,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_caption_preparation_runner.py",
       "sha256": "d587ca65189dff013c2ba3b3b241d619640302f81f3900becaa61fe8967dce3c",
-      "bytes": 13657
+      "bytes": 13657,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_caption_streaming_probe.py",
       "sha256": "0a26fe382b30c88c54d7934282624d145b579604e174bdfc75adff4e69a208eb",
-      "bytes": 21248
+      "bytes": 21248,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_convert_blind_fast_snapshot.py",
       "sha256": "283e1a0152c0ad93d562f628451c2028e1736d06364609941960d470bae2256d",
-      "bytes": 9460
+      "bytes": 9460,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_export_fast_snapshot.py",
       "sha256": "4a7bd4c07bf3f12958636b11b7aee2415761dd56dbda89c4ab25a253df66040d",
-      "bytes": 2056
+      "bytes": 2056,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_export_frozen_vision.py",
       "sha256": "32931c876e71c908b7ac856352764588cc67efa7937a2dd06f29272533984a0d",
-      "bytes": 8537
+      "bytes": 8537,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_extract_observations.py",
       "sha256": "f7188415c3a0c1f648885688bfadc74b4a9e6d1415a513747eeb875dd5ed2439",
-      "bytes": 1919
+      "bytes": 1919,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_interleaved_gpu_diagnostic.py",
       "sha256": "5097269eafb65b883cf37f8c81ba5c581c994c7a16813cf85acd179b76779da1",
-      "bytes": 21135
+      "bytes": 21135,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_materialize_vau.py",
       "sha256": "f73c26b99b8bfcdb7376c26bcb2191ff60078ffe6dc0607182802753cd172177",
-      "bytes": 4674
+      "bytes": 4674,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_predict.py",
-      "sha256": "f7f9c58476a6a211402abd6f00f793a2b4851717611acfc8464a9bf2dc0b896a",
-      "bytes": 11180
+      "sha256": "5c54c3772bd3303cd00cca7a2032c06fd69f59079bc4b22574fe86c4faec0846",
+      "bytes": 29002,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_prepare_caption_observations.py",
       "sha256": "1a78b5e74b02f29a3cabc199379280507006d01cdd184431a5a51ca4a3b14b9f",
-      "bytes": 1384
+      "bytes": 1384,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_prepare_observations.py",
       "sha256": "5ef4a89aa7163d719406036bd6f8f173784012d5c71eaf0b1ce09273656f85bf",
-      "bytes": 18316
+      "bytes": 18316,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_queue.py",
-      "sha256": "8f3882c2bffc1170b5572ae9f3c5cfd405e76db1e7f3d4d76d68626a0bb3cd1e",
-      "bytes": 31940
+      "sha256": "20e308c4125d36086eeed1b22650d97e3c4b014fb66c2d6526b69efcb133952c",
+      "bytes": 51382,
+      "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_train.py",
-      "sha256": "eb761098cdba5936a514b9e96eb940d857947ed1538afed565ec46d3e68c9a2a",
-      "bytes": 2092
+      "sha256": "0f55f1948b0364e110660b6ff4a3113292824b67892faadd08e16bdf6f1d0e83",
+      "bytes": 7010,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/__init__.py",
       "sha256": "dcd449ed05511a3f3e6618a9a66930b3944fa0453c668975f718365042768d86",
-      "bytes": 38
+      "bytes": 38,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/alignment.py",
       "sha256": "b0bbf851dc28fef91ae66ee580c3b86947057e1981928b50fd331a2ba64f7649",
-      "bytes": 5878
+      "bytes": 5878,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/batches.py",
       "sha256": "a83536b277abb8f4b7eaad983cdcaeb97efb08e894fab5df629a9c57a41c92b3",
-      "bytes": 3754
+      "bytes": 3754,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/bounded_stage2_cache.py",
       "sha256": "5c091bc995c7a63a442311d684e218cf9b5d139f216a4d7bfc56a0e79a375530",
-      "bytes": 17976
+      "bytes": 17976,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/bridge.py",
       "sha256": "da3f1900b7e4c3e6d653cc5f37a90bfe1825667fc5cf7ea766247dc472779b29",
-      "bytes": 9390
+      "bytes": 9390,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/caption_observation_cache.py",
       "sha256": "aedf264d0c5cf492c8d357ee9da8f4a25e99f5e58e4427cc66625a753169b828",
-      "bytes": 16143
+      "bytes": 16143,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/caption_provider.py",
       "sha256": "23225fe4b50303ebcd62017f0cd55dc754cf9467cf6854a1b3a80046b80d71a2",
-      "bytes": 12985
+      "bytes": 12985,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/caption_sampling.py",
       "sha256": "07f3db2306c91f4b27defd72c14862456736d3296ecd336be849f224854513c8",
-      "bytes": 4871
+      "bytes": 4871,
+      "origin": "release18"
+    },
+    {
+      "path": "src/nc_rted/captured_sources.py",
+      "sha256": "38c67812a1d2724e13d151c1d66e68ebbe11751b0e96d35e54b206748669f200",
+      "bytes": 4667,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/detection_media.py",
       "sha256": "4ea0492ad5b1f14cb6ca7b468808b374a0fb9a40cf4a82e93990ec4e750a4be1",
-      "bytes": 9320
+      "bytes": 9320,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/detection_provider.py",
       "sha256": "3df6e98f9db37c5d6e1c1aab8572dadad000ad512b8e807c898f0cf74014fb15",
-      "bytes": 11484
+      "bytes": 11484,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/detector.py",
       "sha256": "4dffd4c50ffa8861e7f34289b382fe868e8316fbd7587dfb5c0bfc5f1f3d8a0c",
-      "bytes": 33192
+      "bytes": 33192,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/fast_snapshot.py",
       "sha256": "f986cbe88a10a7cc747fa114ef99d4c84b1c2904874fcd6263785661c1eb4023",
-      "bytes": 7065
+      "bytes": 7065,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/features.py",
       "sha256": "6753b7e96f785db6a35a0982c22bedb78f7a3016ad3f6856c6ecf09525b703ea",
-      "bytes": 14099
+      "bytes": 14099,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/frozen_vision.py",
       "sha256": "c3ad91f54e8b9b39af0843246a16e667eec37ad0fe41abf62d65068e16c94f74",
-      "bytes": 10823
+      "bytes": 10823,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/inherited_memory.py",
       "sha256": "eaf9853d6f96b2108bf7bc1c7da71d69a6039f4d12a05b54031990aae9306f9e",
-      "bytes": 3408
+      "bytes": 3408,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/interleaved_training.py",
       "sha256": "8499d6cd3d7b2f0c0f2a105cf1457ef263780455b470f35faa6af2ecd960e7cd",
-      "bytes": 15833
+      "bytes": 15833,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/loading.py",
       "sha256": "7b65855f80a4b0292d6d012ec78e396bd43e6ba92f1b72beb9ea5f1d85d9f3be",
-      "bytes": 7905
+      "bytes": 7905,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/manifests.py",
       "sha256": "0a4d01e338f7c1a5845115f31519ced052ae44c67f22fa5d35c0c2693c474b69",
-      "bytes": 18732
+      "bytes": 18732,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/media_observer.py",
       "sha256": "aaf2a4778d43fe4c93ca97278e5992eec241c77542a7e829b95295f2a6482d85",
-      "bytes": 15005
+      "bytes": 15005,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/model.py",
       "sha256": "f2eb65cde18b9d055092cc6838e5690ba87430dccc7a8f02f300b09523898efb",
-      "bytes": 11448
+      "bytes": 11448,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/numerics.py",
       "sha256": "63eb0fb6a3f1f0480e49fc3ba74c4aad75266642731d252e8b1a471dd88a27f0",
-      "bytes": 2546
+      "bytes": 2546,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/observation.py",
       "sha256": "abeb8fddc3c9d2ca8a752375bf861cacdde5b73d0aa8e0f9fd0d281b7267e444",
-      "bytes": 6830
+      "bytes": 6830,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/observation_cache.py",
       "sha256": "f0ea5e2dfa5f883f2f3ee6d5fe4a5f5b8212ec897cae00e4e61940f781c4415a",
-      "bytes": 6641
+      "bytes": 6641,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/observation_extraction.py",
       "sha256": "fb2c1dc085c03eeb5f44cfdfa211ec0901ffefd9b2adf01792684f62445fc1b4",
-      "bytes": 15419
+      "bytes": 15419,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/prediction_adapters.py",
       "sha256": "43f7b41eef7b7ef34fe8c24dcb8da124c8617db8b242e1e1470aa58c74c7b002",
-      "bytes": 14877
+      "bytes": 14877,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/prediction_inputs.py",
-      "sha256": "ec7abe2ec143e3d4e67159f66ad7a957e273d606bae821f6991d6d919dc6ecb9",
-      "bytes": 27080
+      "sha256": "831e3e8edfcc31b49b61b54a68b0c87734b9921d39c9d98612b2b0702c716d8f",
+      "bytes": 53452,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/prediction_media.py",
       "sha256": "063c84fef26c9c530bdecf13c67f4e8bcb8723f1daf89f1220c013d7cc16f67c",
-      "bytes": 11590
+      "bytes": 11590,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/prediction_runtime.py",
       "sha256": "664a2197e65d37005551587c076ffb0754eccd7c82e8dc9efa1872f840cdc161",
-      "bytes": 33361
+      "bytes": 33361,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/prediction_store.py",
-      "sha256": "511ed1ffcf554c45d0f4e4ef1769ed1946079546c9ee2da5c0f0a2d5cc5b54bb",
-      "bytes": 14546
+      "sha256": "aed35b3e28aeb7c715f32a7706b0bebba07e0d30a34012b6873d75d38ae387f7",
+      "bytes": 22117,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/prediction_worker.py",
-      "sha256": "6e9f20282ddef2abb550c955cfe3282e5859ef23ea73f0c471ca5df6f5f2e270",
-      "bytes": 8751
+      "sha256": "7ae1fe134013efb348e344ee8dd7d4b6865093eb59ce493efa37f83183954a03",
+      "bytes": 16077,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/production_runtime.py",
-      "sha256": "137965fb1cbc5c1c4ec71636680f2e840061e6136a584e17203e97d33993f67f",
-      "bytes": 45658
+      "sha256": "d6f825dc2b3f03f64d8bf3950aa818d57fd8b7df0dafd316f528209db7e9f9fa",
+      "bytes": 46117,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/queue.py",
-      "sha256": "77b22c996e38d064ac4fd47e56c9f37c9f8de363f20f337e76ed8472e3b2b3c7",
-      "bytes": 32868
+      "sha256": "65cc5ac41cf616dcbffa42e9dd07bbd9bbb00156a9c5634169c316015e9193d0",
+      "bytes": 46965,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/recovery.py",
       "sha256": "52218fde5985b24714b298a69f2d2baf0c88cbf977e09b0f9148f5cc6dec0446",
-      "bytes": 30019
+      "bytes": 30019,
+      "origin": "release18"
+    },
+    {
+      "path": "src/nc_rted/resource_attestation.py",
+      "sha256": "52c971b2b4d7d8926653a8f8cb1f94e67ffe2bba998d66787118d507dd7de041",
+      "bytes": 27848,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/retrieval.py",
       "sha256": "e5c91538b42d7600675f29fc62c489ef384440ba22e9ad687ffacc901edac339",
-      "bytes": 13700
+      "bytes": 13700,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/statistics.py",
       "sha256": "870890df59a2a460b1946d4a40f378d8d7b8d0e496043ba08d62f9efddd3cec5",
-      "bytes": 12029
+      "bytes": 12029,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/storage_lock.py",
-      "sha256": "f08ac535d75f66dbcc8da7643cddc80d1e25aab6e0bf3cf50eb3452982ebfc84",
-      "bytes": 7792
+      "sha256": "24cb3bb811a449b284e94c32671678bec3f0cb4ba3f5f1e2fab05e3bea9dc0a3",
+      "bytes": 8128,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/task_inputs.py",
       "sha256": "4fc06dc12cf4d0e83eef19be17d9855014aaedd00571ac09d6edc44f5b798c7b",
-      "bytes": 15283
+      "bytes": 15283,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/teacher.py",
       "sha256": "080358488db723dc02417c3347d243bb3080d3d71eebf8eb83d575c6b3921324",
-      "bytes": 4996
+      "bytes": 4996,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/teacher_cache.py",
       "sha256": "a7557cec43755efb5b6358dd54327e414b76a9e423f8343aa8836c7e75393c20",
-      "bytes": 15282
+      "bytes": 15282,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/teacher_pipeline.py",
       "sha256": "898551c09c0dc7b64b9ee79fe57f6d1cbc24e0dec973e634a912e9512e8f0228",
-      "bytes": 26195
+      "bytes": 26195,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/teacher_records.py",
       "sha256": "0c3c4b6f721fc320d34154e708c9016825b85f7b458bf5b9851a49e112e62116",
-      "bytes": 11387
+      "bytes": 11387,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/teacher_store.py",
       "sha256": "585f4749da873982d3f67f0ab1d41d0d355c420c03e48a6da9d0da83716d9b1f",
-      "bytes": 12228
+      "bytes": 12228,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/tracking.py",
       "sha256": "4093e11c54998030aa2894f6a4133b1cfb0d2b809df28cdd295b750d5a8d8ebc",
-      "bytes": 9795
+      "bytes": 9795,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/train_worker.py",
-      "sha256": "992c3edeb76ed146edb41d9a41593ca44c49f978bb13784da17f0b244cf16e1b",
-      "bytes": 10172
+      "sha256": "ea8a355ddae345e3d76794e7ef4036513b2d5a105acfa7a79e49187d44f17f31",
+      "bytes": 9966,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/training.py",
       "sha256": "1d84aa1a8c288a508b0f807055763864bbee19d3a6b75539aaf9415e6e51f53e",
-      "bytes": 9544
+      "bytes": 9544,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/vau_media.py",
       "sha256": "d4eea3a29e7105bd6fde63ae756ee83dabc38d054ffc28ee631a9bdf5c97561b",
-      "bytes": 36575
+      "bytes": 36575,
+      "origin": "release18"
     },
     {
       "path": "src/nc_rted/worker_runtime.py",
       "sha256": "55b1e0c0bc180c998915b61b192349d69fac3afd1ad771ee3ac5ef744d567c2f",
-      "bytes": 6859
+      "bytes": 6859,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_alignment.py",
       "sha256": "71794dba6be1b0f9c6e69421191a3989aa7790b2571af7dccf162ebd39d43aaa",
-      "bytes": 2469
+      "bytes": 2469,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_batches.py",
       "sha256": "437b616004bf49c8a40652987c3f69d9bc92a93477160a8873fc6e6a63546072",
-      "bytes": 2247
+      "bytes": 2247,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_bounded_stage2_cache.py",
       "sha256": "36a7f1ff609f9bd2a36b037d0e5fe5ab53fb046e801622a665c784d17d8a5feb",
-      "bytes": 9856
+      "bytes": 9856,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_bridge.py",
       "sha256": "91670c8e37abff9c9f912eff057dc916532ac7f5aca7d269f5a8e819b0568732",
-      "bytes": 7527
+      "bytes": 7527,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_caption_observation_cache.py",
       "sha256": "3a6245335a474ee57a9f5ebc4c7702ca5500982229cdf95dbf33f27d1a546f95",
-      "bytes": 9163
+      "bytes": 9163,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_caption_preparation_manifest.py",
       "sha256": "05da16a8eeadaca47a546f7cc72e69bb9a2063a47289d848afe32cb58fbe288e",
-      "bytes": 4023
+      "bytes": 4023,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_caption_provider.py",
       "sha256": "6e8dbc6bc7e7399928cf9bb21338d59fe579f1f839bedd6f36b951d0be6c6fbe",
-      "bytes": 9318
+      "bytes": 9318,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_caption_sampling.py",
       "sha256": "9dec33aa15bf374c283232362b1e5fd7d61bc486e1d1ca2597e522c9501e8570",
-      "bytes": 2479
+      "bytes": 2479,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_detection_media.py",
       "sha256": "9ba76c91ccd7ecfddabce754a28b48c7dcaf74199a1bc2d13a9af2d669c4aa16",
-      "bytes": 7363
+      "bytes": 7363,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_detection_provider.py",
       "sha256": "73199ec90e35fcac99440f21188202f951b63ad09cd02975f41cec795da54e9f",
-      "bytes": 6319
+      "bytes": 6319,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_detector.py",
       "sha256": "93f8bef4e04cdcfdf84b53d95550cb39a5f0af6d797f06b764ccf3c5358af10e",
-      "bytes": 11426
+      "bytes": 11426,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_detector_binding.py",
       "sha256": "dbf2e661752bc62c989f0c8a52306890ec8d9e8a178b97ba90c089a544188c0f",
-      "bytes": 6261
+      "bytes": 6261,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_exact_vision_validation.py",
       "sha256": "09fee7975e590cb71bedd66c63470f231f3521461f767d61a657d043f980b1aa",
-      "bytes": 2332
+      "bytes": 2332,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_fast_snapshot.py",
       "sha256": "5a5ce4d08809a9ce733c40fb566f5c474917c1aa984f6ac8b66b403cae413830",
-      "bytes": 4675
+      "bytes": 4675,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_features.py",
       "sha256": "4ad94347d6cd5a0608f7e50530daec040c6611e2b20a6b1bbcbcb5b26ed060b6",
-      "bytes": 6282
+      "bytes": 6282,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_frozen_vision.py",
       "sha256": "1f0666ea4d694dd912755d7b995565aa03e7c9bb8095683c54cf89b9e9b42280",
-      "bytes": 8373
+      "bytes": 8373,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_inherited_siglip_binding.py",
       "sha256": "d54b4df43e0346dd00674e71fc1532bb49674df2ce5a57fd2f9c14305117886e",
-      "bytes": 3365
+      "bytes": 3365,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_interleaved_training.py",
       "sha256": "d268d13af891e9c03f2747e75e597f472f34b36ac52d501b4829eab9055bab9d",
-      "bytes": 18299
+      "bytes": 18299,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_loading.py",
       "sha256": "286542db1e168444ba02ebb182d9e4f79ca6f0df75fefbd703ecd745a7245fca",
-      "bytes": 2490
+      "bytes": 2490,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_manifests.py",
       "sha256": "4ad9c18bf2d3ea854c204078aa94a6b8ad962399a0e27e83163fd42c82b0af56",
-      "bytes": 6974
+      "bytes": 6974,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_media_observer.py",
       "sha256": "dfa75b60731990ed450a5feb71cccfc3db4368d56db4499fefb398ad9fba5f8c",
-      "bytes": 17781
+      "bytes": 17781,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_model.py",
       "sha256": "72b6faecc85e04f398577adc78d9861c19c9c85ad7be5f556c8e678af6870af6",
-      "bytes": 7962
+      "bytes": 7962,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_numerics.py",
       "sha256": "aad9bc97003c6b9e6bd842e4aced1b139ff691b6e793834422e0f9749405b913",
-      "bytes": 2697
+      "bytes": 2697,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_observation.py",
       "sha256": "92153dee962ce51e039bae85da481314fd12123d42a05781bc3149c998e222fe",
-      "bytes": 3021
+      "bytes": 3021,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_observation_cache.py",
       "sha256": "1bb67d9af5a689f5f4f80581a3bf6ea2b82442241c9b66496793934d9c85565c",
-      "bytes": 4430
+      "bytes": 4430,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_observation_extraction.py",
       "sha256": "5e43ad9777407a1af29da7c5e860a049cd78c91629dbe9a6273d16054572145c",
-      "bytes": 26672
+      "bytes": 26672,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_prediction.py",
-      "sha256": "45fd9d634fb7d2fa06f4b5fe5e65e37d9e604cd04a6231688e2540e312db3f56",
-      "bytes": 52451
+      "sha256": "44b4092804b55e605c98692a5ab30d115adba8ab7e59689d89ecf8aab79f7e19",
+      "bytes": 85637,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_production_runtime.py",
       "sha256": "5bd81c3851aeb3da81d672700153aedeb91a225b9720f451f7dff5a70c20a899",
-      "bytes": 33013
+      "bytes": 33013,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_queue.py",
-      "sha256": "6324ccfae2af2fc6c1c6aff67c86d4b251adeaee9d67935b6e5213ffbe0f840c",
-      "bytes": 11091
+      "sha256": "f7282e20f927caf173d2bccd73077c5515119e0d2f100c2e8aaa0838a3ec8fa9",
+      "bytes": 62244,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_queue_lifecycle.py",
       "sha256": "d9d1463cdb9f18e1e35b5426bd484a1257acfbfd9c62b0d6f4470a7bb700959e",
-      "bytes": 30385
+      "bytes": 30385,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_r0_blind_manifest.py",
       "sha256": "5411de7a64cc4064b4f29d6842f962dbb07845fd4eb7241012c4e85bfe87ac49",
-      "bytes": 18061
+      "bytes": 18061,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_recovery.py",
       "sha256": "30ebf1290153fb382a739ba260365c9fa5200d74873fc3cd014bb2a44b644028",
-      "bytes": 12181
+      "bytes": 12181,
+      "origin": "release18"
+    },
+    {
+      "path": "tests/test_nc_rted_resource_contract.py",
+      "sha256": "2a63fe141a69deeeb5e4e39846cc70005c6ec734aec5ec1cf406364ecc9e9396",
+      "bytes": 8947,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_retrieval.py",
       "sha256": "a64ee0e608665f939a0904f2d7a2ec9eb2243e9a5c7a11491c0438a78275ecb1",
-      "bytes": 5714
+      "bytes": 5714,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_statistics.py",
       "sha256": "b71608802067e9f802e02f0f86f6d5595a165076354b8ca7c9232584bb202115",
-      "bytes": 4892
+      "bytes": 4892,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_storage_lock.py",
       "sha256": "7562ea93338f5262451dab20c86158790a0391ba989018a5a902742af1cc209b",
-      "bytes": 13111
+      "bytes": 13111,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_task_inputs.py",
       "sha256": "076f934ebc2ccca43b5d08ef125f6af15011f02416c4c77319f8e465752f35cd",
-      "bytes": 5795
+      "bytes": 5795,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_teacher.py",
       "sha256": "fee878d7e524f49afb3b6cf6c39eb470d828e916ba25cf1d75b3b991ddb7ee9e",
-      "bytes": 1904
+      "bytes": 1904,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_teacher_cache.py",
       "sha256": "a239e4a5ab188c2ee37ffc8c4b02f8c0cb85d358e328192b4faefec5e498d786",
-      "bytes": 14066
+      "bytes": 14066,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_teacher_pipeline.py",
       "sha256": "350273dd17ea6629685415f990998f4e437b5ae59ba46ba0226aa51b73e6d459",
-      "bytes": 10736
+      "bytes": 10736,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_teacher_records.py",
       "sha256": "ef74ae255727c49884b8ffe3fa6f6990d626298c411b1bfc6cfd720dfa585f30",
-      "bytes": 4377
+      "bytes": 4377,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_teacher_store.py",
       "sha256": "8cbd79bdeec0684d3891d169872cc6449f523c7386efbcec15a7196837dbaa4f",
-      "bytes": 5124
+      "bytes": 5124,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_tracking.py",
       "sha256": "955081ef4dc2fa2e4469f551489b6f6a4e5dd0e04691ea616646f5b617595416",
-      "bytes": 2923
+      "bytes": 2923,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_train_worker.py",
       "sha256": "f46145bb03fb2ebec845967923a38ee81b195e00bff9a92958c95ec4423ef9ae",
-      "bytes": 2301
+      "bytes": 2301,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_vau_media.py",
       "sha256": "0709fffb9c13bf09d7b41455d63e5ee1c4877d38946c1aa8409bbcc3491758ee",
-      "bytes": 7377
+      "bytes": 7377,
+      "origin": "release18"
     },
     {
       "path": "tests/test_nc_rted_worker_runtime.py",
       "sha256": "9a8058d2b183fae9a1a1a6c05a0cffeeb419fa9609eff53a1ca02f4a5f9fa470",
-      "bytes": 1836
+      "bytes": 1836,
+      "origin": "release18"
     }
   ],
-  "documentation_commit": "e27bdbe90b55614aeb26fc9765dda89c28a428b4",
-  "rejected_unpublished_candidate": "nc_rted_publication_candidate_v15"
+  "governance_docs_refreshed_at": "2026-10-10T07:38:12.560387+00:00"
 }

@@ -5,11 +5,17 @@ import hashlib
 import json
 import os
 import shutil
+import socket
+import stat
 import sqlite3
 import time
 import uuid
+import sys
 from contextlib import contextmanager
 from pathlib import Path
+
+from .resource_attestation import ResourceAttestationError, resource_lease_expiry, verify_attestation
+from .worker_runtime import HeldGpuLock
 
 PENDING, RUNNING, RETRY_WAIT, SUCCEEDED, BLOCKED = "PENDING", "RUNNING", "RETRY_WAIT", "SUCCEEDED", "BLOCKED"
 RETRY_DELAYS = (300, 1200, 3600)
@@ -32,6 +38,37 @@ class HardLimit(QueueError):
 
 def after_attempt_journal_write():
     """Test seam for the file-before-SQL crash boundary."""
+
+
+def _canonical_gpu_lock(payload: dict) -> Path:
+    return (Path(payload["data_volume"]) / ".nc_rted_locks" /
+            f"gpu_{socket.gethostname()}_{payload['physical_gpu']}.lock")
+
+
+def _held_flock(lock_stat: os.stat_result, pid: int) -> bool:
+    """Prove a particular process fd holds an exclusive flock for this inode."""
+    try:
+        for entry in Path(f"/proc/{pid}/fd").iterdir():
+            if _fd_holds_flock(lock_stat, pid, entry.name): return True
+    except (OSError, ValueError):
+        return False
+    return False
+
+
+def _fd_holds_flock(lock_stat: os.stat_result, pid: int, descriptor: int | str) -> bool:
+    """Prove this exact descriptor, rather than another same-inode fd, holds flock."""
+    try:
+        entry=Path(f"/proc/{pid}/fd/{descriptor}")
+        current=os.stat(entry)
+        if current.st_dev != lock_stat.st_dev or current.st_ino != lock_stat.st_ino: return False
+        info=(Path(f"/proc/{pid}/fdinfo/{descriptor}")).read_text().splitlines()
+        return any({"FLOCK", "ADVISORY", "WRITE"}.issubset(line.split()) for line in info)
+    except (OSError, ValueError):
+        return False
+
+
+def _held_flock_for_current_process(lock_stat: os.stat_result) -> bool:
+    return _held_flock(lock_stat, os.getpid())
 
 
 class JobQueue:
@@ -65,6 +102,8 @@ class JobQueue:
             CREATE TABLE IF NOT EXISTS evidence (name TEXT PRIMARY KEY, checksum TEXT NOT NULL, path TEXT NOT NULL, schema_name TEXT NOT NULL DEFAULT '', input_code_hash TEXT NOT NULL DEFAULT '', accepted INTEGER NOT NULL DEFAULT 0, verified_at REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS attempts (id INTEGER PRIMARY KEY, job_id INTEGER NOT NULL REFERENCES jobs(id), number INTEGER NOT NULL, owner TEXT NOT NULL, lease_token TEXT NOT NULL, started_at REAL NOT NULL, ended_at REAL, outcome TEXT, detail TEXT);
             CREATE TABLE IF NOT EXISTS attempt_journal (lease_token TEXT PRIMARY KEY, job_key TEXT NOT NULL, pid INTEGER, process_starttime TEXT, gpu_identity TEXT, journal_path TEXT NOT NULL, state TEXT NOT NULL, updated_at REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS reservations (lease_token TEXT PRIMARY KEY, job_key TEXT NOT NULL, lease_id TEXT NOT NULL, host TEXT NOT NULL, physical_gpu INTEGER NOT NULL, lock_device INTEGER NOT NULL, lock_inode INTEGER NOT NULL, acquired_at REAL NOT NULL, authorized_end REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS terminal_evidence (lease_token TEXT PRIMARY KEY, job_key TEXT NOT NULL, pid INTEGER NOT NULL, process_starttime TEXT NOT NULL, observed_at REAL NOT NULL);
             """)
             for statement in ("ALTER TABLE evidence ADD COLUMN schema_name TEXT NOT NULL DEFAULT ''", "ALTER TABLE evidence ADD COLUMN input_code_hash TEXT NOT NULL DEFAULT ''", "ALTER TABLE evidence ADD COLUMN accepted INTEGER NOT NULL DEFAULT 0"):
                 try: db.execute(statement)
@@ -72,6 +111,18 @@ class JobQueue:
             for statement in ("ALTER TABLE jobs ADD COLUMN progress_at REAL", "ALTER TABLE jobs ADD COLUMN progress_counter INTEGER", "ALTER TABLE jobs ADD COLUMN protective_stop_code TEXT"):
                 try: db.execute(statement)
                 except sqlite3.OperationalError: pass
+            reservation_columns={row["name"] for row in db.execute("PRAGMA table_info(reservations)")}
+            required_reservations={"lease_token","job_key","lease_id","host","physical_gpu","lock_device","lock_inode","acquired_at","authorized_end"}
+            if reservation_columns != required_reservations:
+                # Old rows lack the held-lock inode and fixed end. Preserve
+                # them for forensic recovery, but never reconstruct authority.
+                legacy=f"reservations_legacy_unverified_{int(time.time() * 1_000_000)}"
+                db.execute(f'ALTER TABLE reservations RENAME TO "{legacy}"')
+                db.execute("""CREATE TABLE reservations (
+                  lease_token TEXT PRIMARY KEY, job_key TEXT NOT NULL, lease_id TEXT NOT NULL,
+                  host TEXT NOT NULL, physical_gpu INTEGER NOT NULL, lock_device INTEGER NOT NULL,
+                  lock_inode INTEGER NOT NULL, acquired_at REAL NOT NULL, authorized_end REAL NOT NULL
+                )""")
 
     @contextmanager
     def transaction(self, db):
@@ -135,10 +186,23 @@ class JobQueue:
         if row["kind"] not in {"manual_gate", "audit"} and payload.get("physical_gpu") is None:
             return "no physical CUDA device binding"
         if row["kind"] == "formal_train" and payload.get("command"):
-            # Queue-side payload fields cannot attest current hardware or an
-            # exclusive lease. Formal launch stays closed until wired to an
-            # accepted, hash-bound resource attestation service.
-            return "formal device qualification is not wired to attested hardware"
+            entry = str((Path(__file__).resolve().parents[2] / "scripts" / "nc_rted_train.py"))
+            interpreter = payload.get("interpreter", {})
+            required_command = [interpreter.get("path"), entry, "--config", payload.get("runtime_config"), "--config-sha256", payload.get("runtime_config_sha256"), "--mode", "formal", "--admission", payload.get("formal_admission"), "--admission-sha256", payload.get("formal_admission_sha256")]
+            if payload.get("command") != required_command:
+                return "formal training command is not the fixed local nc_rted_train entrypoint"
+            outputs = payload.get("expected_outputs")
+            if (not isinstance(outputs, list) or len(outputs) != 1 or outputs[0].get("artifact_type") != "checkpoint" or
+                    outputs[0].get("semantic") != "formal_training" or outputs[0].get("run_identity") != payload.get("run_identity")):
+                return "formal training requires one exact final checkpoint contract"
+            evidence = {
+                item["name"]: (item["path"], item["checksum"])
+                for item in db.execute("SELECT name,path,checksum FROM evidence WHERE accepted=1")
+            }
+            try:
+                verify_attestation(payload, row["job_key"], evidence)
+            except (ResourceAttestationError, OSError, TypeError, ValueError) as error:
+                return f"formal resource attestation rejected: {error}"
         return None
 
     def claim(self, owner: str, lease_seconds=120):
@@ -260,6 +324,76 @@ class JobQueue:
             db.execute("DELETE FROM attempts WHERE job_id=? AND lease_token=?", (row["id"], token))
             db.execute("UPDATE jobs SET status=?,attempts=attempts-1,lease_owner=NULL,lease_token=NULL,lease_expires=NULL,failure=?,updated_at=? WHERE id=?", (PENDING, detail, now, row["id"]))
 
+    def launch_guard(self, job_key, token, lock_handle=None):
+        """Recheck immutable formal admission after the local GPU flock is held."""
+        with self.connect() as db:
+            row = db.execute("SELECT * FROM jobs WHERE job_key=? AND lease_token=? AND status=?", (job_key, token, RUNNING)).fetchone()
+            if not row:
+                raise LeaseLost(job_key)
+            reservation=None
+            if row["kind"] == "formal_train":
+                reservation=db.execute("SELECT lease_id,host,physical_gpu,lock_device,lock_inode,authorized_end FROM reservations WHERE lease_token=? AND job_key=?", (token,job_key)).fetchone()
+                if reservation is None: raise QueueError("formal reservation is not bound to claimed attempt")
+            failure = self._guard_failure(db, row)
+            if failure:
+                raise QueueError(failure)
+            if row["kind"] == "formal_train":
+                if lock_handle in (None, False): raise QueueError("formal launch requires the held device lock")
+                try:
+                    current=os.fstat(lock_handle.fileno())
+                    canonical=_canonical_gpu_lock(json.loads(row["payload"])).stat()
+                except (AttributeError, OSError) as error: raise QueueError("formal launch lock is unreadable") from error
+                if (current.st_dev != reservation["lock_device"] or current.st_ino != reservation["lock_inode"] or
+                        canonical.st_dev != reservation["lock_device"] or canonical.st_ino != reservation["lock_inode"] or
+                        not isinstance(lock_handle, HeldGpuLock) or not _fd_holds_flock(current, os.getpid(), lock_handle.fileno())):
+                    raise QueueError("formal launch lost the bound device lock")
+                try: verify_attestation(json.loads(row["payload"]), job_key, {item["name"]:(item["path"],item["checksum"]) for item in db.execute("SELECT name,path,checksum FROM evidence WHERE accepted=1")}, dict(reservation))
+                except (ResourceAttestationError, OSError, ValueError, TypeError) as error: raise QueueError(f"formal reservation rejected: {error}") from error
+
+    def recovered_lock_guard(self, job_key, token, pid):
+        """A recovered formal child must still hold the bound inherited flock."""
+        with self.connect() as db:
+            row=db.execute("SELECT payload FROM jobs WHERE job_key=? AND lease_token=? AND status=?",(job_key,token,RUNNING)).fetchone()
+            reservation=db.execute("SELECT lock_device,lock_inode FROM reservations WHERE lease_token=? AND job_key=?",(token,job_key)).fetchone()
+            try:
+                canonical=_canonical_gpu_lock(json.loads(row["payload"])).stat() if row else None
+            except (OSError, ValueError, TypeError):
+                canonical=None
+            if (reservation is None or canonical is None or canonical.st_dev != reservation["lock_device"] or
+                    canonical.st_ino != reservation["lock_inode"] or
+                    not _held_flock(type("LockStat",(),{"st_dev":reservation["lock_device"],"st_ino":reservation["lock_inode"]})(),pid)):
+                raise QueueError("recovered formal child lacks the bound device lock")
+
+    def bind_reservation(self, job_key, token, lock_handle):
+        """Record the actual held canonical device lock for this attempt."""
+        if lock_handle in (None, False):
+            raise QueueError("formal reservation requires a held device lock")
+        try:
+            lock_stat=os.fstat(lock_handle.fileno())
+        except (AttributeError, OSError) as error:
+            raise QueueError("formal reservation lock is unreadable") from error
+        with self.connect() as db, self.transaction(db):
+            row=db.execute("SELECT * FROM jobs WHERE job_key=? AND lease_token=? AND status=?",(job_key,token,RUNNING)).fetchone()
+            if not row: raise LeaseLost(job_key)
+            payload=json.loads(row["payload"])
+            if row["kind"] != "formal_train": return
+            canonical_lock=_canonical_gpu_lock(payload)
+            try:
+                expected_stat=canonical_lock.stat()
+            except OSError as error:
+                raise QueueError("formal reservation canonical device lock is unavailable") from error
+            if (not isinstance(lock_handle, HeldGpuLock) or lock_handle.path != canonical_lock or not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_dev != expected_stat.st_dev or
+                    lock_stat.st_ino != expected_stat.st_ino or not _held_flock_for_current_process(lock_stat)):
+                raise QueueError("formal reservation requires the held canonical device lock")
+            path, document = __import__("nc_rted.resource_attestation", fromlist=["_bound_file"])._bound_file(payload.get("resource_attestation"), payload.get("resource_attestation_sha256"), "resource attestation")
+            del path
+            execution=document.get("execution", {})
+            started=db.execute("SELECT started_at FROM attempts WHERE job_id=? AND lease_token=?",(row["id"],token)).fetchone()
+            if started is None: raise LeaseLost(job_key)
+            end=min(float(execution.get("lease_expires_utc_epoch",0)), float(payload.get("deadline_utc_epoch",0)), started["started_at"] + float(payload.get("run_budget_seconds",0)))
+            if end <= time.time(): raise QueueError("formal reservation interval is already expired")
+            db.execute("INSERT OR REPLACE INTO reservations VALUES(?,?,?,?,?,?,?,?,?)",(token,job_key,execution.get("lease_id"),execution.get("host"),execution.get("physical_gpu"),lock_stat.st_dev,lock_stat.st_ino,time.time(),end))
+
     def runtime_guard(self, job_key, token):
         """Check hard limits while a child runs; progress timeout is intentionally external."""
         with self.connect() as db:
@@ -268,9 +402,60 @@ class JobQueue:
             payload=json.loads(row["payload"]); now=time.time()
             if payload.get("deadline_utc_epoch") and now >= payload["deadline_utc_epoch"]: raise HardLimit("deadline")
             volume=Path(payload.get("data_volume",self.path.parent))
-            if payload.get("min_free_bytes") and shutil.disk_usage(volume).free < int(payload["min_free_bytes"]): raise HardLimit("disk")
+            try:
+                if payload.get("min_free_bytes") and shutil.disk_usage(volume).free < int(payload["min_free_bytes"]): raise HardLimit("disk")
+            except OSError as error: raise HardLimit("resource_integrity") from error
             attempt=db.execute("SELECT started_at FROM attempts WHERE job_id=? AND lease_token=?",(row["id"],token)).fetchone()
             if payload.get("run_budget_seconds") and attempt and now-attempt["started_at"] > payload["run_budget_seconds"]: raise HardLimit("budget")
+            if row["kind"] == "formal_train":
+                reservation=db.execute("SELECT authorized_end FROM reservations WHERE lease_token=? AND job_key=?",(token,job_key)).fetchone()
+                if reservation is None: raise HardLimit("resource_integrity")
+                if now >= reservation["authorized_end"]: raise HardLimit("rental_lease")
+                try:
+                    if now >= resource_lease_expiry(payload): raise HardLimit("rental_lease")
+                except ResourceAttestationError as error: raise HardLimit("resource_integrity") from error
+
+    def record_terminal_evidence(self, job_key, token, pid, process_starttime):
+        """Durably record the supervisor's own observation of a dead attempt group."""
+        from .worker_runtime import attempt_state, group_state
+        if attempt_state(pid, process_starttime) != "gone" or group_state(pid) != "gone":
+            raise QueueError("formal terminal evidence requires an observed dead attempt group")
+        observed=time.time()
+        with self.connect() as db, self.transaction(db):
+            row=db.execute("SELECT * FROM jobs WHERE job_key=? AND lease_token=? AND status=?",(job_key,token,RUNNING)).fetchone()
+            reservation=db.execute("SELECT authorized_end FROM reservations WHERE lease_token=? AND job_key=?",(token,job_key)).fetchone()
+            if not row: raise LeaseLost(job_key)
+            if not reservation or observed > reservation["authorized_end"]: raise HardLimit("rental_lease")
+            db.execute("INSERT OR REPLACE INTO terminal_evidence VALUES(?,?,?,?,?)",(token,job_key,pid,str(process_starttime),observed))
+
+    def completion_guard(self, job_key, token):
+        """Accept only an attempt completion observed within its fixed reservation."""
+        with self.connect() as db:
+            row=db.execute("SELECT * FROM jobs WHERE job_key=? AND lease_token=? AND status=?",(job_key,token,RUNNING)).fetchone()
+            if not row: raise LeaseLost(job_key)
+            if row["kind"] != "formal_train": return
+            reservation=db.execute("SELECT lease_id,host,physical_gpu,lock_device,lock_inode,authorized_end FROM reservations WHERE lease_token=? AND job_key=?",(token,job_key)).fetchone()
+            if reservation is None: raise HardLimit("resource_integrity")
+            payload=json.loads(row["payload"])
+            try:
+                _, attestation=__import__("nc_rted.resource_attestation", fromlist=["_bound_file"])._bound_file(payload["resource_attestation"],payload["resource_attestation_sha256"],"resource attestation")
+                execution=attestation.get("execution", {})
+                contract=attestation.get("contract", {})
+                if (execution.get("lease_id") != reservation["lease_id"] or execution.get("host") != reservation["host"] or
+                        execution.get("physical_gpu") != reservation["physical_gpu"] or
+                        contract != {key:payload.get(key) for key in ("data_volume","min_free_bytes","run_budget_seconds","deadline_utc_epoch")}):
+                    raise ResourceAttestationError("completion contract differs from admitted reservation")
+            except (ResourceAttestationError, OSError, ValueError, TypeError) as error:
+                raise HardLimit("resource_integrity") from error
+            started=db.execute("SELECT started_at FROM attempts WHERE job_id=? AND lease_token=?",(row["id"],token)).fetchone()
+            terminal=db.execute("SELECT pid,process_starttime,observed_at FROM terminal_evidence WHERE lease_token=? AND job_key=?",(token,job_key)).fetchone()
+            if started is None: raise HardLimit("resource_integrity")
+            if terminal is None or terminal["observed_at"] < started["started_at"]: raise HardLimit("resource_integrity")
+            expiry=attestation["execution"]["lease_expires_utc_epoch"]
+            if terminal["observed_at"] > started["started_at"] + payload["run_budget_seconds"]:
+                raise HardLimit("budget")
+            if started["started_at"] > expiry or terminal["observed_at"] > expiry or terminal["observed_at"] > reservation["authorized_end"]:
+                raise HardLimit("rental_lease")
 
     def commit(self, job_key, token, temporary_output, output_path, owner=None):
         temporary_output, output_path = Path(temporary_output), Path(output_path)
@@ -360,7 +545,7 @@ class JobQueue:
             row = db.execute("SELECT * FROM jobs WHERE job_key=?", (job_key,)).fetchone()
             if not row or row["status"] != RUNNING or row["lease_token"] != token or (owner is not None and row["lease_owner"] != owner): raise LeaseLost(job_key)
             code = row["protective_stop_code"] or code
-            protective = code in {"deadline", "disk", "budget", "nan", "integrity", "leakage", "weight_mismatch"}
+            protective = code in {"deadline", "disk", "budget", "nan", "integrity", "resource_integrity", "rental_lease", "leakage", "weight_mismatch"}
             if protective or row["attempts"] >= row["max_attempts"]: status, next_time = BLOCKED, now
             else: status, next_time = RETRY_WAIT, now + RETRY_DELAYS[row["attempts"] - 1]
             db.execute("UPDATE jobs SET status=?,not_before=?,failure=?,lease_owner=NULL,lease_token=NULL,lease_expires=NULL,pid=NULL,process_starttime=NULL,progress_at=NULL,progress_counter=NULL,updated_at=? WHERE id=?", (status, next_time, detail, now, row["id"]))

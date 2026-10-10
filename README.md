@@ -1,71 +1,17 @@
 # NC-RTED / ReactVAU
 
-正常参照校准的关系—时间证据蒸馏。唯一研究规格见 [EXPERIMENT_SPEC](docs/EXPERIMENT_SPEC.md)，模块和接口见 [代码设计](docs/NC_RTED_CODE_DESIGN.md)。
+当前唯一研究与实验主线是 [NC-RTED：正常参照校准的关系—时间证据蒸馏](docs/EXPERIMENT_SPEC.md)。该文件按用户本次附件原样写入，替代全部旧研究方案；本次变更完成文档采用与入口清理，尚不代表 NC-RTED 已实现、验收或开始正式训练。
 
-这是正在开发的实验代码候选。已有模型、教师、任务输入、增量训练、恢复和统计实现；CPU 测试与局部静态审查不能替代真实长输入和完整系统验收。正式训练与官方评测尚未启动，不提供效果或显著性结论。
+研究复用现有 ReactVAU Stage1 Fast、最终 Stage2 Slow、LoRA 与 projector，正式矩阵为 R0 + A/U/S/F 三种子，共 12 次增量训练、13 个评测模型。绝对截止、资源上限、训练与评测协议以实验规格为准。此前 97,140/97,158 的训练覆盖说明和原复现未完成项继续保留。
 
-复用原 ReactVAU Stage1 Fast、最终 Stage2 Slow、LoRA 和 projector。新增过程编码器与证据 token 学习正常参照监督；原权重不重新训练两阶段。正式设计为 R0 + A/U/S/F × 17/42/2026，12 次增量训练、13 个评测模型。旧训练覆盖为 97,140/97,158。
+- [实验规格](docs/EXPERIMENT_SPEC.md)：唯一活动方案。
+- [执行规则](AGENTS.md)：操作、数据权限、审查与资源边界。
+- [项目状态](PROJECT_STATE.md)与[ReactVAU 状态](docs/REACTVAU_STATE.md)：读取文末最新追加记录；较早的“当前/最新”标题只代表历史时点。
+- [旧方案归档](archive/research_plans/superseded_by_nc_rted_20261009/README.md)：旧文件已移出活动目录，原路径、归档位置和 SHA-256 见[清单](archive/research_plans/superseded_by_nc_rted_20261009/manifest.json)。
+- [文献综述](docs/LITERATURE_2025_2026_CROSSDOMAIN_ROOT.md)：保留已核查文献依据；其中的旧候选路线排序不构成当前执行指令。
 
-## 安装与 CPU 检查
+现有模型和数据位于 `models/reactvau/`、`artifacts/reactvau/`、`data/reactvau/`；历史报告、代码、预测、权重和失败证据继续保留。新增实现及其冻结产物的位置按实验规格登记，不能将推荐目录当作已完成产物。
 
-先安装适配设备/驱动的 PyTorch，再在 Python 3.10+ 环境执行：
+ReactVAU 使用 `.venv-reactvau/`。下载、安装、构建及运行前加载 `configs/reactvau/download_environment.sh`，缓存与临时文件放在项目数据卷，至少保留 20 GiB 空闲。额外 H100 和存储的实际就绪状态须核验。
 
-```bash
-pip install -e '.[test]'
-python -m pytest -q tests/test_nc_rted*.py
-```
-
-真实 ReactVAU 运行还需其完整依赖和本地模型；参考 `external/ReactVAU-paper/requirements.txt`。4090 上已使用的环境版本在 `configs/nc_rted/environment_4090_reference.json`，它是实测环境记录，不是对 PRO6000 的兼容保证。远端已实测 RTX 6000D（torch 2.7.1+cu128）的 BF16/LoRA 前后向与组件恢复；完整混合训练吞吐仍待测量。
-
-## 代码入口
-
-- `src/nc_rted/model.py`、`bridge.py`：过程编码、质量/位置预测和 Slow 视觉 token 接入。
-- `teacher_pipeline.py`、`teacher_store.py`：来源互斥正常参照、教师校准与持久化。
-- `media_observer.py`、`caption_provider.py`、`detection_provider.py`：因果观测、完整描述范围与原任务输入。
-- `train_worker.py`、`training.py`、`recovery.py`：配对种子、FP32 主参数、更新和完整恢复。
-- `statistics.py`：来源配对 bootstrap 与六比较 Holm 校正。
-- `scripts/nc_rted_train.py --help`：绑定原权重、Fast、媒体、教师和源码的训练入口；详见 [运行契约](docs/NC_RTED_PRODUCTION_RUNTIME_CONTRACT.md)。
-- `scripts/nc_rted_prepare_observations.py --help`：绑定来源和模型的可恢复训练观测提取；部分完成不会发布完整教师输入。
-- `scripts/nc_rted_export_frozen_vision.py --help`：从最终 Stage2 严格导出继承视觉张量并核验来源；原权重保持不变。
-- `scripts/nc_rted_build_teacher.py --help`、`scripts/nc_rted_export_fast_snapshot.py --help`：数据准备接口。
-- `scripts/nc_rted_caption_streaming_probe.py --help`：使用哈希绑定的既有 Stage2 解析器，验证有界 clip/event 派生与原视频直读；三个预定真实样本已通过，完整混合训练组装仍待验收。
-- `scripts/nc_rted_queue.py --help`：事务任务队列；初始化只登记任务，不证明正式运行已获验收。
-
-媒体/教师/Fast 快照与原始权重必须按具体路径和哈希绑定。缺失资产显式报错，不用虚假检测或替代视频。十项工程验收全部通过且代码/配置/数据冻结后才允许正式运行。
-
-## 运行入口与当前缺口
-
-准备真实资产并生成运行清单后，先核对清单文件的 SHA-256：
-
-```bash
-python scripts/nc_rted_train.py --config /absolute/path/runtime.json \
-  --config-sha256 MANIFEST_SHA256 --mode diagnostic --dry-run
-```
-
-`--dry-run` 仅检查文件绑定，成功状态为 `FILE_BINDINGS_PASS_SEMANTIC_NOT_RUN`，不表示真实模型或媒体流程通过。正式模式还必须提供独立的 `--admission` 与 `--admission-sha256`，且全部工程验收通过。诊断结果不能作为正式模型结果。
-
-固定训练清单为 6,000 个检测前缀和 2,000 条原始描述。Fast 快照与观察媒体必须匹配内容哈希、帧率、帧数和尺寸；原 ReactVAU 源码也须绑定完整运行依赖。固定 RT-DETR 资产已取得并完成真实观测测试；2,413 个训练媒体的全帧时间戳已核验。本地任务进程恢复已通过专项测试和独立静态审查，整套 此前完整 CPU 回归 421 项通过；本次运行错误修复采用相关范围的检查，未重复整套回归。原始最长描述 5696 秒 / 712 块的完整前向反向已通过；全量教师、混合训练组装、最长检测、完整盲预测入口与正式准入仍待完成。
-
-### 视觉权重与数值验收状态
-
-真实 Slow 集成发现，最终 Stage2 内嵌视觉权重与单独下载的原始 SigLIP 不同。已精确导出全部 421 个内嵌张量；来源绑定、原模型内视觉张量核验及生产加载代码已通过独立静态审查；运行时不得重新加载原始 SigLIP 覆盖继承权重。早期原始 SigLIP 观测已保留为诊断材料并排除出正式教师。用正确权重重新测试的 12 个预定训练窗口，冷缓存、热缓存及重叠窗口的关系特征完全一致；这不构成 Slow 输出或完整系统验收。
-
-另外，同一输入的原有 BF16 记忆合并在默认 GPU 运算下不完全可重复；确定性运算下的局部重建已一致，完整数值设置仍需统一验收。当前发布版是开发快照，不能据 CPU 测试直接启动正式训练。
-
-已加入通过独立审查的教师计算缓存及确定性运算设置工具。教师缓存保留原算法输出，实际全量提速尚未测量；数值设置已接入训练和观测提取运行时；提取配置 v2 强制绑定最终 Stage2 视觉来源，拒绝旧原始 SigLIP 配置。完整盲预测入口已完成源码审查及真实 tokenizer 对照，完整 GPU 工厂与 R0 等价仍待验收。真实短训练前缀现已直接使用 Slow 内的继承视觉塔，通过来源适配器核验、禁用路径等价、冷／热缓存概率一致性及前向／反向诊断：392 个 LoRA 张量、38 个新模块张量均有有限非零梯度，峰值约 22.0 GiB；该测试使用确定性运算并在反向前将冻结视觉模型移至 CPU，未包含优化器更新、完整恢复、最长输入或正式效果评测。另以 1024 token 生成上限核验同一检测前缀的原路径／禁用分支和冷／热缓存 greedy 输出，token 完全一致；这不是完整描述任务验收。
-
-观测提取 v2 的完整 CPU 回归和静态审查已通过。原权重来源核验单次主机内存需求下界约 30.72 GiB；真实有界提取已完成 16 个窗口，恢复时复用这 16 个并仅新增 1 个；全量 6,000 窗口及教师覆盖仍待完成，不能从模块参数量推断完整系统资源需求。
-
-新增有界 Stage2 派生媒体租约，按真实来源与范围绑定，保留 20 GiB 空间；修复原视频和描述媒体的租约路由。生产训练启用非重入 gradient checkpointing 并关闭训练 KV cache。独立源码审查通过。实际 caption2913 已完成两次 accumulation=8 更新、保存重载，以及 SIGTERM 后全新进程恢复重放，最终参数/优化器/调度器/样本序列/RNG 与连续执行一致；这是组件诊断，完整生产组装与正式配方仍需验收。
-
-外部 GPU 按用户确认租期 7 天，保守停止界限为北京时间 2026-10-16 00:00；实验总截止维持 2026-10-23 02:54 UTC。尚不宣称完整矩阵资源足额。
-
-新增盲预测命令 `scripts/nc_rted_predict.py`、只读取身份与媒体的 VAU 派生命令 `scripts/nc_rted_materialize_vau.py`，以及可独立于教师构建的 `scripts/nc_rted_prepare_caption_observations.py`。紧凑观测缓存保留原 dtype、掩码、时间和完整来源绑定，受 23 GiB 上限控制。视觉来源仍作完整精确值检查；新 GPU 校验避免每次将全部视觉权重搬回 CPU，实际全模型运行验收与正式吞吐另行记录。上述组件均经独立源码审查，正式训练仍未启动。
-
-本次补齐描述配置与可恢复准备入口，修复实际描述路径中的缺失导入，以及控制器中断时文件日志与 SQLite 状态之间的恢复窗口。恢复修复通过 43 项队列检查和 8 项针对性后续检查；描述身份方法有直接运行回归。顺序解码保留原采样，真实模型的视觉输入、检测概率和相同生成上限的文本保持一致。各修复均经独立审查，正式 12 次训练和 13 模型完整评测尚未完成。
-
-## 数据与依赖
-
-本仓库包含代码、配置、规格、接口说明和测试。模型、训练/测试媒体、访问凭据和机器日志不随源码发布。训练不得读取官方测试标签或指标；官方评测保留完整分母。
-
-`external/ReactVAU-paper` 包含运行所需的固定上游源码及本地适配，来源与文件哈希见 `THIRD_PARTY.md` 和 `CODE_SNAPSHOT.json`。该目录遵循其原始 LICENSE，限非商业科研用途。
+每项操作写入追加日志 `logs/OPERATIONS.jsonl`。命令通过 `python3 scripts/run_logged.py --name DESCRIPTION -- COMMAND ARG...` 执行；其他操作使用 `scripts/log_operation.py`。日志规则见 [docs/LOGGING.md](docs/LOGGING.md)。官方测试标签不得用于训练、教师生成、阈值调整或模型选择。

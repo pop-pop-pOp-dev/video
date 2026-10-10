@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 import errno
 import hashlib
@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 from types import SimpleNamespace
 import types
 
@@ -17,10 +18,12 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from nc_rted.prediction_inputs import (IMPLEMENTATION_SCHEMA, _IMPLEMENTATION_FILES, ModelArtifact, PredictionInputError, canonical_json,
-                                       load_model_artifact, load_prediction_plan, prediction_execution_binding_sha256,
+from nc_rted.prediction_inputs import (CANDIDATE_SCHEMA_V2, IMPLEMENTATION_SCHEMA, RESOURCE_ADMISSION_SCHEMA_V1, RESOURCE_ALLOCATION_SCHEMA_V1, RESOURCE_MEASUREMENT_SCHEMA_V1, SCHEMA_V2,
+                                       _IMPLEMENTATION_FILES, ModelArtifact, PredictionInputError, VadRequest, VauRequest, _bound_path, canonical_json,
+                                       load_model_artifact, load_prediction_plan, prediction_execution_binding_sha256, prediction_matrix_id,
                                        verify_implementation_manifest)
 import nc_rted.prediction_store as prediction_store
+import nc_rted.prediction_inputs as prediction_inputs
 from nc_rted.prediction_store import PredictionPublicationError, PredictionStore, PredictionStoreError
 from nc_rted.prediction_worker import PredictionExecutionError, PredictionWorker
 from nc_rted.prediction_media import FullBlindDetectionReader
@@ -118,6 +121,46 @@ def _fixture(tmp_path, *, forbidden=False):
     return manifest_path, digest, model_manifests
 
 
+def _v2_fixture(tmp_path, *, ready=(("R0", None),)):
+    _, _, model_manifests = _fixture(tmp_path)
+    v1 = json.loads((tmp_path / "manifest.json").read_text())
+    resource = tmp_path / "resource.json"
+    resource_digest = _write(resource, {"schema": RESOURCE_ADMISSION_SCHEMA_V1, "status": "PASS", "formal_execution_allowed": True})
+    bindings = {**v1["bindings"], "resource_admission": str(resource), "resource_admission_sha256": resource_digest}
+    ready = set(ready)
+    registry = []
+    for group, seed in [("R0", None)] + [(group, seed) for group in ("A", "U", "S", "F") for seed in (17, 42, 2026)]:
+        if (group, seed) in ready:
+            path, digest = model_manifests[(group, seed)]
+            registry.append({"group": group, "seed": seed, "state": "READY", "model_manifest": str(path),
+                             "model_manifest_sha256": digest, "pending_reason": None})
+        else:
+            registry.append({"group": group, "seed": seed, "state": "PENDING_DEPENDENCY", "model_manifest": None,
+                             "model_manifest_sha256": None, "pending_reason": "FINAL_CHECKPOINT_ATTESTATION_AND_PROVENANCE_PENDING"})
+    registration = {"schema": SCHEMA_V2, "run_id": v1["run_id"], "identity_manifest": v1["identity_manifest"],
+                    "identity_manifest_sha256": v1["identity_manifest_sha256"], "model_tasks": registry, "protocol": v1["protocol"],
+                    "output_root": v1["output_root"], "denominators": v1["denominators"], "bindings": bindings}
+    identities = json.loads(Path(v1["identity_manifest"]).read_text())
+    matrix_id = prediction_matrix_id(run_id=registration["run_id"], bindings=bindings, protocol=registration["protocol"],
+                                    identity_manifest_sha256=registration["identity_manifest_sha256"], denominators=registration["denominators"])
+    binding = prediction_execution_binding_sha256(bindings=bindings, protocol=registration["protocol"],
+                                                  identity_manifest_sha256=registration["identity_manifest_sha256"], identities=identities,
+                                                  model_registry=registry)
+    candidate = tmp_path / "candidate.json"
+    candidate_digest = _write(candidate, {"schema": CANDIDATE_SCHEMA_V2, "matrix_id": matrix_id, "registration": registration,
+                                          "prediction_execution_binding_sha256": binding})
+    admission = tmp_path / "admission-v2.json"
+    admission_digest = _write(admission, {"status": "PASS", "formal_execution_allowed": True,
+                                          "embedded_vision_binding_sha256": bindings["embedded_vision_binding_sha256"],
+                                          "prediction_execution_binding_sha256": binding,
+                                          "prediction_plan_candidate_sha256": candidate_digest,
+                                          "resource_admission_sha256": resource_digest})
+    plan = tmp_path / "plan-v2.json"
+    plan_digest = _write(plan, {**registration, "matrix_id": matrix_id, "candidate": {"path": str(candidate), "sha256": candidate_digest},
+                                "admission": {"formal_admission": str(admission), "formal_admission_sha256": admission_digest}})
+    return plan, plan_digest, model_manifests, registration
+
+
 def test_plan_rejects_supervision_and_preserves_verbatim_question(tmp_path):
     manifest, digest, model_manifests = _fixture(tmp_path / "provenance")
     plan = load_prediction_plan(manifest, expected_sha256=digest)
@@ -152,6 +195,354 @@ def test_r0_rejects_a_checkpoint_and_trained_groups_require_one(tmp_path):
     with pytest.raises(PredictionInputError, match="checkpoint"):
         load_model_artifact(trained_path, expected_sha256=_digest(trained_path), task=plan.selected_model("F", 2026))
 
+
+def test_v2_registry_allows_r0_while_untrained_tasks_remain_explicitly_pending(tmp_path):
+    manifest, digest, model_manifests, _ = _v2_fixture(tmp_path)
+    plan = load_prediction_plan(manifest, expected_sha256=digest)
+    assert plan.schema == SCHEMA_V2 and plan.matrix_id is not None and len(plan.models) == 13
+    r0_path, r0_digest = model_manifests[("R0", None)]
+    assert load_model_artifact(r0_path, expected_sha256=r0_digest, task=plan.selected_model("R0", None)).task_id == "R0"
+    with pytest.raises(PredictionInputError, match="PENDING_DEPENDENCY"):
+        plan.selected_model("A", 17)
+
+
+def test_v2_registry_and_candidate_cannot_be_rebound_after_r0_prediction(tmp_path):
+    manifest, _, _, _ = _v2_fixture(tmp_path)
+    document = json.loads(manifest.read_text())
+    document["model_tasks"][1]["state"] = "READY"
+    document["model_tasks"][1]["model_manifest"] = str(tmp_path / "invented.json")
+    document["model_tasks"][1]["model_manifest_sha256"] = "a" * 64
+    document["model_tasks"][1]["pending_reason"] = None
+    _write(manifest, document)
+    with pytest.raises(PredictionInputError, match="selected model manifest"):
+        load_prediction_plan(manifest)
+
+
+def test_v2_store_reopens_unchanged_task_across_plan_revision(tmp_path):
+    """A new registry revision must preserve immutable R0 records and skip them."""
+    from nc_rted.prediction_inputs import prediction_task_execution_binding_sha256
+    matrix, task = "a" * 64, "b" * 64
+    first = PredictionStore(tmp_path / "r0", run_id="run", manifest_sha256="c" * 64, model_task="R0",
+                            model_binding_sha256="d" * 64, matrix_id=matrix, task_execution_binding_sha256=task)
+    first.publish(identity="vad:ucf:one", attempt=1, status="success",
+                  provenance={"matrix_id": matrix, "task_execution_binding_sha256": task}, payload={"queries": []})
+    reopened = PredictionStore(first.root, run_id="run", manifest_sha256="e" * 64, model_task="R0",
+                               model_binding_sha256="d" * 64, matrix_id=matrix, task_execution_binding_sha256=task)
+    record = reopened.get(identity="vad:ucf:one")
+    assert record["manifest_sha256"] == "c" * 64
+    assert reopened.should_run(identity="vad:ucf:one", max_retries=3) is False
+
+
+def test_v2_worker_skips_preserved_r0_results_after_plan_revision(tmp_path):
+    from nc_rted.prediction_inputs import prediction_task_execution_binding_sha256
+    manifest, digest, models, _ = _v2_fixture(tmp_path)
+    plan = load_prediction_plan(manifest, expected_sha256=digest)
+    path, bound = models[("R0", None)]
+    artifact = load_model_artifact(path, expected_sha256=bound, task=plan.selected_model("R0", None))
+    task_binding = prediction_task_execution_binding_sha256(matrix_id=plan.matrix_id, task=artifact)
+    store = PredictionStore(plan.output_root / "R0", run_id=plan.run_id, manifest_sha256=plan.manifest_sha256,
+                            model_task="R0", model_binding_sha256=artifact.manifest_sha256, matrix_id=plan.matrix_id,
+                            task_execution_binding_sha256=task_binding)
+    assert PredictionWorker(plan, store, loader=_Loader(), vad=_Vad(), vau=_Vau(), model=artifact).run()["succeeded"] == 3
+    revised = replace(plan, manifest_sha256="f" * 64)
+    reopened = PredictionStore(store.root, run_id=revised.run_id, manifest_sha256=revised.manifest_sha256,
+                               model_task="R0", model_binding_sha256=artifact.manifest_sha256, matrix_id=revised.matrix_id,
+                               task_execution_binding_sha256=task_binding)
+    outcome = PredictionWorker(revised, reopened, loader=_Loader(), vad=_Vad(), vau=_Vau(), model=artifact).run()
+    assert outcome["completed"] == 0 and outcome["skipped"] == 3
+
+
+def test_v2_actual_registry_promotion_preserves_partial_r0_resume(tmp_path):
+    """Promoting A:17 creates a fresh admitted plan without rerunning R0."""
+    manifest, digest, models, _ = _v2_fixture(tmp_path)
+    first = load_prediction_plan(manifest, expected_sha256=digest)
+    r0_path, r0_hash = models[("R0", None)]
+    artifact = load_model_artifact(r0_path, expected_sha256=r0_hash, task=first.selected_model("R0", None))
+    task_hash = prediction_inputs.prediction_task_execution_binding_sha256(matrix_id=first.matrix_id, task=artifact)
+    store = PredictionStore(first.output_root / "R0", run_id=first.run_id, manifest_sha256=first.manifest_sha256,
+                            model_task="R0", model_binding_sha256=artifact.manifest_sha256, matrix_id=first.matrix_id,
+                            task_execution_binding_sha256=task_hash)
+    assert PredictionWorker(first, store, loader=_Loader(), vad=_Vad(), vau=_Vau(), model=artifact).run()["succeeded"] == 3
+    revised = json.loads(manifest.read_text())
+    promoted = next(row for row in revised["model_tasks"] if row["group"] == "A" and row["seed"] == 17)
+    promoted.update(state="READY", model_manifest=str(models[("A", 17)][0]), model_manifest_sha256=models[("A", 17)][1], pending_reason=None)
+    registration = {key: revised[key] for key in ("schema", "run_id", "identity_manifest", "identity_manifest_sha256", "model_tasks", "protocol", "output_root", "denominators", "bindings")}
+    identities = json.loads(Path(registration["identity_manifest"]).read_text())
+    binding = prediction_execution_binding_sha256(bindings=registration["bindings"], protocol=registration["protocol"],
+                                                  identity_manifest_sha256=registration["identity_manifest_sha256"], identities=identities,
+                                                  model_registry=registration["model_tasks"])
+    candidate = tmp_path / "promoted-candidate.json"
+    candidate_hash = _write(candidate, {"schema": CANDIDATE_SCHEMA_V2, "matrix_id": first.matrix_id, "registration": registration,
+                                        "prediction_execution_binding_sha256": binding})
+    admission = tmp_path / "promoted-admission.json"
+    _write(admission, {"status": "PASS", "formal_execution_allowed": True,
+                       "embedded_vision_binding_sha256": registration["bindings"]["embedded_vision_binding_sha256"],
+                       "prediction_execution_binding_sha256": binding, "prediction_plan_candidate_sha256": candidate_hash,
+                       "resource_admission_sha256": registration["bindings"]["resource_admission_sha256"]})
+    revised.update(candidate={"path": str(candidate), "sha256": candidate_hash},
+                   admission={"formal_admission": str(admission), "formal_admission_sha256": _digest(admission)})
+    promoted_path = tmp_path / "promoted-plan.json"; promoted_hash = _write(promoted_path, revised)
+    resumed = load_prediction_plan(promoted_path, expected_sha256=promoted_hash)
+    reopened = PredictionStore(store.root, run_id=resumed.run_id, manifest_sha256=resumed.manifest_sha256,
+                               model_task="R0", model_binding_sha256=artifact.manifest_sha256, matrix_id=resumed.matrix_id,
+                               task_execution_binding_sha256=task_hash)
+    result = PredictionWorker(resumed, reopened, loader=_Loader(), vad=_Vad(), vau=_Vau(), model=artifact).run()
+    assert resumed.selected_model("A", 17).state == "READY" and result["completed"] == 0 and result["skipped"] == 3
+
+
+def test_v2_plan_builder_publishes_candidate_then_requires_bound_pass_admission(tmp_path):
+    _, _, _, registration = _v2_fixture(tmp_path / "fixture")
+    registration_path = tmp_path / "registration.json"; _write(registration_path, registration)
+    root = Path(__file__).resolve().parents[1]
+    candidate = tmp_path / "candidate.json"
+    result = subprocess.run([sys.executable, str(root / "scripts/nc_rted_build_prediction_plan.py"), "candidate",
+                             "--registration", str(registration_path), "--output", str(candidate)], text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    candidate_output = json.loads(result.stdout)
+    admission = tmp_path / "admission.json"
+    _write(admission, {"status": "PASS", "formal_execution_allowed": True,
+                       "embedded_vision_binding_sha256": registration["bindings"]["embedded_vision_binding_sha256"],
+                       "prediction_execution_binding_sha256": candidate_output["prediction_execution_binding_sha256"],
+                       "prediction_plan_candidate_sha256": candidate_output["candidate_sha256"],
+                       "resource_admission_sha256": registration["bindings"]["resource_admission_sha256"]})
+    plan = tmp_path / "plan.json"
+    result = subprocess.run([sys.executable, str(root / "scripts/nc_rted_build_prediction_plan.py"), "finalize",
+                             "--candidate", str(candidate), "--formal-admission", str(admission), "--output", str(plan)],
+                            text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    loaded = load_prediction_plan(plan, expected_sha256=json.loads(result.stdout)["manifest_sha256"])
+    assert loaded.matrix_id == candidate_output["matrix_id"]
+
+
+def test_v2_builder_rejects_incomplete_formal_denominators_and_bare_resource(tmp_path):
+    _, _, _, registration = _v2_fixture(tmp_path)
+    root = Path(__file__).resolve().parents[1]
+    registration["run_id"] = "formal:blind"
+    registration_path = tmp_path / "registration.json"; _write(registration_path, registration)
+    command = [sys.executable, str(root / "scripts/nc_rted_build_prediction_plan.py"), "candidate",
+               "--registration", str(registration_path), "--output", str(tmp_path / "candidate.json")]
+    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    assert result.returncode == 2 and "251/800/3339" in result.stderr
+    registration["denominators"] = {"ucf": 251, "xd": 800, "vau": 3339}
+    _write(registration_path, registration)
+    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    assert result.returncode == 2 and "resource admission" in result.stderr
+    registration["denominators"] = {"ucf": 251.0, "xd": 800, "vau": 3339}
+    _write(registration_path, registration)
+    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    assert result.returncode == 2 and "251/800/3339" in result.stderr
+
+
+def test_resource_qualification_rejects_limit_drift(tmp_path):
+    scope = {"kind": "blind_prediction", "run_id": "formal:blind", "execution_scope_sha256": "a" * 64,
+             "device": "cuda:1", "physical_gpu_uuid": "GPU-1", "data_volume": str(tmp_path),
+             "min_free_bytes": 20 * 1024**3, "run_budget_seconds": 60, "deadline_utc_epoch": time.time() + 600}
+    allocation = {"schema": RESOURCE_ALLOCATION_SCHEMA_V1, "status": "ACCEPTED", "kind": "blind_prediction",
+                  "execution_scope_sha256": scope["execution_scope_sha256"], "allocation_id": "alloc", "host": "host",
+                  "device": "cuda:1", "physical_gpu_uuid": "GPU-1", "lease_id": "lease", "authorization_sha256": "c" * 64,
+                  "limits": {key: scope[key] for key in ("data_volume", "min_free_bytes", "run_budget_seconds", "deadline_utc_epoch")}}
+    allocation_path = tmp_path / "allocation.json"; allocation_hash = _write(allocation_path, allocation)
+    measurement = {"schema": RESOURCE_MEASUREMENT_SCHEMA_V1, "status": "MEASURED", "kind": "blind_prediction",
+                   "execution_scope_sha256": scope["execution_scope_sha256"], "allocation_sha256": allocation_hash, "host": "host", "physical_gpu_uuid": "GPU-1",
+                   "workload": {"kind": "blind_prediction", "vad_queries": 135050, "slow_triggers": 47458, "vau_requests": 3339},
+                   "measured_at_utc_epoch": time.time(), "qualified_runtime_seconds": 1.0,
+                   "peak_cuda_allocated_bytes": 1, "peak_cuda_reserved_bytes": 2}
+    measurement_path = tmp_path / "measurement.json"; measurement_hash = _write(measurement_path, measurement)
+    admission = tmp_path / "admission.json"
+    _write(admission, {"schema": RESOURCE_ADMISSION_SCHEMA_V1, "status": "PASS", "formal_execution_allowed": True,
+                       "scope": scope, "accepted_allocation": {"path": str(allocation_path), "sha256": allocation_hash},
+                       "accepted_measurement": {"path": str(measurement_path), "sha256": measurement_hash}})
+    assert prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64)["device"] == "cuda:1"
+    measurement["peak_cuda_reserved_bytes"] = 0
+    measurement_hash = _write(measurement_path, measurement)
+    admission_document = json.loads(admission.read_text()); admission_document["accepted_measurement"]["sha256"] = measurement_hash; _write(admission, admission_document)
+    with pytest.raises(PredictionInputError, match="accepted resource measurement"):
+        prediction_inputs._validate_resource_admission(str(admission), _digest(admission), scope_sha256="a" * 64)
+
+
+def test_resource_execution_requires_operator_registry_and_substantive_evidence(tmp_path):
+    scope = {"kind": "blind_prediction", "run_id": "formal:blind", "execution_scope_sha256": "a" * 64, "device": "cuda:0",
+             "physical_gpu_uuid": "GPU-1", "data_volume": str(tmp_path), "min_free_bytes": 20 * 1024**3,
+             "run_budget_seconds": 60, "deadline_utc_epoch": time.time() + 600}
+    limits = {key: scope[key] for key in ("data_volume", "min_free_bytes", "run_budget_seconds", "deadline_utc_epoch")}
+    authorization = {"schema": prediction_inputs.RESOURCE_AUTHORIZATION_SCHEMA_V1, "status": "PASS", "host": "host", "physical_gpu_uuid": "GPU-1", "lease_id": "lease",
+                     "lease_expires_utc_epoch": time.time() + 700, "project_volume": str(tmp_path), "max_budget_seconds": 60, "min_free_bytes": 20 * 1024**3,
+                     "deadline_utc_epoch": scope["deadline_utc_epoch"], "capacity_bytes": 100}
+    authorization_path = tmp_path / "authorization.json"; authorization_hash = _write(authorization_path, authorization)
+    allocation = {"schema": RESOURCE_ALLOCATION_SCHEMA_V1, "status": "ACCEPTED", "kind": "blind_prediction", "execution_scope_sha256": "a" * 64,
+                  "allocation_id": "alloc", "host": "host", "device": "cuda:0", "physical_gpu_uuid": "GPU-1", "lease_id": "lease", "authorization_sha256": authorization_hash, "limits": limits}
+    allocation_path = tmp_path / "allocation.json"; allocation_hash = _write(allocation_path, allocation)
+    measurement = {"schema": RESOURCE_MEASUREMENT_SCHEMA_V1, "status": "MEASURED", "kind": "blind_prediction", "execution_scope_sha256": "a" * 64,
+                   "allocation_sha256": allocation_hash, "host": "host", "physical_gpu_uuid": "GPU-1", "workload": {"kind": "blind_prediction", "vad_queries": 135050, "slow_triggers": 47458, "vau_requests": 3339},
+                   "measured_at_utc_epoch": time.time(), "qualified_runtime_seconds": 1.0, "peak_cuda_allocated_bytes": 1, "peak_cuda_reserved_bytes": 2}
+    measurement_path = tmp_path / "measurement.json"; measurement_hash = _write(measurement_path, measurement)
+    registry = {"schema": prediction_inputs.RESOURCE_EVIDENCE_REGISTRY_SCHEMA_V1, "accepted": {"resource_authorization": {"path": str(authorization_path), "sha256": authorization_hash},
+                "resource_allocation": {"path": str(allocation_path), "sha256": allocation_hash}, "resource_measurement": {"path": str(measurement_path), "sha256": measurement_hash}}}
+    registry_path = tmp_path / "operator-registry.json"; registry_hash = _write(registry_path, registry)
+    prediction_inputs.validate_resource_execution_evidence(scope, registry_path=str(registry_path), registry_sha256=registry_hash, host="host", physical_gpu_uuid="GPU-1", capacity_bytes=100)
+    # Rehashing self-declared records does not add them to the operator registry.
+    measurement["peak_cuda_allocated_bytes"] = 0; forged_hash = _write(measurement_path, measurement)
+    with pytest.raises(PredictionInputError, match="accepted resource_measurement"):
+        prediction_inputs.validate_resource_execution_evidence(scope, registry_path=str(registry_path), registry_sha256=registry_hash, host="host", physical_gpu_uuid="GPU-1", capacity_bytes=100)
+    assert forged_hash != measurement_hash
+
+
+def test_execution_resource_rejects_device_uuid_and_expiry(monkeypatch, tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("prediction_entrypoint", root / "scripts/nc_rted_predict.py")
+    entrypoint = importlib.util.module_from_spec(spec); assert spec.loader is not None; spec.loader.exec_module(entrypoint)
+    output = entrypoint._APPROVED_DATA_VOLUME / ".cache" / "prediction-resource-test"
+    scope = {"device": "cuda:1", "physical_gpu_uuid": "GPU-1", "data_volume": str(entrypoint._APPROVED_DATA_VOLUME),
+             "min_free_bytes": 1, "run_budget_seconds": 60, "deadline_utc_epoch": time.time() + 60}
+    plan = SimpleNamespace(resource_scope=scope, output_root=output)
+    monkeypatch.setattr(entrypoint, "_physical_gpu_uuid", lambda device, **kwargs: "GPU-1")
+    with pytest.raises(ValueError, match="requested device"):
+        entrypoint._admit_execution_resource(plan, "cuda:0")
+    scope["deadline_utc_epoch"] = time.time() - 1
+    with pytest.raises(ValueError, match="expired"):
+        entrypoint._admit_execution_resource(plan, "cuda:1")
+    scope["deadline_utc_epoch"] = time.time() + 60
+    monkeypatch.setattr(entrypoint, "_physical_gpu_uuid", lambda device, **kwargs: "GPU-other")
+    with pytest.raises(ValueError, match="physical GPU"):
+        entrypoint._admit_execution_resource(plan, "cuda:1")
+
+
+def _prediction_entrypoint():
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("prediction_entrypoint_resource", root / "scripts/nc_rted_predict.py")
+    entrypoint = importlib.util.module_from_spec(spec); assert spec.loader is not None; spec.loader.exec_module(entrypoint)
+    return entrypoint
+
+
+def test_admitted_gpu_uuid_resolves_masked_and_reordered_visible_devices():
+    entrypoint = _prediction_entrypoint()
+    inventory = "0, GPU-zero\n1, GPU-one\n"
+    assert entrypoint._physical_gpu_uuid("cuda:0", visible="1,0", inventory=inventory) == "GPU-one"
+    assert entrypoint._physical_gpu_uuid("cuda:1", visible="1,0", inventory=inventory) == "GPU-zero"
+    assert entrypoint._physical_gpu_uuid("cuda:0", visible="GPU-one", inventory=inventory) == "GPU-one"
+
+
+def test_resource_admission_rechecks_expiry_after_uuid_lookup(monkeypatch):
+    entrypoint = _prediction_entrypoint()
+    scope = {"device": "cuda:0", "physical_gpu_uuid": "GPU-1", "data_volume": str(entrypoint._APPROVED_DATA_VOLUME),
+             "min_free_bytes": 1, "run_budget_seconds": 60, "deadline_utc_epoch": time.time() + .02}
+    def delayed_uuid(device, **kwargs):
+        time.sleep(.03)
+        return "GPU-1"
+    monkeypatch.setattr(entrypoint, "_physical_gpu_uuid", delayed_uuid)
+    with pytest.raises(ValueError, match="deadline has expired"):
+        entrypoint._admit_execution_resource(SimpleNamespace(resource_scope=scope,
+                                                             output_root=entrypoint._APPROVED_DATA_VOLUME / ".cache" / "prediction-resource-test"), "cuda:0")
+
+
+@pytest.mark.parametrize("stage", ("model_initialization", "prediction"))
+def test_watchdog_expires_during_model_initialization_or_prediction(stage):
+    entrypoint = _prediction_entrypoint()
+    def native_operation():
+        # This simulates a native/CUDA call: ordinary Python exceptions are
+        # caught internally, so only the parent watchdog can enforce expiry.
+        try:
+            while True:
+                time.sleep(.05)
+        except ValueError:
+            return {"stage": stage, "escaped": True}
+    with pytest.raises(ValueError, match="runtime budget expired"):
+        entrypoint._watchdog(time.time() + .15, native_operation)
+
+
+def test_watchdog_kills_native_style_work_that_catches_valueerror():
+    entrypoint = _prediction_entrypoint()
+    def catches_valueerror():
+        try:
+            while True:
+                time.sleep(.05)
+        except ValueError:
+            return {"escaped": True}
+    with pytest.raises(ValueError, match="runtime budget expired"):
+        entrypoint._watchdog(time.time() + .15, catches_valueerror)
+
+
+def test_watchdog_reaps_descendant_that_keeps_result_pipe_open():
+    entrypoint = _prediction_entrypoint()
+    def leaves_descendant():
+        if os.fork() == 0:
+            time.sleep(5)
+            os._exit(0)
+        return {"done": True}
+    started = time.monotonic()
+    assert entrypoint._watchdog(time.time() + .5, leaves_descendant) == {"done": True}
+    assert time.monotonic() - started < 1
+
+
+def test_budget_control_paths_reject_symlinks_without_touching_target(tmp_path):
+    entrypoint = _prediction_entrypoint()
+    volume, outside = tmp_path / "volume", tmp_path / "outside"
+    volume.mkdir(); outside.write_text("preserve")
+    root = volume / "out"; root.mkdir()
+    (root / ".resource-budget.pending").symlink_to(outside)
+    with pytest.raises(ValueError, match="control path"):
+        entrypoint._write_budget_ledger(root / ".resource-budget.pending", {"x": 1}, volume, 1)
+    assert outside.read_text() == "preserve"
+    (root / ".resource-budget.lock").symlink_to(outside)
+    plan = SimpleNamespace(resource_scope={"data_volume": str(volume), "min_free_bytes": 1, "run_budget_seconds": 1}, output_root=root,
+                           execution_scope_sha256="a" * 64, run_id="run")
+    with pytest.raises(ValueError, match="control path"):
+        with entrypoint._cumulative_budget(plan, time.time() + 1): pass
+    assert outside.read_text() == "preserve"
+
+
+def test_cumulative_budget_debits_an_abandoned_reservation(tmp_path):
+    entrypoint = _prediction_entrypoint()
+    scope = {"data_volume": str(tmp_path), "min_free_bytes": 1, "run_budget_seconds": 5}
+    plan = SimpleNamespace(resource_scope=scope, output_root=tmp_path / "out", execution_scope_sha256="a" * 64, run_id="run")
+    plan.output_root.mkdir()
+    (plan.output_root / ".resource-budget.json").write_text(json.dumps({"schema": "nc_rted_prediction_budget/v1", "scope": "a" * 64,
+        "run_id": "run", "consumed_seconds": 0.0, "active": {"reserved_seconds": 5.0, "started_utc_epoch": time.time()}}))
+    with pytest.raises(ValueError, match="cumulative"):
+        with entrypoint._cumulative_budget(plan, time.time() + 30):
+            pass
+
+
+def test_task_output_and_store_reject_symlink_escape_and_reserve_depletion(tmp_path, monkeypatch):
+    entrypoint = _prediction_entrypoint()
+    volume, outside = tmp_path / "volume", tmp_path / "outside"
+    volume.mkdir(); outside.mkdir()
+    root = volume / "predictions"; root.mkdir(); (root / "R0").symlink_to(outside, target_is_directory=True)
+    scope = {"data_volume": str(volume), "min_free_bytes": 1}
+    with pytest.raises(ValueError, match="cannot be a symlink"):
+        entrypoint._task_output_root(SimpleNamespace(output_root=root), "R0", scope)
+    store = PredictionStore(volume / "safe", run_id="run", manifest_sha256="a" * 64, model_task="R0", model_binding_sha256="b" * 64,
+                            storage_volume=volume, min_free_bytes=1)
+    monkeypatch.setattr(prediction_store.shutil, "disk_usage", lambda path: SimpleNamespace(free=1))
+    with pytest.raises(PredictionStoreError, match="storage reserve"):
+        store.publish(identity="vad:x", attempt=1, status="success", provenance={}, payload={})
+
+
+def test_task_output_rejects_different_mount(monkeypatch, tmp_path):
+    entrypoint = _prediction_entrypoint()
+    volume = tmp_path / "volume"; root = volume / "out"; root.mkdir(parents=True)
+    monkeypatch.setattr(entrypoint, "_mount_identity", lambda path: (1, "/admitted") if Path(path).resolve() == volume.resolve() else (2, "/redirected"))
+    with pytest.raises(ValueError, match="filesystem or mount"):
+        entrypoint._task_output_root(SimpleNamespace(output_root=root), "R0", {"data_volume": str(volume), "min_free_bytes": 1})
+
+
+def test_runtime_probe_only_selects_one_hash_bound_blind_identity(tmp_path, monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("runtime_probe", root / "scripts/nc_rted_prediction_runtime_probe.py")
+    probe = importlib.util.module_from_spec(spec); assert spec.loader is not None; spec.loader.exec_module(probe)
+    monkeypatch.setattr(probe, "VadRequest", VadRequest, raising=False)
+    monkeypatch.setattr(probe, "VauRequest", VauRequest, raising=False)
+    monkeypatch.setattr(probe, "_bound_path", _bound_path, raising=False)
+    medium = tmp_path / "clip.mp4"; medium.write_bytes(b"blind")
+    identity = {"vad": [{"dataset": "ucf", "id": "one", "media_path": str(medium), "media_sha256": _digest(medium)}],
+                "vau": [{"id": "two", "media_path": str(medium), "media_sha256": _digest(medium), "question": "Describe the clip."}]}
+    request = probe._request(identity, "vad:ucf:one", "vad")
+    assert request.identity == "vad:ucf:one"
+    assert probe._protocol({"protocols": {"hivau": {"target_fps": 4}, "vad_config": {"target_fps": 4, "query_interval": 4, "batch_size": 1, "fusion": "adaptive"}}}) == {
+        "hivau": {"target_fps": 4}, "vad": {"target_fps": 4, "query_interval": 4, "batch_size": 1},
+        "vad_route": "reactvau_detection", "vad_causal_smoothing": "online", "vad_fast_fusion": "adaptive"}
+    with pytest.raises(probe.ProbeError, match="IDENTITY_INVALID"):
+        probe._request(identity, "vau:two", "vad")
 
 def test_trained_model_rejects_nonfinal_or_wrong_provenance_attestation(tmp_path):
     manifest, digest, model_manifests = _fixture(tmp_path)
@@ -811,3 +1202,86 @@ def test_blind_runtime_rejects_supervision_before_loading_assets(tmp_path):
     path.write_text(json.dumps({"schema": "nc_rted_prediction_runtime/v1", "label": "forbidden"}))
     with pytest.raises(PredictionInputError, match="forbidden supervision"):
         load_prediction_runtime(path, expected_sha256=_digest(path))
+
+
+@pytest.mark.parametrize("interrupted", (False, True))
+def test_watchdog_cleans_child_before_setsid(monkeypatch, tmp_path, interrupted):
+    entrypoint = _prediction_entrypoint()
+    child_pid = tmp_path / "child.pid"
+    def delayed_setsid():
+        child_pid.write_text(str(os.getpid()))
+        time.sleep(10)
+    monkeypatch.setattr(entrypoint.os, "setsid", delayed_setsid)
+    if interrupted:
+        def interrupt(*args):
+            raise KeyboardInterrupt()
+        monkeypatch.setattr(entrypoint.select, "select", interrupt)
+    started = time.monotonic()
+    with pytest.raises(KeyboardInterrupt if interrupted else ValueError):
+        entrypoint._watchdog(time.time() + .1, lambda: {"unexpected": True})
+    assert time.monotonic() - started < 2
+    if child_pid.exists():
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(child_pid.read_text()), 0)
+
+
+@pytest.mark.parametrize("kind", ("fifo", "symlink", "large"))
+def test_budget_ledger_rejects_invalid_inode_before_read(tmp_path, kind):
+    entrypoint = _prediction_entrypoint()
+    root = tmp_path / "output"; root.mkdir()
+    ledger = root / ".resource-budget.json"
+    outside = tmp_path / "outside"; outside.write_text("preserve")
+    if kind == "fifo": os.mkfifo(ledger)
+    elif kind == "symlink": ledger.symlink_to(outside)
+    else: ledger.write_bytes(b" " * 65537)
+    plan = SimpleNamespace(resource_scope={"data_volume": str(tmp_path), "min_free_bytes": 1, "run_budget_seconds": 2},
+                           output_root=root, execution_scope_sha256="a" * 64, run_id="run")
+    with pytest.raises(ValueError, match="control path|too large"):
+        with entrypoint._cumulative_budget(plan, time.time() + 2):
+            pytest.fail("invalid ledger admitted")
+    assert outside.read_text() == "preserve"
+
+
+@pytest.mark.parametrize("kind", ("fifo", "symlink", "dangling"))
+def test_worker_lock_rejects_redirection_before_creation(tmp_path, kind):
+    root = tmp_path / "output"; root.mkdir()
+    outside = tmp_path / "outside"
+    lock = root / ".worker.lock"
+    if kind == "fifo": os.mkfifo(lock)
+    else:
+        if kind == "symlink": outside.write_text("preserve")
+        lock.symlink_to(outside)
+    with pytest.raises(PredictionStoreError, match="worker lock"):
+        PredictionStore(root, run_id="run", manifest_sha256="a" * 64, model_task="R0", model_binding_sha256="b" * 64,
+                        storage_volume=tmp_path, min_free_bytes=1)
+    assert outside.read_text() == "preserve" if kind == "symlink" else not outside.exists()
+
+
+def test_budget_keeps_full_charge_when_child_reap_is_unconfirmed(tmp_path):
+    entrypoint = _prediction_entrypoint()
+    plan = SimpleNamespace(resource_scope={"data_volume": str(tmp_path), "min_free_bytes": 1, "run_budget_seconds": 10},
+                           output_root=tmp_path / "out", execution_scope_sha256="a" * 64, run_id="run")
+    with pytest.raises(entrypoint.WorkerCleanupIncomplete):
+        with entrypoint._cumulative_budget(plan, time.time() + 5):
+            raise entrypoint.WorkerCleanupIncomplete("test")
+    assert json.loads((plan.output_root / ".resource-budget.json").read_text())["consumed_seconds"] > 4
+
+
+@pytest.mark.parametrize("failure", (KeyboardInterrupt, OSError))
+def test_watchdog_setup_failure_cleans_direct_child(monkeypatch, failure):
+    entrypoint = _prediction_entrypoint()
+    fork = entrypoint.os.fork
+    created = []
+    def recording_fork():
+        pid = fork()
+        if pid: created.append(pid)
+        return pid
+    def fail_setup(*args):
+        raise failure("injected setup interruption")
+    monkeypatch.setattr(entrypoint.os, "fork", recording_fork)
+    monkeypatch.setattr(entrypoint.os, "set_blocking", fail_setup)
+    with pytest.raises(failure):
+        entrypoint._watchdog(time.time() + 2, lambda: time.sleep(10))
+    assert len(created) == 1
+    with pytest.raises(ProcessLookupError):
+        os.kill(created[0], 0)

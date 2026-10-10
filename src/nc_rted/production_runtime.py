@@ -9,6 +9,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
+import copy
 import importlib
 import importlib.util
 import json
@@ -120,19 +121,25 @@ class RuntimeManifest:
         return self.document["run"]
 
 
-def _load_manifest(path: str | Path, *, expected_sha256: str, caption_preparation: bool) -> RuntimeManifest:
+def _load_manifest(path: str | Path, *, expected_sha256: str, caption_preparation: bool,
+                   captured_runtime: dict[str, str] | None = None) -> RuntimeManifest:
     config = _bound_file(str(Path(path).absolute()), expected_sha256, "runtime config")
     try:
         document = json.loads(config.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise ProductionRuntimeError("runtime config is not valid JSON") from error
+    if captured_runtime is not None:
+        document=copy.deepcopy(document)
+        document["inherited"]["external_root"]=captured_runtime["external_root"]
+        document["inherited"]["source_manifest"]=captured_runtime["source_manifest"]
+        document["stage2_cache"]["module"]=captured_runtime["stage2_module"]
     manifest = RuntimeManifest(config, expected_sha256, _mapping(document, "runtime config"))
     preflight(manifest, caption_preparation=caption_preparation)
     return manifest
 
 
-def load_manifest(path: str | Path, *, expected_sha256: str) -> RuntimeManifest:
-    return _load_manifest(path, expected_sha256=expected_sha256, caption_preparation=False)
+def load_manifest(path: str | Path, *, expected_sha256: str, captured_runtime: dict[str, str] | None = None) -> RuntimeManifest:
+    return _load_manifest(path, expected_sha256=expected_sha256, caption_preparation=False, captured_runtime=captured_runtime)
 
 
 def load_caption_preparation_manifest(path: str | Path, *, expected_sha256: str) -> RuntimeManifest:
@@ -558,19 +565,16 @@ def _bound_stage2_constructor_environment(stage2: dict, media_catalog_path: str)
         else: os.environ["REACTVAU_STAGE2_CACHE_CONFIG"] = previous
 
 
-def _validate_formal_admission_before_models(admission: dict, identity: dict) -> None:
+def _validate_formal_admission_before_models(admission: dict, identity: dict, *, captured_sources: dict[str, Path] | None = None) -> None:
     """Duplicate the worker's immutable admission checks before model allocation."""
+    from .captured_sources import CapturedSourceError, validate_admitted_sources
     if admission.get("run_identity") != identity:
         raise ProductionRuntimeError("formal admission is not bound to this exact run")
     files = admission.get("source_files")
-    source_digest = hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    if source_digest != identity["code_sha256"]:
-        raise ProductionRuntimeError("formal admission source manifest differs from run identity")
-    required = {str(path.resolve()) for path in Path(__file__).parent.glob("*.py")}
-    if not required.issubset(files):
-        raise ProductionRuntimeError("formal admission omits NC-RTED source")
-    for name, expected in files.items():
-        if sha256_file(name) != expected: raise ProductionRuntimeError("accepted implementation changed")
+    try:
+        validate_admitted_sources(files, identity["code_sha256"], set(Path(__file__).parent.glob("*.py")), captured_sources)
+    except CapturedSourceError as error:
+        raise ProductionRuntimeError(str(error)) from error
 
 
 def _checkpoint_identity(manifest: RuntimeManifest, catalog: TrainingCatalog) -> dict[str, str]:
@@ -614,13 +618,14 @@ def assemble_caption_preparation(manifest: RuntimeManifest) -> ProductionRuntime
     return _assemble(manifest, caption_preparation=True)
 
 
-def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> ProductionRuntime:
+def assemble(manifest: RuntimeManifest, *, admission: dict | None = None,
+             captured_sources: dict[str, Path] | None = None) -> ProductionRuntime:
     """Load the exact inherited training runtime after ``preflight`` has succeeded."""
-    return _assemble(manifest, admission=admission, caption_preparation=False)
+    return _assemble(manifest, admission=admission, caption_preparation=False, captured_sources=captured_sources)
 
 
 def _assemble(manifest: RuntimeManifest, *, admission: dict | None = None,
-              caption_preparation: bool) -> ProductionRuntime:
+              caption_preparation: bool, captured_sources: dict[str, Path] | None = None) -> ProductionRuntime:
     preflight(manifest, caption_preparation=caption_preparation)
     from .numerics import configure_deterministic_algorithms
     numerical_policy = configure_deterministic_algorithms()
@@ -639,7 +644,7 @@ def _assemble(manifest: RuntimeManifest, *, admission: dict | None = None,
         identity = _checkpoint_identity(manifest, catalog)
         if run["mode"] == "formal":
             if admission is None: raise ProductionRuntimeError("formal assembly requires an external formal admission")
-            _validate_formal_admission_before_models(admission, identity)
+            _validate_formal_admission_before_models(admission, identity, captured_sources=captured_sources)
         elif admission is not None: raise ProductionRuntimeError("diagnostic assembly cannot receive formal admission")
     _validate_caption_subset(catalog, Path(doc["catalog"]["caption_subset"]))
     inherited, stage2 = doc["inherited"], doc["stage2_cache"]
@@ -748,6 +753,6 @@ def _assemble(manifest: RuntimeManifest, *, admission: dict | None = None,
         tower.eval()
         return captions(sample_id) if catalog.tasks[sample_id].task == "caption" else detections(sample_id)
     worker = TrainingWorker(bridge, catalog, teachers, InheritedTaskTokenizer.from_original(tokenizer, data_args), provider,
-        CheckpointStore(run["checkpoint_root"], identity), group=run["group"], seed=run["seed"])
+        CheckpointStore(run["checkpoint_root"], identity), group=run["group"], seed=run["seed"], captured_sources=captured_sources)
     tower.eval()
     return ProductionRuntime(manifest, worker, admission, captions)

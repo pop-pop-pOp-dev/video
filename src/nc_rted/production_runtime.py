@@ -380,6 +380,9 @@ def _stage2_or_direct_media_lease(stage2_cache):
         if media.request_index is None:
             with lease_verified_media(media) as path:
                 yield path
+        elif hasattr(stage2_cache, "acquire_observation"):
+            with stage2_cache.acquire_observation(media.media_key, media.request_index) as lease:
+                yield lease
         else:
             with stage2_cache.acquire(media.media_key, media.request_index) as path:
                 yield path

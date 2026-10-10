@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from nc_rted.bounded_stage2_cache import BoundedStage2Cache, BoundedStage2CacheError, _ValidatorTemporaryGuard
+from nc_rted.media_observer import MediaObserverError
 
 
 def digest(path: Path) -> str:
@@ -38,6 +39,7 @@ def bounded_stage2(tmp_path: Path) -> tuple[dict, Path]:
 import json
 from pathlib import Path
 import tempfile
+import hashlib
 FROZEN = (("train_json", "train_json_sha256"), ("ucf_database", "ucf_database_sha256"), ("xd_database", "xd_database_sha256"), ("identity_map", "identity_map_sha256"), ("official_splitter", "official_splitter_sha256"))
 class FrozenTrainRequests:
     def __init__(self, config): self.config = config
@@ -46,7 +48,7 @@ class FrozenTrainRequests:
         if type(index) is not int or index >= len(rows) or rows[index]["video"] != relative:
             raise ValueError("request index does not bind frozen path")
         return {"relative": relative, "kind": "videos" if "/videos/" in relative else "events", "source": Path(self.config["source"]), "source_sha256": self.config["source_sha256"], "segment": [0, 1], "indices": [index]}
-def full_decode(path): return {"sha256": "x", "bytes": Path(path).stat().st_size, "frames": 1, "fps": 1.0}
+def full_decode(path): return {"sha256": hashlib.sha256(Path(path).read_bytes()).hexdigest(), "bytes": Path(path).stat().st_size, "frames": 1, "fps": 1.0}
 def validate_segment_output(meta, path, source, segment): return None
 ''', encoding="utf-8")
     stage2 = {
@@ -98,6 +100,35 @@ def test_derived_lease_uses_original_validation_and_releases_success(tmp_path, m
     assert not list(scratch.glob("*.partial.mp4"))
     assert '"event": "prepared"' in cache.events_path.read_text()
     assert '"event": "released"' in cache.events_path.read_text()
+
+
+def test_observation_lease_uses_the_resolver_verified_derived_digest(tmp_path, monkeypatch):
+    stage2, source = bounded_stage2(tmp_path)
+    cache = BoundedStage2Cache(stage2)
+    monkeypatch.setattr(cache, "_run_child", lambda request, output, maximum: (
+        output.write_bytes(b"derived-media") and SimpleNamespace(returncode=0)))
+    with cache.acquire_observation("ucf-crime/events/train/sample_E0.mp4", 1) as lease:
+        assert lease.path.read_bytes() == b"derived-media"
+        assert lease.source_sha256 == digest(source)
+        assert lease.content_sha256 == hashlib.sha256(b"derived-media").hexdigest()
+    assert '"event": "prepared"' in cache.events_path.read_text()
+
+
+def test_observation_lease_rejects_a_wrong_resolver_derived_digest(tmp_path, monkeypatch):
+    stage2, _ = bounded_stage2(tmp_path)
+    cache = BoundedStage2Cache(stage2)
+    monkeypatch.setattr(cache, "_run_child", lambda request, output, maximum: (
+        output.write_bytes(b"derived-media") and SimpleNamespace(returncode=0)))
+    full_decode = cache.serial.full_decode
+    def wrong_digest(path):
+        metadata = dict(full_decode(path))
+        metadata["sha256"] = "0" * 64
+        return metadata
+    monkeypatch.setattr(cache.serial, "full_decode", wrong_digest)
+    with pytest.raises(MediaObserverError, match="content differs before observation"):
+        with cache.acquire_observation("ucf-crime/events/train/sample_E0.mp4", 1):
+            pass
+    assert list(Path(stage2["scratch_root"]).glob("*.failed"))
 
 
 def test_derived_consumer_failure_preserves_media_and_audit(tmp_path, monkeypatch):

@@ -159,6 +159,14 @@ class CaptionObservationCache:
     def _total_bytes(self) -> int:
         return sum(path.stat().st_size for path in (self.root / "entries").glob("*.pt"))
 
+    @staticmethod
+    def _fsync_directory(path: Path) -> None:
+        directory = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
     def put(self, provenance: dict, audit: CaptionObservationAudit, *, feature_dtype: torch.dtype | None = None) -> None:
         key, path = self.key(provenance), self._path(self.key(provenance))
         payload = _observation_payload(audit, feature_dtype=feature_dtype)
@@ -203,6 +211,7 @@ class CaptionObservationCache:
             if path.exists():
                 if path.read_bytes() != content:
                     raise CaptionObservationCacheError("logical caption media metadata changed")
+                self._fsync_directory(path.parent)
                 return
             self._reserve(2 * max(4096, os.statvfs(self.root).f_frsize))
             descriptor, temporary_name = tempfile.mkstemp(prefix=".media-", suffix=".tmp", dir=path.parent)
@@ -211,6 +220,7 @@ class CaptionObservationCache:
                 with os.fdopen(descriptor, "wb") as output:
                     output.write(content); output.flush(); os.fsync(output.fileno())
                 os.replace(temporary, path)
+                self._fsync_directory(path.parent)
             finally:
                 temporary.unlink(missing_ok=True)
 

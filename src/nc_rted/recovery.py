@@ -270,6 +270,32 @@ class CheckpointStore:
             self._reconcile_locked()
             return self._save_locked(trainer, final=final)
 
+    def save_or_verify(self, trainer: IncrementalTrainer, *, final: bool = False) -> Path:
+        """Publish a boundary once, or prove an immutable replay is identical.
+
+        Bundled recovery can replay an update that a process published just
+        before it died, but before the bundle-wide commit became durable.  That
+        checkpoint remains evidence and must never be replaced.  The replay is
+        allowed to reuse it only when every state component, including RNG,
+        equals the state it would publish now.
+        """
+        with self._lock():
+            self._reconcile_locked()
+            target = self.root / ("final" if final else f"update_{trainer.completed_updates:06d}")
+            if not target.exists():
+                return self._save_locked(trainer, final=final)
+            manifest = self._validate(target)
+            state = validate_checkpoint_payload(target / "state.pt", manifest)
+            expected = dict(
+                trainable={name: parameter.detach().cpu() for name, parameter in trainer.model.named_parameters()
+                           if parameter.requires_grad},
+                optimizer_master={name: parameter.detach().cpu() for name, parameter in trainer.master_parameters.items()},
+                optimizer=trainer.optimizer.state_dict(), scheduler=trainer.scheduler.state_dict(),
+                training=trainer.metadata(), rng=capture_rng())
+            if not _same_checkpoint_value(state, expected):
+                raise RecoveryError("immutable checkpoint differs from replay state")
+            return target
+
     def _save_locked(self, trainer: IncrementalTrainer, *, final: bool) -> Path:
         if str(trainer.seed) != self.identity["seed"]:
             raise RecoveryError("seed does not match run identity")
@@ -352,6 +378,16 @@ class CheckpointStore:
             return self._restore_locked(trainer, directory)
 
     def _restore_locked(self, trainer: IncrementalTrainer, directory: Path | None) -> dict:
+        state, manifest = self._prepare_restore_locked(trainer, directory)
+        self._apply_prepared_restore(trainer, state)
+        return manifest
+
+    def prepare_restore(self, trainer: IncrementalTrainer, directory: Path | None = None) -> tuple[dict, dict]:
+        """Validate a restore without changing a trainer or process RNG."""
+        with self._lock():
+            return self._prepare_restore_locked(trainer, directory)
+
+    def _prepare_restore_locked(self, trainer: IncrementalTrainer, directory: Path | None) -> tuple[dict, dict]:
         path = self.latest() if directory is None else Path(directory).absolute()
         if path is None:
             raise RecoveryError("no committed checkpoint")
@@ -418,6 +454,15 @@ class CheckpointStore:
                 torch.Generator(device=f"cuda:{index}").set_state(saved_cuda)
         except (TypeError, ValueError, RuntimeError) as exc:
             raise RecoveryError("CUDA RNG state is not restorable") from exc
+        return state, manifest
+
+    @staticmethod
+    def _apply_prepared_restore(trainer: IncrementalTrainer, state: dict) -> None:
+        """Apply a state previously accepted by :meth:`prepare_restore`."""
+        parameters = {n: p for n, p in trainer.model.named_parameters() if p.requires_grad}
+        saved = state["trainable"]
+        masters = state["optimizer_master"]
+        update = state["training"]["completed_updates"]
         # All key/shape/identity checks precede parameter mutation.
         with torch.no_grad():
             for name, parameter in parameters.items():
@@ -430,4 +475,14 @@ class CheckpointStore:
         trainer.optimizer.zero_grad(set_to_none=True)
         restore_rng(state["rng"])
         trainer.at_update_boundary = True
-        return manifest
+
+
+def _same_checkpoint_value(left, right) -> bool:
+    """Exact recursive comparison without device-dependent tensor identity."""
+    if isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor):
+        return left.shape == right.shape and left.dtype == right.dtype and torch.equal(left.cpu(), right.detach().cpu())
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(_same_checkpoint_value(left[key], right[key]) for key in left)
+    if isinstance(left, (tuple, list)) and isinstance(right, (tuple, list)):
+        return len(left) == len(right) and all(_same_checkpoint_value(a, b) for a, b in zip(left, right))
+    return left == right

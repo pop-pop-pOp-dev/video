@@ -1,5 +1,7 @@
 import hashlib
 import multiprocessing
+import os
+import stat
 
 import pytest
 import torch
@@ -147,3 +149,30 @@ def test_caption_observation_cache_corrupt_reader_and_publisher_do_not_deadlock(
     assert reader.exitcode == 0 and writer.exitcode == 0
     assert {result.get(timeout=2), result.get(timeout=2)} == {"reader", "publisher"}
     assert cache.get(provenance, feature_dtype=torch.bfloat16) is not None
+
+
+def test_media_index_publication_fsyncs_its_directory_and_propagates_failure(tmp_path, monkeypatch):
+    import nc_rted.caption_observation_cache as module
+    cache = CaptionObservationCache(tmp_path, 1 << 20, min_free_bytes=20 << 30)
+    original_fsync = os.fsync
+    first_provenance, first_media = {"media": "first"}, {"path": "first"}
+    key = cache.key({"media": first_provenance})
+    destination = tmp_path / "media-index" / f"{key}.json"
+    failures = []
+    def failing_fsync(descriptor):
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            failures.append(descriptor)
+            raise OSError("directory fsync failed")
+        return original_fsync(descriptor)
+    monkeypatch.setattr(module.os, "fsync", failing_fsync)
+    with pytest.raises(OSError, match="directory fsync failed"):
+        cache.record_media(first_provenance, first_media)
+    assert failures and destination.is_file()
+    synchronized = []
+    def recording_fsync(descriptor):
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            synchronized.append(descriptor)
+        return original_fsync(descriptor)
+    monkeypatch.setattr(module.os, "fsync", recording_fsync)
+    cache.record_media(first_provenance, first_media)
+    assert synchronized

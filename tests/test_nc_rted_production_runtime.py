@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from nc_rted.media_observer import BoundMedia
+from nc_rted.media_observer import BoundMedia, CausalMediaObserver, MediaObserverError, verified_path_lease
 from nc_rted.production_runtime import (ProductionRuntimeError, _bound_stage2_constructor_environment,
                                         _materialized_stage2_cache, _stage2_dataset_class,
                                         _validate_caption_subset, _validate_detection_bindings,
@@ -305,6 +305,46 @@ def test_mixed_media_lease_routes_detection_to_its_direct_binding_and_caption_to
     with lease(caption) as path:
         assert path.read_bytes() == b"caption"
     assert calls == [("caption.mp4", 9)]
+
+
+def test_mixed_media_lease_uses_verified_observation_lease_when_available(tmp_path):
+    caption_path = tmp_path / "caption.mp4"; caption_path.write_bytes(b"caption")
+    caption = BoundMedia("ucf-crime", "caption.mp4", str(caption_path), digest(caption_path), 4., 4, 8, 8, 9)
+    calls = []
+    class Cache:
+        @contextmanager
+        def acquire_observation(self, relative, request_index):
+            from nc_rted.media_observer import verified_path_lease
+            calls.append((relative, request_index))
+            with verified_path_lease(caption_path, digest(caption_path)) as lease:
+                yield lease
+    lease = _stage2_or_direct_media_lease(Cache())
+    with lease(caption) as verified:
+        assert verified.path.read_bytes() == b"caption"
+    assert calls == [("caption.mp4", 9)]
+
+
+@pytest.mark.parametrize("media_key", ["ucf-crime/videos/train/source.mp4", "ucf-crime/events/train/source_E0.mp4"])
+def test_resolver_observation_lease_rejects_catalog_source_mismatch_for_raw_and_derived(tmp_path, media_key):
+    catalog_source = tmp_path / "catalog-source.mp4"; catalog_source.write_bytes(b"catalog-source")
+    resolver_output = tmp_path / "resolver-output.mp4"; resolver_output.write_bytes(b"resolver-output")
+    wrong_source = tmp_path / "wrong-source.mp4"; wrong_source.write_bytes(b"wrong-source")
+    media = BoundMedia("ucf-crime", media_key, str(catalog_source), digest(catalog_source), 4., 4, 8, 8, 7)
+    class Cache:
+        @contextmanager
+        def acquire_observation(self, relative, request_index):
+            assert (relative, request_index) == (media_key, 7)
+            with verified_path_lease(resolver_output, digest(resolver_output),
+                                     source_sha256=digest(wrong_source)) as lease:
+                yield lease
+    class Identity:
+        def identity(self): return {"frozen": "identity"}
+    observer = CausalMediaObserver(detector=Identity(), siglip=Identity(), cache=object(),
+                                   media_catalog={(media.dataset, media.media_key): media},
+                                   lease_resolver=_stage2_or_direct_media_lease(Cache()),
+                                   decoder_factory=lambda path: pytest.fail("source mismatch reached decoder"))
+    with pytest.raises(MediaObserverError, match="resolver source identity differs"):
+        observer.detection(media.dataset, media.media_key, .5)
 
 
 def test_preflight_rejects_yaml_that_mentions_unbound_caption_input(tmp_path):

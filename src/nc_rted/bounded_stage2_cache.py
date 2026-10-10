@@ -283,7 +283,8 @@ class BoundedStage2Cache:
             return str(path)
 
     @contextmanager
-    def acquire(self, relative_path: str, request_index: int) -> Iterator[Path]:
+    def acquire(self, relative_path: str, request_index: int,
+                *, _verified_identity: list[tuple[str, str]] | None = None) -> Iterator[Path]:
         self.scratch_root.mkdir(parents=True, exist_ok=True)
         with self.lock_path.open("a+") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
@@ -291,6 +292,8 @@ class BoundedStage2Cache:
             if request["kind"] == "videos":
                 self._record("access_raw", relative=request["relative"], request_index=request_index,
                              source=str(request["source"]))
+                if _verified_identity is not None:
+                    _verified_identity.append((request["source_sha256"], request["source_sha256"]))
                 yield Path(request["source"])
                 return
             maximum_bytes = self._admit_temporary()
@@ -313,6 +316,8 @@ class BoundedStage2Cache:
                 self._record("prepared", relative=request["relative"], request_index=request_index,
                              output=str(output), **metadata)
                 try:
+                    if _verified_identity is not None:
+                        _verified_identity.append((request["source_sha256"], metadata["sha256"]))
                     yield output
                 except BaseException:
                     preserved = self._preserve(output)
@@ -329,3 +334,18 @@ class BoundedStage2Cache:
                 self._record("failure", relative=request["relative"], request_index=request_index,
                              error=type(error).__name__, preserved=preserved, validator_temporaries=validator)
                 raise
+
+    @contextmanager
+    def acquire_observation(self, relative_path: str, request_index: int):
+        """Lease a resolver output through a hash-bound same-inode descriptor."""
+        from .media_observer import verified_path_lease
+
+        verified_identity: list[tuple[str, str]] = []
+        with self.acquire(relative_path, request_index, _verified_identity=verified_identity) as path:
+            if len(verified_identity) != 1:
+                raise BoundedStage2CacheError("verified resolver lease has no content identity")
+            source_sha256, content_sha256 = verified_identity[0]
+            # ``acquire`` revalidates the raw source and, for a segment, its
+            # complete decoded geometry. Bind the exact temporary inode too.
+            with verified_path_lease(path, content_sha256, source_sha256=source_sha256) as lease:
+                yield lease

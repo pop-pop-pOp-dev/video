@@ -99,8 +99,18 @@ class TrainingWorker:
         self.trainer = IncrementalTrainer(bridge, list(catalog.tasks), seed, recipe)
 
     def loss_for_sample(self, sample_id: str) -> torch.Tensor:
+        return self.loss_for_material(sample_id, self.material_for_sample(sample_id))
+
+    def material_for_sample(self, sample_id: str) -> SampleMaterial:
+        """Obtain one frozen provider result for all same-seed consumers."""
         task: TrainingTask = self.catalog.tasks[sample_id]
         material = self.provider(sample_id)
+        validate_observation_scope(task.task, material.context, material.observations)
+        return material
+
+    def loss_for_material(self, sample_id: str, material: SampleMaterial) -> torch.Tensor:
+        """Consume a prevalidated frozen material without recalling the provider."""
+        task: TrainingTask = self.catalog.tasks[sample_id]
         validate_observation_scope(task.task, material.context, material.observations)
         inputs = self.tokenizer.encode(task, material.context, detection_question=material.detection_question,
                                        detection_scoring=material.detection_scoring)

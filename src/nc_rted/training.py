@@ -142,48 +142,48 @@ class IncrementalTrainer:
         if target < self.completed_updates:
             raise ValueError("cannot rewind completed updates")
         self.model.train()
-        parameters = list(self.master_parameters.values())
         while self.completed_updates < target:
-            if not self.at_update_boundary:
-                raise RuntimeError("previous update did not complete; restore a committed checkpoint")
-            self.at_update_boundary = False
-            self.model.zero_grad(set_to_none=True)
-            self.optimizer.zero_grad(set_to_none=True)
-            losses = []
-            start = self.cursor
-            for sid in self.order[start:start + self.recipe.accumulation]:
-                loss = loss_for_sample(sid)
-                if loss.ndim != 0 or not bool(torch.isfinite(loss)):
-                    raise FloatingPointError("nonfinite task loss; block run without optimizer update")
-                (loss / self.recipe.accumulation).backward()
-                for name, parameter in self.forward_parameters.items():
-                    if parameter.grad is None:
-                        continue
-                    if not bool(torch.isfinite(parameter.grad).all()):
-                        raise FloatingPointError("nonfinite gradient; block run without optimizer update")
-                    master = self.master_parameters[name]
-                    gradient = parameter.grad.detach().float()
-                    if master.grad is None:
-                        master.grad = gradient.clone()
-                    else:
-                        master.grad.add_(gradient)
-                self.model.zero_grad(set_to_none=True)
-                losses.append(float(loss.detach()))
-            norm = torch.nn.utils.clip_grad_norm_(parameters, self.recipe.clip, error_if_nonfinite=True)
-            if not any(p.grad is not None for p in parameters):
-                raise RuntimeError("no trainable gradients")
-            self.optimizer.step()
-            if any(not bool(torch.isfinite(p).all()) for p in parameters):
-                raise FloatingPointError("nonfinite optimizer parameter; block run")
-            self.sync_forward_weights()
-            self.scheduler.step()
-            self.completed_updates += 1
-            self.model.zero_grad(set_to_none=True)
-            self.optimizer.zero_grad(set_to_none=True)
-            self.at_update_boundary = True
+            report = self.step(loss_for_sample)
             if save and (self.completed_updates % self.recipe.save_interval == 0 or
                          self.completed_updates == self.recipe.updates):
                 save(self, final=self.completed_updates == self.recipe.updates)
             if progress:
-                progress(dict(update=self.completed_updates, cursor=self.cursor,
-                              mean_loss=sum(losses) / len(losses), gradient_norm=float(norm)))
+                progress(report)
+
+    def step(self, loss_for_sample: Callable[[str], torch.Tensor]) -> dict:
+        """Execute one complete optimizer update; shared by serial and bundled runs."""
+        if not self.at_update_boundary:
+            raise RuntimeError("previous update did not complete; restore a committed checkpoint")
+        self.model.train(); self.at_update_boundary = False
+        self.model.zero_grad(set_to_none=True); self.optimizer.zero_grad(set_to_none=True)
+        losses, parameters = [], list(self.master_parameters.values())
+        start = self.cursor
+        for sid in self.order[start:start + self.recipe.accumulation]:
+            loss = loss_for_sample(sid)
+            if loss.ndim != 0 or not bool(torch.isfinite(loss)):
+                raise FloatingPointError("nonfinite task loss; block run without optimizer update")
+            (loss / self.recipe.accumulation).backward()
+            for name, parameter in self.forward_parameters.items():
+                if parameter.grad is None: continue
+                if not bool(torch.isfinite(parameter.grad).all()):
+                    raise FloatingPointError("nonfinite gradient; block run without optimizer update")
+                master, gradient = self.master_parameters[name], parameter.grad.detach().float()
+                if master.grad is None: master.grad = gradient.clone()
+                else: master.grad.add_(gradient)
+            self.model.zero_grad(set_to_none=True); losses.append(float(loss.detach()))
+        gradient_groups = {"new": [], "lora": []}
+        for name, parameter in self.master_parameters.items():
+            bucket = "new" if name.startswith("evidence.") else "lora"
+            if parameter.grad is not None:
+                gradient_groups[bucket].append(parameter.grad.detach())
+        gradient_summary = {name: dict(nonzero=sum(int(torch.count_nonzero(value)) for value in values),
+                                       l1=float(sum(value.abs().sum() for value in values)))
+                            for name, values in gradient_groups.items()}
+        norm = torch.nn.utils.clip_grad_norm_(parameters, self.recipe.clip, error_if_nonfinite=True)
+        if not any(p.grad is not None for p in parameters): raise RuntimeError("no trainable gradients")
+        self.optimizer.step()
+        if any(not bool(torch.isfinite(p).all()) for p in parameters): raise FloatingPointError("nonfinite optimizer parameter; block run")
+        self.sync_forward_weights(); self.scheduler.step(); self.completed_updates += 1
+        self.model.zero_grad(set_to_none=True); self.optimizer.zero_grad(set_to_none=True); self.at_update_boundary = True
+        return dict(update=self.completed_updates, cursor=self.cursor, mean_loss=sum(losses) / len(losses),
+                    gradient_norm=float(norm), gradient_summary=gradient_summary)

@@ -9,7 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from nc_rted.caption_sampling import OriginalSamplingAudit
 from nc_rted.features import FeatureAssemblyResult, FeatureStatus
-from nc_rted.media_observer import BoundMedia, CausalMediaObserver, MediaObserverError, lease_verified_media
+from nc_rted.media_observer import (BoundMedia, CausalMediaObserver, MediaObserverError,
+                                    lease_verified_media, verified_path_lease)
 from nc_rted.detector import CausalWindowObservation
 
 
@@ -126,6 +127,69 @@ def test_custom_cache_lease_cannot_swap_bytes_after_verification(tmp_path):
         # Unlinking may change ctime on some filesystems. Conservative rejection
         # is allowed; the decoder above still must see the original bytes.
         assert "changed" in str(error)
+
+
+def test_verified_custom_lease_accepts_derived_segment_with_its_own_geometry(tmp_path):
+    raw = tmp_path / "raw.mp4"; raw.write_bytes(b"raw-source")
+    segment = tmp_path / "segment.mp4"; segment.write_bytes(b"derived-segment")
+    media = BoundMedia("ucf-crime", "events/clip.mp4", str(raw), hashlib.sha256(raw.read_bytes()).hexdigest(), 4., 8, 8, 12, 11)
+    reads, calls = [], []
+    @contextmanager
+    def lease(_):
+        with verified_path_lease(segment, hashlib.sha256(segment.read_bytes()).hexdigest(),
+                                 source_sha256=hashlib.sha256(raw.read_bytes()).hexdigest()) as verified:
+            yield verified
+    observer = CausalMediaObserver(detector=_Detector(), siglip=_SigLip(), cache=object(),
+                                   media_catalog={("ucf-crime", media.media_key): media}, lease_resolver=lease,
+                                   decoder_factory=lambda path: _Decoder(path, reads, media.frame_count),
+                                   observe=lambda *args, **kwargs: calls.append(args) or CausalWindowObservation(FeatureAssemblyResult(FeatureStatus.NO_RELATION_PAIRS, ()), (), ()))
+    assert observer.detection(media.dataset, media.media_key, 1.).features.status == FeatureStatus.NO_RELATION_PAIRS
+    assert reads and calls
+
+
+def test_same_source_derived_segments_have_distinct_frame_cache_identities(tmp_path):
+    import torch
+    from PIL import Image
+    from nc_rted.detector import observe_causal_window
+    from nc_rted.observation_cache import FrozenFrameCache
+
+    raw = tmp_path / "raw.mp4"; raw.write_bytes(b"raw-source")
+    first = tmp_path / "first-segment.mp4"; first.write_bytes(b"first-segment")
+    second = tmp_path / "second-segment.mp4"; second.write_bytes(b"second-segment")
+    raw_sha256 = hashlib.sha256(raw.read_bytes()).hexdigest()
+    media = {
+        ("ucf-crime", "events/train/source_E0.mp4"): BoundMedia("ucf-crime", "events/train/source_E0.mp4", str(raw), raw_sha256, 4., 4, 8, 12, 1),
+        ("ucf-crime", "events/train/source_E1.mp4"): BoundMedia("ucf-crime", "events/train/source_E1.mp4", str(raw), raw_sha256, 4., 4, 8, 12, 2),
+    }
+    segments = {"events/train/source_E0.mp4": first, "events/train/source_E1.mp4": second}
+    class Detector(_Detector):
+        calls = 0
+        def detect(self, image):
+            self.calls += 1
+            return ()
+    class SigLip(_SigLip):
+        calls = 0
+        def __call__(self, images):
+            self.calls += 1
+            return torch.ones(len(images), 729, 1152)
+    @contextmanager
+    def lease(bound):
+        segment = segments[bound.media_key]
+        with verified_path_lease(segment, hashlib.sha256(segment.read_bytes()).hexdigest(),
+                                 source_sha256=raw_sha256) as verified:
+            yield verified
+    class Decoder(_Decoder):
+        def read(self, index):
+            self.reads.append(index)
+            return Image.new("RGB", (12, 8), color=(index, 0, 0))
+    detector, siglip, reads = Detector(), SigLip(), []
+    observer = CausalMediaObserver(detector=detector, siglip=siglip,
+                                   cache=FrozenFrameCache(tmp_path / "frame-cache", 64 << 20, min_free_bytes=0),
+                                   media_catalog=media, lease_resolver=lease,
+                                   decoder_factory=lambda path: Decoder(path, reads, 4), observe=observe_causal_window)
+    observer.detection("ucf-crime", "events/train/source_E0.mp4", .5)
+    observer.detection("ucf-crime", "events/train/source_E1.mp4", .5)
+    assert detector.calls == siglip.calls == 2
 
 
 def test_inplace_mutation_is_reported_when_verified_lease_releases(tmp_path):

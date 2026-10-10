@@ -60,10 +60,18 @@ class FrameDecoder(Protocol):
     def close(self) -> None: ...
 
 
+@dataclass(frozen=True)
+class VerifiedMediaLease:
+    """An already hash-checked inode supplied by a bounded resolver."""
+    path: Path
+    verify_content: Callable[[], None]
+    source_sha256: str
+    content_sha256: str
+
+
 @contextmanager
-def lease_verified_media(media: BoundMedia, *, verifier_sink: list | None = None):
-    """Yield a verified, shared-locked fd path for the exact hashed inode."""
-    path = Path(media.media_path)
+def verified_path_lease(path: Path, expected_sha256: str | None = None, *, source_sha256: str | None = None):
+    """Yield a same-inode path bound to resolver source and output identities."""
     if not path.is_file():
         raise MediaObserverError("bound media is absent before observation")
     handle = path.open("rb")
@@ -74,8 +82,13 @@ def lease_verified_media(media: BoundMedia, *, verifier_sink: list | None = None
         digest = hashlib.sha256()
         for part in iter(lambda: handle.read(8 << 20), b""):
             digest.update(part)
-        if digest.hexdigest() != media.media_sha256:
+        actual_sha256 = digest.hexdigest()
+        if expected_sha256 is not None and actual_sha256 != expected_sha256:
             raise MediaObserverError("bound media content differs before observation")
+        source_identity = actual_sha256 if source_sha256 is None else source_sha256
+        if (not isinstance(source_identity, str) or len(source_identity) != 64
+                or any(char not in "0123456789abcdef" for char in source_identity)):
+            raise MediaObserverError("bound media source identity is invalid")
         handle.seek(0)
         current = os.fstat(handle.fileno())
         if signature != (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns, current.st_ctime_ns):
@@ -84,11 +97,10 @@ def lease_verified_media(media: BoundMedia, *, verifier_sink: list | None = None
             status = os.fstat(handle.fileno())
             if signature != (status.st_dev, status.st_ino, status.st_size, status.st_mtime_ns, status.st_ctime_ns):
                 raise MediaObserverError("bound media changed before frozen cache publication")
-        if verifier_sink is not None:
-            verifier_sink.append(verify_content)
         failure = None
         try:
-            yield Path(f"/proc/self/fd/{handle.fileno()}")
+            yield VerifiedMediaLease(Path(f"/proc/self/fd/{handle.fileno()}"), verify_content,
+                                     source_identity, actual_sha256)
         except BaseException as error:
             failure = error
             raise
@@ -104,6 +116,16 @@ def lease_verified_media(media: BoundMedia, *, verifier_sink: list | None = None
                     failure.add_note(failure.media_integrity_failure)
     finally:
         handle.close()
+
+
+@contextmanager
+def lease_verified_media(media: BoundMedia, *, verifier_sink: list | None = None):
+    """Yield a verified, shared-locked fd path for the exact hashed inode."""
+    with verified_path_lease(Path(media.media_path), media.media_sha256,
+                             source_sha256=media.media_sha256) as lease:
+        if verifier_sink is not None:
+            verifier_sink.append(lease.verify_content)
+        yield lease.path
 
 
 # Backward-compatible spelling for early adapters. New runtime code should use
@@ -163,13 +185,18 @@ class CausalMediaObserver:
         verifiers = []
         if self.lease is lease_verified_media:
             with lease_verified_media(media, verifier_sink=verifiers) as path:
-                yield path, verifiers[0]
+                yield path, verifiers[0], media.media_sha256
         else:
-            with self.lease(media) as path:
+            with self.lease(media) as leased:
+                if isinstance(leased, VerifiedMediaLease):
+                    if leased.source_sha256 != media.media_sha256:
+                        raise MediaObserverError("resolver source identity differs from bound catalog media")
+                    yield leased.path, leased.verify_content, leased.content_sha256
+                    return
                 # Preserve the exact baseline checked by the hashing lease;
                 # never establish a new baseline after that check.
-                with lease_verified_media(replace(media, media_path=str(path)), verifier_sink=verifiers) as verified:
-                    yield verified, verifiers[0]
+                with lease_verified_media(replace(media, media_path=str(leased)), verifier_sink=verifiers) as verified:
+                    yield verified, verifiers[0], media.media_sha256
 
     def _validate_decoder(self, decoder: FrameDecoder, media: BoundMedia) -> None:
         if (not math.isfinite(float(decoder.fps)) or float(decoder.fps) <= 0
@@ -194,7 +221,7 @@ class CausalMediaObserver:
         return indices
 
     def _block(self, decoder: FrameDecoder, media: BoundMedia, start_s: float, end_s: float,
-               verify_content: Callable[[], None]) -> CausalWindowObservation:
+               verify_content: Callable[[], None], cache_identity: str) -> CausalWindowObservation:
         indices = self._indices(media, start_s, end_s)
         if not indices:
             return _empty()
@@ -206,18 +233,18 @@ class CausalMediaObserver:
         timestamps = [index / media.fps for index in indices]
         # The block list and RGB images are local and released after this call.
         return self.observe(images, timestamps, end_s, self.detector, self.siglip, self.cache,
-                            media.media_sha256, self.siglip.identity(), window_start_s=start_s)
+                            cache_identity, self.siglip.identity(), window_start_s=start_s)
 
     def detection(self, dataset: str, media_key: str, query_s: float) -> CausalWindowObservation:
         media = self._bound(dataset, media_key)
         if not math.isfinite(query_s) or query_s <= 0 or query_s > media.duration_s + 1e-9:
             raise MediaObserverError("detection query lies outside bound media duration")
         start_s = max(0.0, query_s - 8.0)
-        with self._open(media) as (path, verify_content):
+        with self._open(media) as (path, verify_content, cache_identity):
             decoder = self.decoder_factory(path)
             try:
                 self._validate_decoder(decoder, media)
-                return self._block(decoder, media, start_s, query_s, verify_content)
+                return self._block(decoder, media, start_s, query_s, verify_content, cache_identity)
             finally:
                 decoder.close()
 
@@ -243,13 +270,13 @@ class CausalMediaObserver:
         # caption sample. It defines all left-aligned 8-second blocks and tail.
         endpoints = caption_block_endpoints(media.duration_s)
         blocks = []
-        with self._open(media) as (path, verify_content):
+        with self._open(media) as (path, verify_content, cache_identity):
             decoder = self.decoder_factory(path)
             try:
                 self._validate_decoder(decoder, media)
                 start_s = 0.0
                 for end_s in endpoints:
-                    blocks.append(self._block(decoder, media, start_s, end_s, verify_content))
+                    blocks.append(self._block(decoder, media, start_s, end_s, verify_content, cache_identity))
                     start_s = end_s
             finally:
                 decoder.close()

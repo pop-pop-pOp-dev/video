@@ -8,12 +8,20 @@ does not decode video frames, construct a model, or start a preparation run.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
+import resource
+import shutil
 import sys
+import tempfile
+from types import SimpleNamespace
 from typing import Any
+
+from nc_rted.storage_lock import allocation_lock, ensure_directory
 
 
 class BuildError(RuntimeError):
@@ -21,6 +29,8 @@ class BuildError(RuntimeError):
 
 
 GIB = 1024 ** 3
+MINIMUM_FREE_BYTES = 20 * GIB
+PROBE_MAXIMUM_BYTES = 64 * 1024 ** 2
 SAMPLING = {"local_num_frames": 1, "frames_upbound": 64, "frames_lowbound": 4,
             "sample_type": "dynamic_fps1", "time_msg": "short_online_v2",
             "model_max_length": 8192, "vision_chunk_size": 32, "projector": "original"}
@@ -63,8 +73,70 @@ def _tree_sha256(root: Path) -> str:
 
 
 def _write_json(path: Path, value: Any) -> str:
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return _sha256(path)
+    """Durably publish a new manifest without replacing an existing binding."""
+    content = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    with allocation_lock(path.parent):
+        if path.exists():
+            raise BuildError(f"refusing to overwrite published artifact: {path}")
+        block = max(4096, os.statvfs(path.parent).f_frsize)
+        allocation = ((len(content) + block - 1) // block) * block + 2 * block
+        if shutil.disk_usage(path.parent).free < MINIMUM_FREE_BYTES + allocation:
+            raise BuildError("manifest publication would violate the required free-space reserve")
+        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            try:
+                # link(2) publishes atomically but cannot replace a competing file.
+                os.link(temporary, path)
+            except FileExistsError as error:
+                raise BuildError(f"refusing to overwrite published artifact: {path}") from error
+            except OSError as error:
+                raise BuildError(f"could not publish manifest artifact: {path}") from error
+            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return hashlib.sha256(content).hexdigest()
+
+
+def _admit_probe_temporary(root: Path) -> None:
+    block = max(4096, os.statvfs(root).f_frsize)
+    if shutil.disk_usage(root).free < MINIMUM_FREE_BYTES + PROBE_MAXIMUM_BYTES + 2 * block:
+        raise BuildError("segment-metadata probe would violate the required free-space reserve")
+
+
+@contextmanager
+def _frozen_probe_environment(serial, root: Path):
+    """Constrain the frozen resolver's one-frame FPS writer probe."""
+    ensure_directory(root, MINIMUM_FREE_BYTES)
+    with allocation_lock(root):
+        original_tempfile = serial.tempfile
+        original_limit = resource.getrlimit(resource.RLIMIT_FSIZE)
+
+        def guarded_mkstemp(*args, **kwargs):
+            _admit_probe_temporary(root)
+            kwargs["dir"] = str(root)
+            return original_tempfile.mkstemp(*args, **kwargs)
+
+        try:
+            resource.setrlimit(resource.RLIMIT_FSIZE, (PROBE_MAXIMUM_BYTES, original_limit[1]))
+            serial.tempfile = SimpleNamespace(mkstemp=guarded_mkstemp)
+            yield
+        finally:
+            serial.tempfile = original_tempfile
+            resource.setrlimit(resource.RLIMIT_FSIZE, original_limit)
+
+
+def _expected_segment(serial, source: Path, segment: list[float], probe_root: Path) -> dict:
+    with _frozen_probe_environment(serial, probe_root):
+        return serial.expected_segment(source, segment)
 
 
 def _load_module(path: Path):
@@ -148,7 +220,8 @@ def _runtime_source_manifest(snapshot_root: Path, expected_commit: str | None, g
     }
 
 
-def _caption_media(captions_path: Path, stage2_config: dict, serial) -> tuple[list[dict[str, Any]], dict[str, int]]:
+def _caption_media(captions_path: Path, stage2_config: dict, serial,
+                   probe_root: Path) -> tuple[list[dict[str, Any]], dict[str, int]]:
     captions = json.loads(captions_path.read_text(encoding="utf-8"))
     train = json.loads(Path(stage2_config["train_json"]).read_text(encoding="utf-8"))
     if not isinstance(captions, list) or len(captions) != 2000:
@@ -188,7 +261,12 @@ def _caption_media(captions_path: Path, stage2_config: dict, serial) -> tuple[li
         if kind not in kinds:
             raise BuildError(f"unexpected frozen media kind: {kind}")
         kinds[kind] += 1
-        fps, frame_count, width, height = metadata
+        if kind == "videos":
+            fps, frame_count, width, height = metadata
+        else:
+            expected = _expected_segment(serial, source, request["segment"], probe_root)
+            fps, frame_count = expected["fps"], expected["frames"]
+            width, height = expected["width"], expected["height"]
         media.append({
             "dataset": dataset,
             "media_key": relative_video,
@@ -256,7 +334,7 @@ def main() -> None:
     serial = _load_module(resolver_path)
 
     output.mkdir(parents=True)
-    media, inventory = _caption_media(subset, stage2, serial)
+    media, inventory = _caption_media(subset, stage2, serial, output / "segment-metadata-probes")
     catalog_sha = _write_json(output / "caption_media_catalog.json", {"schema": "nc_rted_caption_media_catalog/v1", "media": media})
     reactvau_sha = _write_json(output / "reactvau_source_manifest.json", _source_manifest(external))
     runtime_source = _runtime_source_manifest(snapshot_root, args.source_commit, args.github_commit)

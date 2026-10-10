@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 import types
+from contextlib import contextmanager
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,7 +15,11 @@ from nc_rted.production_runtime import (ProductionRuntimeError, _bound_stage2_co
                                         _materialized_stage2_cache, _stage2_dataset_class,
                                         _validate_caption_subset, _validate_detection_bindings,
                                         _assert_inherited_modules_bound, _configure_inherited_tokenizer,
-                                        _configure_inherited_data_args, _require_loaded_final_stage2_tower, load_manifest)
+                                        _configure_inherited_data_args, _require_loaded_final_stage2_tower,
+                                        _checkpoint_identity, _configure_training_memory_mode,
+                                        _TRAINING_MEMORY_MODE_IDENTITY, _stage2_or_direct_media_lease,
+                                        load_manifest)
+from nc_rted.recovery import CheckpointStore, RecoveryError
 from nc_rted.task_inputs import TrainingCatalog, TrainingTask
 
 
@@ -116,10 +122,49 @@ def test_preflight_accepts_pinned_diagnostic_without_model_import(tmp_path):
     assert load_manifest(path, expected_sha256=expected).run["run_id"].startswith("diagnostic:")
 
 
+def test_runtime_checkpoint_identity_matches_the_existing_store_contract(tmp_path):
+    manifest = SimpleNamespace(config_sha256="b" * 64, run={"run_id": "diagnostic:A", "group": "A", "seed": 17},
+        document={"hashes": {"code_sha256": "a" * 64, "inherited_weights_sha256": "c" * 64,
+                             "runtime_sha256": "d" * 64}, "teacher": {"sha256": "e" * 64}})
+    identity = _checkpoint_identity(manifest, SimpleNamespace(identity="f" * 64))
+    assert set(identity) == {"run_id", "group", "seed", "code_sha256", "config_sha256", "data_sha256",
+                             "teacher_sha256", "inherited_weights_sha256", "runtime_sha256"}
+    assert CheckpointStore(tmp_path, identity, min_free_bytes=0).identity == identity
+    with pytest.raises(RecoveryError, match="identity is incomplete"):
+        CheckpointStore(tmp_path / "extended", {**identity, "numerical_policy_identity": "policy"}, min_free_bytes=0)
+
+
 @pytest.mark.parametrize("section,key,value", [("sampling", "frames_upbound", 63), ("stage2_cache", "accepted_status", "REVIEW_REQUIRED_NOT_AUTHORIZED_TO_LAUNCH")])
 def test_preflight_rejects_sampling_or_unaccepted_stage2(tmp_path, section, key, value):
     path, _ = config(tmp_path); doc = json.loads(path.read_text()); doc[section][key] = value; path.write_text(json.dumps(doc))
     with pytest.raises(ProductionRuntimeError): load_manifest(path, expected_sha256=digest(path))
+
+
+def test_bounded_stage2_preflight_hash_binds_every_frozen_resolver_input(tmp_path):
+    path, _ = config(tmp_path)
+    doc = json.loads(path.read_text())
+    frozen = {"status": "APPROVED_FOR_EXECUTION"}
+    for name in ("train_json", "ucf_database", "xd_database", "identity_map", "official_splitter"):
+        asset, asset_sha = file(tmp_path, f"bounded-{name}", name.encode())
+        frozen[name], frozen[f"{name}_sha256"] = asset, asset_sha
+    stage_config = Path(doc["stage2_cache"]["config"])
+    stage_config.write_text(json.dumps(frozen))
+    doc["stage2_cache"].update({"mode": "bounded", "config_sha256": digest(stage_config),
+                                 "expected_resolver_sha256": doc["stage2_cache"]["module_sha256"],
+                                 "scratch_root": str(tmp_path / "bounded-scratch"),
+                                 "minimum_free_bytes": 20 * 1024 ** 3, "overhead_bytes": 1,
+                                 "max_temporary_bytes": None})
+    path.write_text(json.dumps(doc))
+    load_manifest(path, expected_sha256=digest(path))
+    doc["stage2_cache"]["scratch_root"] = "/root/autodl-tmp/nc-rted-caption-runtime/escaped-scratch"
+    path.write_text(json.dumps(doc))
+    with pytest.raises(ProductionRuntimeError, match="approved data volume"):
+        load_manifest(path, expected_sha256=digest(path))
+    doc["stage2_cache"]["scratch_root"] = str(tmp_path / "bounded-scratch")
+    path.write_text(json.dumps(doc))
+    Path(frozen["train_json"]).write_text("changed")
+    with pytest.raises(ProductionRuntimeError, match="bounded Stage2 train_json"):
+        load_manifest(path, expected_sha256=digest(path))
 
 
 def test_preflight_rejects_missing_detector_before_runtime_import(tmp_path):
@@ -152,6 +197,27 @@ def test_inherited_data_args_copy_the_loaded_multimodal_delimiter_policy():
     assert data_args.mm_use_im_start_end is True
     with pytest.raises(ProductionRuntimeError, match="mm_use_im_start_end"):
         _configure_inherited_data_args(type("DataArgs", (), {})(), type("Config", (), {})())
+
+
+@pytest.mark.skipif(not os.environ.get("NC_RTED_REACTVAU_ROOT"), reason="requires pinned ReactVAU source")
+def test_real_inherited_qwen_raw_uses_the_fixed_training_memory_mode():
+    root = Path(os.environ["NC_RTED_REACTVAU_ROOT"])
+    sys.path.insert(0, str(root))
+    from llava.model.language_model.llava_qwen import LlavaQwenConfig, LlavaQwenForCausalLM
+    raw = LlavaQwenForCausalLM(LlavaQwenConfig(vocab_size=64, hidden_size=16, intermediate_size=32,
+        num_hidden_layers=1, num_attention_heads=2, num_key_value_heads=2, max_position_embeddings=32))
+    assert raw.config.use_cache is True and raw.is_gradient_checkpointing is False
+    assert _configure_training_memory_mode(raw) == _TRAINING_MEMORY_MODE_IDENTITY
+    assert raw.is_gradient_checkpointing is True
+    assert raw.config.use_cache is False
+    assert raw.config.nc_rted_training_memory_mode_identity == _TRAINING_MEMORY_MODE_IDENTITY
+    assert raw.model._gradient_checkpointing_func.keywords == {"use_reentrant": False}
+
+
+def test_training_memory_mode_rejects_a_model_without_the_inherited_checkpointing_api():
+    raw = type("Raw", (), {"config": type("Config", (), {"use_cache": True})()})()
+    with pytest.raises(ProductionRuntimeError, match="memory configuration"):
+        _configure_training_memory_mode(raw)
 
 
 def test_runtime_rejects_an_unloaded_tower_without_rewriting_or_reloading_it():
@@ -196,6 +262,24 @@ def test_materialized_stage2_cache_leases_the_hash_bound_media_inode(tmp_path):
     assert cache.request_index_for({"_reactvau_relative_video": item.media_key}) == 7
     with cache.acquire(item.media_key, 7) as leased:
         assert leased.read_bytes() == b"immutable-media"
+
+
+def test_mixed_media_lease_routes_detection_to_its_direct_binding_and_caption_to_stage2(tmp_path):
+    detection_path = tmp_path / "detection.mp4"; detection_path.write_bytes(b"detection")
+    caption_path = tmp_path / "caption.mp4"; caption_path.write_bytes(b"caption")
+    detection = BoundMedia("ucf-crime", "detection.mp4", str(detection_path), digest(detection_path), 4., 4, 8, 8)
+    caption = BoundMedia("ucf-crime", "caption.mp4", str(caption_path), digest(caption_path), 4., 4, 8, 8, 9)
+    calls = []
+    class Cache:
+        @contextmanager
+        def acquire(self, relative, request_index):
+            calls.append((relative, request_index)); yield caption_path
+    lease = _stage2_or_direct_media_lease(Cache())
+    with lease(detection) as path:
+        assert path.read_bytes() == b"detection"
+    with lease(caption) as path:
+        assert path.read_bytes() == b"caption"
+    assert calls == [("caption.mp4", 9)]
 
 
 def test_preflight_rejects_yaml_that_mentions_unbound_caption_input(tmp_path):

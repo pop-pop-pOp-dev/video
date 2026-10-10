@@ -44,9 +44,19 @@ The runtime rejects drift before importing ReactVAU or model libraries.
 After preflight succeeds, assembly calls
 `configure_deterministic_algorithms()` before importing inherited ReactVAU
 modules, accessing CUDA, or constructing models. The returned policy identity
-is carried in the checkpoint identity and passed to the frozen detector and
-SigLIP adapter. Preflight's derived-asset provenance check is CPU-only; it is
-not an inherited-module or CUDA load.
+is passed to the frozen detector and SigLIP adapter. The checkpoint store
+retains its established nine-field identity; the policy implementation is bound
+by `runtime_sha256`, and the final-Stage2 SigLIP snapshot/configuration is
+bound by the hash-bound runtime manifest whose digest is `config_sha256`.
+Preflight's derived-asset provenance check is CPU-only; it is not an
+inherited-module or CUDA load.
+
+Before the first train-path forward, assembly configures the inherited raw Slow
+model with `gradient_checkpointing_enable(use_reentrant=False)` and
+`config.use_cache=False`. The fixed
+`nc_rted_training_memory_mode/v1` identity is retained on the live raw config;
+its implementation is bound by `runtime_sha256`. Capacity evidence using a
+different activation-memory mode is not production-equivalent.
 
 The catalog binds the original full training annotations for the fixed catalog,
 plus a separately hash-bound JSON containing exactly its 2,000 caption rows,

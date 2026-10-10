@@ -15,7 +15,7 @@ pip install -e '.[test]'
 python -m pytest -q tests/test_nc_rted*.py
 ```
 
-真实 ReactVAU 运行还需其完整依赖和本地模型；参考 `external/ReactVAU-paper/requirements.txt`。4090 上已使用的环境版本在 `configs/nc_rted/environment_4090_reference.json`，它是实测环境记录，不是对 PRO6000 的兼容保证。PRO6000 需独立验证驱动、CUDA、PyTorch 架构支持与最长输入容量。
+真实 ReactVAU 运行还需其完整依赖和本地模型；参考 `external/ReactVAU-paper/requirements.txt`。4090 上已使用的环境版本在 `configs/nc_rted/environment_4090_reference.json`，它是实测环境记录，不是对 PRO6000 的兼容保证。远端已实测 RTX 6000D（torch 2.7.1+cu128）的 BF16/LoRA 前后向与组件恢复；完整混合训练吞吐仍待测量。
 
 ## 代码入口
 
@@ -28,7 +28,7 @@ python -m pytest -q tests/test_nc_rted*.py
 - `scripts/nc_rted_prepare_observations.py --help`：绑定来源和模型的可恢复训练观测提取；部分完成不会发布完整教师输入。
 - `scripts/nc_rted_export_frozen_vision.py --help`：从最终 Stage2 严格导出继承视觉张量并核验来源；原权重保持不变。
 - `scripts/nc_rted_build_teacher.py --help`、`scripts/nc_rted_export_fast_snapshot.py --help`：数据准备接口。
-- `scripts/nc_rted_caption_streaming_probe.py --help`：使用哈希绑定的既有 Stage2 解析器，验证有界 clip/event 派生与原视频直读；三个预定真实样本已通过，完整长输入仍待验收。
+- `scripts/nc_rted_caption_streaming_probe.py --help`：使用哈希绑定的既有 Stage2 解析器，验证有界 clip/event 派生与原视频直读；三个预定真实样本已通过，完整混合训练组装仍待验收。
 - `scripts/nc_rted_queue.py --help`：事务任务队列；初始化只登记任务，不证明正式运行已获验收。
 
 媒体/教师/Fast 快照与原始权重必须按具体路径和哈希绑定。缺失资产显式报错，不用虚假检测或替代视频。十项工程验收全部通过且代码/配置/数据冻结后才允许正式运行。
@@ -44,7 +44,7 @@ python scripts/nc_rted_train.py --config /absolute/path/runtime.json \
 
 `--dry-run` 仅检查文件绑定，成功状态为 `FILE_BINDINGS_PASS_SEMANTIC_NOT_RUN`，不表示真实模型或媒体流程通过。正式模式还必须提供独立的 `--admission` 与 `--admission-sha256`，且全部工程验收通过。诊断结果不能作为正式模型结果。
 
-固定训练清单为 6,000 个检测前缀和 2,000 条原始描述。Fast 快照与观察媒体必须匹配内容哈希、帧率、帧数和尺寸；原 ReactVAU 源码也须绑定完整运行依赖。固定 RT-DETR 资产已取得并完成真实观测测试；2,413 个训练媒体的全帧时间戳已核验。本地任务进程恢复已通过专项测试和独立静态审查，整套 CPU 回归 346 项通过。全量教师覆盖、派生媒体、最长输入 GPU 验收、完整盲预测入口及正式资源准入仍需完成。
+固定训练清单为 6,000 个检测前缀和 2,000 条原始描述。Fast 快照与观察媒体必须匹配内容哈希、帧率、帧数和尺寸；原 ReactVAU 源码也须绑定完整运行依赖。固定 RT-DETR 资产已取得并完成真实观测测试；2,413 个训练媒体的全帧时间戳已核验。本地任务进程恢复已通过专项测试和独立静态审查，整套 CPU 回归 357 项通过。原始最长描述 5696 秒 / 712 块的完整前向反向已通过；全量教师、混合训练组装、最长检测、完整盲预测入口与正式准入仍待完成。
 
 ### 视觉权重与数值验收状态
 
@@ -55,6 +55,10 @@ python scripts/nc_rted_train.py --config /absolute/path/runtime.json \
 已加入通过独立审查的教师计算缓存及确定性运算设置工具。教师缓存保留原算法输出，实际全量提速尚未测量；数值设置已接入训练和观测提取运行时；提取配置 v2 强制绑定最终 Stage2 视觉来源，拒绝旧原始 SigLIP 配置。完整盲预测入口仍需完成。真实短训练前缀现已直接使用 Slow 内的继承视觉塔，通过来源适配器核验、禁用路径等价、冷／热缓存概率一致性及前向／反向诊断：392 个 LoRA 张量、38 个新模块张量均有有限非零梯度，峰值约 22.0 GiB；该测试使用确定性运算并在反向前将冻结视觉模型移至 CPU，未包含优化器更新、完整恢复、最长输入或正式效果评测。另以 1024 token 生成上限核验同一检测前缀的原路径／禁用分支和冷／热缓存 greedy 输出，token 完全一致；这不是完整描述任务验收。
 
 观测提取 v2 的完整 CPU 回归和静态审查已通过。原权重来源核验单次主机内存需求下界约 30.72 GiB；真实有界提取已完成 16 个窗口，恢复时复用这 16 个并仅新增 1 个；全量 6,000 窗口及教师覆盖仍待完成，不能从模块参数量推断完整系统资源需求。
+
+新增有界 Stage2 派生媒体租约，按真实来源与范围绑定，保留 20 GiB 空间；修复原视频和描述媒体的租约路由。生产训练启用非重入 gradient checkpointing 并关闭训练 KV cache。独立源码审查通过。实际 caption2913 已完成两次 accumulation=8 更新、保存重载，以及 SIGTERM 后全新进程恢复重放，最终参数/优化器/调度器/样本序列/RNG 与连续执行一致；这是组件诊断，完整生产组装与正式配方仍需验收。
+
+外部 GPU 按用户确认租期 7 天，保守停止界限为北京时间 2026-10-16 00:00；实验总截止维持 2026-10-23 02:54 UTC。尚不宣称完整矩阵资源足额。
 
 ## 数据与依赖
 

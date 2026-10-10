@@ -33,6 +33,14 @@ _REQUIRED_REACTVAU_SOURCES = {"llava/train/train.py", "llava/train/reactvau_stag
                               "llava/model/multimodal_projector/memory_manager.py",
                               "llava/model/language_model/llava_qwen.py", "eval_utils/vad/eval_reactvau_detection.py",
                               "eval_utils/vad/detect_utils.py", "vad/get_prompt.py"}
+_FROZEN_STAGE2_FIELDS = (("train_json", "train_json_sha256"), ("ucf_database", "ucf_database_sha256"),
+                         ("xd_database", "xd_database_sha256"), ("identity_map", "identity_map_sha256"),
+                         ("official_splitter", "official_splitter_sha256"))
+_TRAINING_MEMORY_MODE = {"schema": "nc_rted_training_memory_mode/v1",
+                         "gradient_checkpointing": {"enabled": True, "use_reentrant": False},
+                         "use_cache": False}
+_TRAINING_MEMORY_MODE_IDENTITY = hashlib.sha256(
+    json.dumps(_TRAINING_MEMORY_MODE, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 class ProductionRuntimeError(TaskInputError):
@@ -56,6 +64,22 @@ def _bound_file(value: object, expected: object, name: str) -> Path:
     if not path.is_absolute() or not path.is_file() or sha256_file(path) != expected:
         raise ProductionRuntimeError(f"{name} is absent or its SHA-256 differs")
     return path
+
+
+def _validate_bounded_stage2_config(config: Path) -> None:
+    """Hash-check the serial resolver's frozen inputs without importing it."""
+    try:
+        document = _mapping(json.loads(config.read_text(encoding="utf-8")), "bounded Stage2 cache config")
+    except (OSError, ValueError) as error:
+        raise ProductionRuntimeError("bounded Stage2 cache config is invalid") from error
+    for path_key, hash_key in _FROZEN_STAGE2_FIELDS:
+        _bound_file(document.get(path_key), document.get(hash_key), f"bounded Stage2 {path_key}")
+    chunked = document.get("chunked_splitter")
+    if chunked is not None:
+        _bound_file(chunked, document.get("chunked_splitter_sha256"), "bounded Stage2 chunked splitter")
+    child_memory = document.get("child_memory_bytes", 8 * 1024 ** 3)
+    if type(child_memory) is not int or child_memory <= 0:
+        raise ProductionRuntimeError("bounded Stage2 child memory limit is invalid")
 
 
 def _tree_sha256(root: Path) -> str:
@@ -187,14 +211,33 @@ def preflight(manifest: RuntimeManifest) -> None:
         _bound_file(str(Path(inherited["export_directory"]) / relative), expected, "inherited export file")
     stage2 = _mapping(doc.get("stage2_cache"), "stage2_cache")
     mode = stage2.get("mode", "resolver")
-    if mode == "resolver":
+    if mode in {"resolver", "bounded"}:
         _bound_file(stage2.get("module"), stage2.get("module_sha256"), "Stage2 resolver module")
         config = _bound_file(stage2.get("config"), stage2.get("config_sha256"), "Stage2 cache config")
         if stage2.get("accepted_status") != "APPROVED_FOR_EXECUTION":
             raise ProductionRuntimeError("Stage2 cache is not approved for execution")
-        try: status = json.loads(config.read_text()).get("status")
+        try: status = _mapping(json.loads(config.read_text()), "Stage2 cache config").get("status")
         except (OSError, ValueError) as error: raise ProductionRuntimeError("Stage2 cache config is invalid") from error
         if status != stage2["accepted_status"]: raise ProductionRuntimeError("Stage2 cache status is not accepted")
+        if mode == "bounded":
+            if stage2.get("expected_resolver_sha256") != stage2.get("module_sha256"):
+                raise ProductionRuntimeError("bounded Stage2 resolver identity is not pinned")
+            try:
+                from .bounded_stage2_cache import BoundedStage2CacheError, bounded_scratch_root
+                bounded_scratch_root(stage2.get("scratch_root"))
+            except BoundedStage2CacheError as error:
+                raise ProductionRuntimeError(str(error)) from error
+            if type(stage2.get("minimum_free_bytes")) is not int or stage2["minimum_free_bytes"] < 20 * 1024 ** 3:
+                raise ProductionRuntimeError("bounded Stage2 reserve is invalid")
+            if type(stage2.get("overhead_bytes")) is not int or stage2["overhead_bytes"] <= 0:
+                raise ProductionRuntimeError("bounded Stage2 overhead is invalid")
+            temporary = stage2.get("max_temporary_bytes")
+            if temporary is not None and (type(temporary) is not int or temporary <= 0):
+                raise ProductionRuntimeError("bounded Stage2 temporary cap is invalid")
+            timeout = stage2.get("child_timeout_seconds", 600)
+            if type(timeout) is not int or timeout <= 0:
+                raise ProductionRuntimeError("bounded Stage2 child timeout is invalid")
+            _validate_bounded_stage2_config(config)
     elif mode != "materialized":
         raise ProductionRuntimeError("Stage2 cache mode is unsupported")
     fast = _mapping(doc.get("fast"), "fast")
@@ -300,6 +343,26 @@ def _materialized_stage2_cache(media):
     return Cache()
 
 
+def _stage2_or_direct_media_lease(stage2_cache):
+    """Route catalog media by its immutable Stage2 request binding.
+
+    Detection media is a catalog-owned original file and deliberately has no
+    Stage2 request index. Caption media has one resolver request, including a
+    temporary derived segment in bounded mode.
+    """
+    from .media_observer import lease_verified_media
+
+    @contextmanager
+    def lease(media):
+        if media.request_index is None:
+            with lease_verified_media(media) as path:
+                yield path
+        else:
+            with stage2_cache.acquire(media.media_key, media.request_index) as path:
+                yield path
+    return lease
+
+
 def _configure_inherited_tokenizer(tokenizer) -> None:
     """Retain Qwen's pretrained pad token when it has no unknown token."""
     if getattr(tokenizer, "unk_token", None) is not None:
@@ -313,6 +376,20 @@ def _configure_inherited_data_args(data_args, raw_config) -> None:
     if type(value) is not bool:
         raise ProductionRuntimeError("loaded inherited model lacks a boolean mm_use_im_start_end policy")
     data_args.mm_use_im_start_end = value
+
+
+def _configure_training_memory_mode(raw) -> str:
+    """Apply the fixed train-path activation-memory policy before any forward."""
+    config = getattr(raw, "config", None)
+    enable = getattr(raw, "gradient_checkpointing_enable", None)
+    if config is None or not callable(enable):
+        raise ProductionRuntimeError("loaded inherited model does not support the required memory configuration")
+    enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    config.use_cache = False
+    if getattr(raw, "is_gradient_checkpointing", None) is not True or config.use_cache is not False:
+        raise ProductionRuntimeError("loaded inherited model rejected the required memory configuration")
+    config.nc_rted_training_memory_mode_identity = _TRAINING_MEMORY_MODE_IDENTITY
+    return _TRAINING_MEMORY_MODE_IDENTITY
 
 
 def _require_loaded_final_stage2_tower(tower) -> None:
@@ -445,7 +522,7 @@ def _validate_detection_bindings(catalog: TrainingCatalog, fast_snapshot: Path, 
 @contextmanager
 def _bound_stage2_constructor_environment(stage2: dict, media_catalog_path: str):
     """Tell the original loader its first-three media check is cache-bound, briefly."""
-    binding = stage2.get("config") if stage2.get("mode", "resolver") == "resolver" else media_catalog_path
+    binding = stage2.get("config") if stage2.get("mode", "resolver") in {"resolver", "bounded"} else media_catalog_path
     previous = os.environ.get("REACTVAU_STAGE2_CACHE_CONFIG")
     os.environ["REACTVAU_STAGE2_CACHE_CONFIG"] = str(binding)
     try:
@@ -468,6 +545,22 @@ def _validate_formal_admission_before_models(admission: dict, identity: dict) ->
         raise ProductionRuntimeError("formal admission omits NC-RTED source")
     for name, expected in files.items():
         if sha256_file(name) != expected: raise ProductionRuntimeError("accepted implementation changed")
+
+
+def _checkpoint_identity(manifest: RuntimeManifest, catalog: TrainingCatalog) -> dict[str, str]:
+    """Return the exact immutable identity accepted by ``CheckpointStore``.
+
+    The final Stage2 vision snapshot and numerical policy are independently
+    bound by the manifest/configuration checks before assembly.  Checkpoints
+    retain the established nine-field schema so recovery and formal admission
+    compare the same persisted contract.
+    """
+    doc, run = manifest.document, manifest.run
+    return {"run_id": run["run_id"], "group": run["group"], "seed": str(run["seed"]),
+            "code_sha256": doc["hashes"]["code_sha256"], "config_sha256": manifest.config_sha256,
+            "data_sha256": catalog.identity, "teacher_sha256": doc["teacher"]["sha256"],
+            "inherited_weights_sha256": doc["hashes"]["inherited_weights_sha256"],
+            "runtime_sha256": doc["hashes"]["runtime_sha256"]}
 
 
 @dataclass
@@ -496,7 +589,7 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
     teacher_path = Path(doc["teacher"]["artifact"])
     teachers = (TeacherIndex(build_teachers_from_store(teacher_path), catalog, identity=doc["teacher"]["sha256"])
                 if teacher_path.is_dir() else TeacherIndex.load(teacher_path, catalog, expected_sha256=doc["teacher"]["sha256"]))
-    identity = {"run_id": run["run_id"], "group": run["group"], "seed": str(run["seed"]), "code_sha256": doc["hashes"]["code_sha256"], "config_sha256": manifest.config_sha256, "data_sha256": catalog.identity, "teacher_sha256": doc["teacher"]["sha256"], "inherited_weights_sha256": doc["hashes"]["inherited_weights_sha256"], "runtime_sha256": doc["hashes"]["runtime_sha256"], "final_stage2_siglip_snapshot_sha256": doc["detector"]["final_stage2_siglip_snapshot_sha256"], "numerical_policy_identity":numerical_policy.identity()}
+    identity = _checkpoint_identity(manifest, catalog)
     if run["mode"] == "formal":
         if admission is None: raise ProductionRuntimeError("formal assembly requires an external formal admission")
         _validate_formal_admission_before_models(admission, identity)
@@ -512,6 +605,9 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
     _validate_detection_bindings(catalog, Path(doc["fast"]["snapshot"]), media)
     if stage2.get("mode", "resolver") == "materialized":
         cache = _materialized_stage2_cache(media)
+    elif stage2.get("mode") == "bounded":
+        from .bounded_stage2_cache import BoundedStage2Cache
+        cache = BoundedStage2Cache(stage2)
     else:
         resolver = _load_external(Path(stage2["module"]), "nc_rted_stage2_resolver")
         cache = resolver.Cache(json.loads(Path(stage2["config"]).read_text()))
@@ -531,6 +627,7 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
         inherited["base_directory"], inherited["export_directory"], export_hashes=inherited["export_hashes"], seed=run["seed"], device=run["device"])
     slow = bridge.slow
     raw = slow.get_base_model() if hasattr(slow, "get_base_model") else slow
+    _configure_training_memory_mode(raw)
     tower = slow.get_vision_tower()
     _require_loaded_final_stage2_tower(tower)
     import torch
@@ -565,8 +662,9 @@ def assemble(manifest: RuntimeManifest, *, admission: dict | None = None) -> Pro
         expected_parent_export=Path(inherited["export_directory"]) / "non_lora_trainables.bin",
         expected_raw_config_sha256=sha256_file(Path(doc["detector"]["siglip_snapshot"]) / "config.json"),
         numerical_policy_identity=numerical_policy.identity())
-    observer = CausalMediaObserver(detector=detector, siglip=siglip, cache=FrozenFrameCache(doc["media"]["observation_cache_root"], doc["media"]["observation_cache_max_bytes"]), media_catalog=media,
-        lease_resolver=lambda item: cache.acquire(item.media_key, item.request_index), decoder_factory=OpenCVFrames)
+    observer = CausalMediaObserver(detector=detector, siglip=siglip,
+        cache=FrozenFrameCache(doc["media"]["observation_cache_root"], doc["media"]["observation_cache_max_bytes"]),
+        media_catalog=media, lease_resolver=_stage2_or_direct_media_lease(cache), decoder_factory=OpenCVFrames)
     with _bound_stage2_constructor_environment(stage2, doc["media"]["catalog"]):
         dataset = Stage2Dataset(doc["catalog"]["dataset_yaml"], tokenizer, data_args)
     captions = Stage2CaptionProvider(catalog=catalog, dataset=dataset, model=slow, vision_tower=tower, observer=observer)

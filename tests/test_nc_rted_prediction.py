@@ -29,7 +29,8 @@ from nc_rted.prediction_worker import PredictionExecutionError, PredictionWorker
 from nc_rted.prediction_media import FullBlindDetectionReader
 from nc_rted.prediction_media import FullBlindHivauReader
 from nc_rted.detection_provider import DetectionProtocol
-from nc_rted.prediction_runtime import (PredictionRuntime, _VERIFIED_INHERITED_MODULES, _audit_bound_inherited_modules, _import_bound_runtime,
+from nc_rted.media_observer import BoundMedia
+from nc_rted.prediction_runtime import (PredictionRuntime, _FullMediaObserver, _VERIFIED_INHERITED_MODULES, _audit_bound_inherited_modules, _import_bound_runtime,
                                         _restore_trainable, load_prediction_runtime, validate_artifact_runtime)
 from nc_rted.prediction_adapters import BlindDetectionRunner, BlindPromptTokenizer
 
@@ -1168,6 +1169,28 @@ def test_hivau_reader_preserves_full_timeline_tail_and_blocks(tmp_path, monkeypa
     assert material.sampled_frame_times[-1] == 60 / 7 and len(material.fast_scores) == 16
     assert seen["observed_seconds"] == 61 / 7 and "16 frames" in material.time_message
     assert Memory.created == 2
+
+
+def test_hivau_physical_catalog_canonicalizes_only_identical_aliases():
+    digest = "a" * 64
+    first = BoundMedia("xd", "request-b", "/bound/video.mp4", digest, 24., 937, 720, 1280, 12)
+    alias = BoundMedia("xd", "request-a", "/bound/video.mp4", digest, 24., 937, 720, 1280, 12)
+    catalog = FullBlindHivauReader._physical_catalog({("xd", first.media_key): first, ("xd", alias.media_key): alias})
+    assert catalog == {(first.media_path, digest): alias}
+    conflicting = BoundMedia("xd", "request-c", "/bound/video.mp4", digest, 24., 938, 720, 1280, 12)
+    with pytest.raises(PredictionExecutionError, match="aliases disagree"):
+        FullBlindHivauReader._physical_catalog([first, conflicting])
+
+
+def test_full_media_observer_uses_hivau_physical_catalog_alias_rules():
+    digest = "b" * 64
+    first = BoundMedia("xd", "request-b", "/bound/video.mp4", digest, 24., 937, 720, 1280, 12)
+    alias = BoundMedia("xd", "request-a", "/bound/video.mp4", digest, 24., 937, 720, 1280, 12)
+    observer = _FullMediaObserver(object(), {("xd", first.media_key): first, ("xd", alias.media_key): alias})
+    assert observer.media == {(first.media_path, digest): alias}
+    conflicting = BoundMedia("xd", "request-c", "/bound/video.mp4", digest, 24., 938, 720, 1280, 12)
+    with pytest.raises(PredictionExecutionError, match="aliases disagree"):
+        _FullMediaObserver(object(), [first, conflicting])
 
 
 def test_hivau_r0_bypasses_evidence_observer(tmp_path, monkeypatch):

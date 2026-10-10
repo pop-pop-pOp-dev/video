@@ -358,12 +358,14 @@ class _RunnerVauAdapter:
 
 
 class _FullMediaObserver:
-    def __init__(self, observer, media): self.observer, self.media = observer, media
+    def __init__(self, observer, media):
+        from .prediction_media import FullBlindHivauReader
+        self.observer, self.media = observer, FullBlindHivauReader._physical_catalog(media)
     def observe_full_media(self, *, media_path: str, media_sha256: str, sampled_frame_times, observed_seconds: float):
-        matches = [item for item in self.media.values() if item.media_path == media_path and item.media_sha256 == media_sha256]
-        if len(matches) != 1: raise PredictionInputError("HIVAU medium is absent or ambiguous in the official catalog")
+        item = self.media.get((media_path, media_sha256))
+        if item is None: raise PredictionInputError("HIVAU medium is absent or ambiguous in the official catalog")
         from .batches import caption_block_endpoints, pack_observation_blocks
-        item, start, blocks = matches[0], 0.0, []
+        start, blocks = 0.0, []
         for end in caption_block_endpoints(observed_seconds):
             with self.observer._open(item) as (path, verify):
                 decoder = self.observer.decoder_factory(path)

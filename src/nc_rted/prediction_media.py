@@ -98,8 +98,31 @@ class FullBlindHivauReader:
         self.slow, self.fast_detector, self.fast_prompt, self.vision_encoder, self.observer = slow, fast_detector, fast_prompt, vision_encoder, observer
         self.target_fps, self.query_interval, self.decoder_factory, self.time_message_style = target_fps, query_interval, decoder_factory, time_message_style
         self.memory_factory, self.grid_builder = memory_factory, grid_builder
-        self.media_catalog = None if media_catalog is None else tuple(media_catalog.values() if hasattr(media_catalog, "values") else media_catalog)
+        self.media_catalog = None if media_catalog is None else self._physical_catalog(media_catalog)
         self.evidence_enabled = evidence_enabled
+
+    @staticmethod
+    def _physical_catalog(media_catalog):
+        """Collapse only catalog aliases with the same bound physical medium."""
+        items = media_catalog.values() if hasattr(media_catalog, "values") else media_catalog
+        result = {}
+        for item in items:
+            if not isinstance(item, BoundMedia):
+                raise PredictionExecutionError("HIVAU catalog contains an invalid media binding")
+            key = (item.media_path, item.media_sha256)
+            physical = (item.dataset, item.media_path, item.media_sha256, item.fps,
+                        item.frame_count, item.height, item.width)
+            prior = result.get(key)
+            if prior is not None:
+                prior_physical = (prior.dataset, prior.media_path, prior.media_sha256, prior.fps,
+                                  prior.frame_count, prior.height, prior.width)
+                if prior_physical != physical:
+                    raise PredictionExecutionError("HIVAU catalog aliases disagree on bound media geometry")
+                result[key] = min((prior, item), key=lambda value: (value.dataset, value.media_key,
+                                                                      -1 if value.request_index is None else value.request_index))
+            else:
+                result[key] = item
+        return result
 
     def read(self, *, media_path: str, media_sha256: str) -> BlindHivauMaterial:
         path = Path(media_path)
@@ -108,10 +131,10 @@ class FullBlindHivauReader:
         # Keep the same verified inode open throughout Fast/Slow memory replay.
         # The observation route independently leases and verifies this immutable
         # catalog medium before publishing frozen blocks.
-        matches = [] if self.media_catalog is None else [item for item in self.media_catalog if item.media_path == str(path) and item.media_sha256 == media_sha256]
-        if self.media_catalog is not None and len(matches) != 1:
+        media = None if self.media_catalog is None else self.media_catalog.get((str(path), media_sha256))
+        if self.media_catalog is not None and media is None:
             raise PredictionExecutionError("HIVAU media is absent or ambiguous in the official catalog")
-        media = matches[0] if matches else BoundMedia("hivau", path.name, str(path), media_sha256, 1., 1, 1, 1)
+        media = media if media is not None else BoundMedia("hivau", path.name, str(path), media_sha256, 1., 1, 1, 1)
         with lease_verified_media(media) as leased:
             decoder = self.decoder_factory(leased)
             try:

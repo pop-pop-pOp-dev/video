@@ -62,6 +62,8 @@ _IMPLEMENTATION_FILES = frozenset({
     "src/nc_rted/model.py",
     "src/nc_rted/features.py",
     "src/nc_rted/tracking.py",
+    "src/nc_rted/caption_provider.py",
+    "src/nc_rted/caption_sampling.py",
 })
 
 

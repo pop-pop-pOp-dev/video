@@ -38,6 +38,7 @@ _IMPLEMENTATION_FILES = frozenset({
     "src/nc_rted/prediction_worker.py", "src/nc_rted/production_runtime.py", "src/nc_rted/recovery.py",
     "src/nc_rted/task_inputs.py", "src/nc_rted/storage_lock.py", "src/nc_rted/model.py",
     "src/nc_rted/features.py", "src/nc_rted/tracking.py",
+    "src/nc_rted/caption_provider.py", "src/nc_rted/caption_sampling.py",
 })
 
 

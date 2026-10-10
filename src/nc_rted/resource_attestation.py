@@ -86,6 +86,124 @@ CACHE_KEYS = {"TMPDIR", "XDG_CACHE_HOME", "HF_HUB_CACHE", "HF_XET_CACHE", "HF_AS
 ENVIRONMENT_KEYS = CACHE_KEYS | {"PYTHONPATH", "HF_HOME", "TRANSFORMERS_CACHE",
                                "PYTHONNOUSERSITE", "PYTHONDONTWRITEBYTECODE"}
 QUALIFICATION_MAX_AGE = 7 * 24 * 3600
+SOURCE34_APPLICABILITY_SCHEMA = "nc_rted_source34_seed_applicability/v1"
+GROUPS = ("A", "U", "S", "F")
+
+
+def normalized_runtime_for_seed(document: object) -> dict:
+    """Return the immutable runtime contract after removing seed relocation."""
+    if not isinstance(document, dict) or not isinstance(document.get("run"), dict) or not isinstance(document.get("hashes"), dict):
+        raise ResourceAttestationError("source34 runtime document is incomplete")
+    value = json.loads(json.dumps(document))
+    for key in ("run_id", "seed", "checkpoint_root", "progress_path"):
+        value["run"].pop(key, None)
+    for key in ("code_sha256", "runtime_sha256"):
+        value["hashes"].pop(key, None)
+    return value
+
+
+def _manifest_code_sha256(manifest: dict, name: str) -> tuple[dict[str, str], str]:
+    files = manifest.get("files")
+    if (manifest.get("schema") != "nc_rted_interleaved_source_manifest/v1" or not isinstance(files, dict) or
+            not files or any(not isinstance(key, str) or Path(key).is_absolute() or ".." in Path(key).parts or
+                             not isinstance(value, str) or len(value) != 64 for key, value in files.items())):
+        raise ResourceAttestationError(f"{name} differs")
+    code = hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if manifest.get("code_sha256") != code:
+        raise ResourceAttestationError(f"{name} code identity differs")
+    return files, code
+
+
+def _verify_source34_applicability(document: object, qualification_document: dict, qualification_path: Path,
+                                    qualification_sha256: str, identities: dict, budget: float,
+                                    target_runtimes: dict[str, tuple[dict, dict]] | None = None) -> dict | None:
+    """Accept a conservative source33 measurement projection for seed 42/2026 only."""
+    if document is None:
+        return None
+    if not isinstance(document, dict) or set(document) != {"schema", "status", "measured_qualification", "measured_identities", "target_seed", "target_identities", "source_transition", "invariants", "projection", "measured_runtimes", "target_runtimes"}:
+        raise ResourceAttestationError("source34 applicability schema differs")
+    if document["schema"] != SOURCE34_APPLICABILITY_SCHEMA or document["status"] != "PASS_CONSERVATIVE_SEED_APPLICABILITY":
+        raise ResourceAttestationError("source34 applicability is not accepted")
+    if document["measured_qualification"] != {"path": str(qualification_path), "sha256": qualification_sha256}:
+        raise ResourceAttestationError("source34 applicability binds a different source33 measurement")
+    if type(document["target_seed"]) is not int or document["target_seed"] not in {42, 2026} or document["target_identities"] != identities:
+        raise ResourceAttestationError("source34 applicability target identities differ")
+    if set(document["measured_identities"]) != {"A", "U", "S", "F"} or any(item.get("seed") != "17" for item in document["measured_identities"].values()):
+        raise ResourceAttestationError("source34 applicability measured seed differs")
+    profile_binding = qualification_document.get("qualification_profile")
+    if not isinstance(profile_binding, dict) or set(profile_binding) != {"path", "sha256"}:
+        raise ResourceAttestationError("source33 qualification profile binding differs")
+    _, profile = _bound_file(profile_binding["path"], profile_binding["sha256"], "source33 qualification profile")
+    if (profile.get("schema") != "nc_rted_interleaved_formal_qualification_profile/v1" or
+            profile.get("status") != "NON_ADMITTED_FORMAL_PROFILE" or
+            profile.get("member_identities") != document["measured_identities"] or
+            profile.get("updates") != 1000 or profile.get("accumulation") != 8 or
+            profile.get("shared_preparation") != "frozen_provider_only" or profile.get("common_recovery") is not True):
+        raise ResourceAttestationError("source33 qualification profile invariants differ")
+    if set(document["measured_runtimes"]) != set(GROUPS) or set(document["target_runtimes"]) != set(GROUPS):
+        raise ResourceAttestationError("source34 applicability runtime bindings differ")
+    for group in GROUPS:
+        _, measured_runtime = _bound_file(document["measured_runtimes"][group]["path"], document["measured_runtimes"][group]["sha256"], "measured runtime")
+        expected_measured = {"path": profile["members"][group].get("runtime"), "sha256": profile["members"][group].get("runtime_sha256")}
+        actual_target = None if target_runtimes is None else target_runtimes.get(group)
+        if (document["measured_runtimes"][group] != expected_measured or not isinstance(actual_target, tuple) or
+                document["target_runtimes"][group] != actual_target[1] or
+                normalized_runtime_for_seed(measured_runtime) != normalized_runtime_for_seed(actual_target[0])):
+            raise ResourceAttestationError("source34 applicability runtime normalization differs")
+    if any(item.get("seed") != str(document["target_seed"]) for item in identities.values()):
+        raise ResourceAttestationError("source34 applicability target seed differs")
+    transition = document["source_transition"]
+    if (not isinstance(transition, dict) or set(transition) != {"allowed_changed_files", "unchanged_files", "measured_manifest", "target_manifest"} or
+            transition["allowed_changed_files"] != ["src/nc_rted/resource_attestation.py"] or
+            not isinstance(transition["unchanged_files"], dict) or not transition["unchanged_files"]):
+        raise ResourceAttestationError("source34 applicability source transition differs")
+    _, measured_manifest = _bound_file(transition["measured_manifest"].get("path"), transition["measured_manifest"].get("sha256"), "source33 manifest")
+    _, target_manifest = _bound_file(transition["target_manifest"].get("path"), transition["target_manifest"].get("sha256"), "source34 manifest")
+    measured_files, measured_code = _manifest_code_sha256(measured_manifest, "source33 manifest")
+    target_files, target_code = _manifest_code_sha256(target_manifest, "source34 manifest")
+    changed = {name for name in set(measured_files or ()) | set(target_files or ()) if (measured_files or {}).get(name) != (target_files or {}).get(name)}
+    if changed != {"src/nc_rted/resource_attestation.py"} or transition["unchanged_files"] != {name: value for name, value in measured_files.items() if name != "src/nc_rted/resource_attestation.py"}:
+        raise ResourceAttestationError("source34 applicability source bytes differ")
+    if (qualification_document.get("source_sha256") != measured_code or
+            any(value.get("code_sha256") != measured_code for value in document["measured_identities"].values()) or
+            any(value.get("code_sha256") != target_code for value in identities.values())):
+        raise ResourceAttestationError("source34 applicability source identities differ")
+    invariants = document["invariants"]
+    if invariants != {"samples": 8000, "updates": 1000, "accumulation": 8, "shared_preparation": "frozen_provider_only", "common_recovery": True, "sampler_rng_difference_explicit": True}:
+        raise ResourceAttestationError("source34 applicability runtime invariants differ")
+    projection = document["projection"]
+    if (not isinstance(projection, dict) or set(projection) != {"measured_seconds_per_bundle_update_upper_bound", "measured_setup_checkpoint_seconds_upper_bound", "safety_multiplier", "projected_total_seconds_upper_bound", "is_measured_target_timing"} or
+            projection.get("is_measured_target_timing") is not False or
+            projection.get("measured_seconds_per_bundle_update_upper_bound") != qualification_document.get("measurements", {}).get("seconds_per_bundle_update_upper_bound") or
+            projection.get("measured_setup_checkpoint_seconds_upper_bound") != qualification_document.get("measurements", {}).get("setup_checkpoint_seconds_upper_bound") or
+            _finite_positive(projection.get("safety_multiplier"), "source34 safety multiplier") < 1 or
+            not math.isclose((1000 * _finite_positive(projection.get("measured_seconds_per_bundle_update_upper_bound"), "source33 measured update bound") +
+                              _finite_positive(projection.get("measured_setup_checkpoint_seconds_upper_bound"), "source33 measured setup bound")) * projection["safety_multiplier"],
+                             _finite_positive(projection.get("projected_total_seconds_upper_bound"), "source34 projected target bound"), rel_tol=0, abs_tol=1e-6) or
+            projection["projected_total_seconds_upper_bound"] > budget):
+        raise ResourceAttestationError("source34 applicability projected budget differs")
+    return document
+
+
+def _source34_probe_matches(measured: object, actual: object, measured_environment: dict, target_environment: dict,
+                            measured_manifest: dict, target_manifest: dict) -> bool:
+    """Permit only the proven source-root relocation in the import probe."""
+    if not isinstance(measured, dict) or not isinstance(actual, dict):
+        return False
+    if not isinstance(measured, dict) or not isinstance(actual, dict):
+        return False
+    measured_module, target_module = measured.get("project_module"), actual.get("project_module")
+    if not isinstance(measured_module, str) or not isinstance(target_module, str):
+        return False
+    relative = Path("nc_rted/production_runtime.py")
+    measured_root = Path(measured_environment["PYTHONPATH"]).resolve()
+    target_root = Path(target_environment["PYTHONPATH"]).resolve()
+    if (Path(measured_module).resolve() != measured_root / relative or Path(target_module).resolve() != target_root / relative or
+            measured_manifest.get("files", {}).get("src/nc_rted/production_runtime.py") != target_manifest.get("files", {}).get("src/nc_rted/production_runtime.py")):
+        return False
+    candidate = json.loads(json.dumps(measured))
+    candidate["project_module"] = target_module
+    return candidate == actual
 
 
 def publish_attestation(document: dict, output: str | Path) -> str:
@@ -512,13 +630,34 @@ def verify_bundle_attestation(payload: dict, job_key: str, accepted_evidence: di
     qualification_path, qualification_doc = _bound_file(qualification.get("path"), qualification.get("sha256"), "bundle qualification report")
     if not expected or (qualification.get("path"), qualification.get("sha256")) != expected:
         raise ResourceAttestationError("bundle qualification is not accepted evidence")
+    applicability = None
+    if document.get("source34_applicability") is not None:
+        binding = document["source34_applicability"]
+        if not isinstance(binding, dict) or set(binding) != {"path", "sha256"}:
+            raise ResourceAttestationError("source34 applicability binding differs")
+        _, applicability_doc = _bound_file(binding["path"], binding["sha256"], "source34 applicability")
+        applicability = _verify_source34_applicability(
+            applicability_doc, qualification_doc, qualification_path, qualification["sha256"], identities, budget,
+            {group: (members[group]["runtime"].document,
+                     {"path": bundle["members"][group]["runtime"], "sha256": bundle["members"][group]["runtime_sha256"]})
+             for group in GROUPS},
+        )
+    if applicability is not None:
+        qualified_environment = qualification_doc.get("runtime_environment", {}).get("environment")
+        if (not isinstance(qualified_environment, dict) or qualified_environment.get("PYTHONPATH") == environment.get("PYTHONPATH") or
+                {key: value for key, value in qualified_environment.items() if key != "PYTHONPATH"} != {key: value for key, value in environment.items() if key != "PYTHONPATH"} or
+                qualification_doc.get("runtime_environment", {}).get("interpreter") != interpreter):
+            raise ResourceAttestationError("source34 environment relocation differs outside PYTHONPATH")
     workload = {"member_identities": identities, "updates": 1000, "kind": "formal_bundle",
                 "shared_preparation": "frozen_provider_only", "common_recovery": True}
     measurements, envelope = qualification_doc.get("measurements", {}), qualification_doc.get("resource_envelope", {})
+    if applicability is not None and (applicability["projection"]["measured_seconds_per_bundle_update_upper_bound"] != measurements.get("seconds_per_bundle_update_upper_bound") or applicability["projection"]["measured_setup_checkpoint_seconds_upper_bound"] != measurements.get("setup_checkpoint_seconds_upper_bound")):
+        raise ResourceAttestationError("source34 projection does not preserve measured source33 timing")
     if (qualification_doc.get("schema") != "nc_rted_runtime_qualification/v2" or qualification_doc.get("status") != "PASS_GPU_KERNEL_AND_INHERITED_RUNTIME_IMPORTS" or
             qualification_doc.get("host") != execution["host"] or qualification_doc.get("gpu_uuid") != execution["gpu_uuid"] or
-            qualification_doc.get("source_sha256") != source or qualification_doc.get("workload") != workload or
-            qualification_doc.get("runtime_environment") != {"interpreter": interpreter, "environment": environment} or
+            qualification_doc.get("source_sha256") != (source if applicability is None else applicability["measured_identities"]["A"]["code_sha256"]) or
+            qualification_doc.get("workload") != (workload if applicability is None else {"member_identities": applicability["measured_identities"], "updates": 1000, "kind": "formal_bundle", "shared_preparation": "frozen_provider_only", "common_recovery": True}) or
+            (applicability is None and qualification_doc.get("runtime_environment") != {"interpreter": interpreter, "environment": environment}) or
             measurements.get("forward_backward_completed") is not True or measurements.get("complete_long_input") is not True or
             measurements.get("common_boundary_recovery_completed") is not True or
             type(measurements.get("optimizer_updates")) is not int or measurements["optimizer_updates"] < 1):
@@ -529,8 +668,17 @@ def verify_bundle_attestation(payload: dict, job_key: str, accepted_evidence: di
     if not (start <= measured_at <= now < end and now - measured_at <= QUALIFICATION_MAX_AGE and now + budget <= end):
         raise ResourceAttestationError("bundle qualification is stale, future dated, or expires during the run")
     probe = measurements.get("local_import_probe", {})
-    if (probe.get("status") != "PASS" or probe.get("interpreter") != interpreter or probe.get("environment") != environment or
-            probe.get("runtime_identity") != python_runtime_probe(interpreter, environment)):
+    actual_probe = python_runtime_probe(interpreter, environment)
+    probe_matches = probe.get("runtime_identity") == actual_probe
+    if applicability is not None:
+        transition = applicability["source_transition"]
+        _, measured_manifest = _bound_file(transition["measured_manifest"]["path"], transition["measured_manifest"]["sha256"], "source33 manifest")
+        _, target_manifest = _bound_file(transition["target_manifest"]["path"], transition["target_manifest"]["sha256"], "source34 manifest")
+        probe_matches = _source34_probe_matches(probe.get("runtime_identity"), actual_probe, qualified_environment, environment,
+                                                measured_manifest, target_manifest)
+    if (probe.get("status") != "PASS" or probe.get("interpreter") != interpreter or
+            (applicability is None and probe.get("environment") != environment) or
+            (applicability is not None and probe.get("environment") != qualified_environment) or not probe_matches):
         raise ResourceAttestationError("bundle qualification local imports differ")
     available = _finite_positive(envelope.get("device_memory_bytes"), "qualified device memory")
     required_memory = _finite_positive(envelope.get("required_memory_bytes"), "qualified required memory")
@@ -538,7 +686,8 @@ def verify_bundle_attestation(payload: dict, job_key: str, accepted_evidence: di
     reserved = _finite_positive(measurements.get("peak_cuda_reserved_bytes"), "measured reservation")
     updates = _finite_positive(measurements.get("seconds_per_bundle_update_upper_bound"), "bundle update bound")
     overhead = _finite_positive(measurements.get("setup_checkpoint_seconds_upper_bound"), "measured overhead")
-    if not (allocated <= reserved <= required_memory <= available) or 1000 * updates + overhead > budget or available != gpu_memory_bytes(int(payload["physical_gpu"])):
+    projected = applicability["projection"]["projected_total_seconds_upper_bound"] if applicability else 1000 * updates + overhead
+    if not (allocated <= reserved <= required_memory <= available) or projected > budget or available != gpu_memory_bytes(int(payload["physical_gpu"])):
         raise ResourceAttestationError("bundle measured memory/time envelope does not fit allocation")
     if contract != {key: payload.get(key) for key in ("data_volume", "min_free_bytes", "run_budget_seconds", "deadline_utc_epoch")}:
         raise ResourceAttestationError("formal bundle resource contract differs")

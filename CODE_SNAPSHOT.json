@@ -1,33 +1,42 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "snapshot_format": 20,
-  "created_at": "2026-10-10T10:01:55.606971+00:00",
-  "source_commit": "f66746ff61117db7fc5277d8b8512f53b7e98014",
-  "source_base_commit": "efd4a2edd2a9df03bd490b3e8f57da4978249a30",
+  "snapshot_format": 21,
+  "created_at": "2026-10-10T10:23:02.324299+00:00",
+  "source_commit": "d3775c67b5d5acc257d18cd7baf50a743a41ce51",
+  "source_base_commit": "f66746ff61117db7fc5277d8b8512f53b7e98014",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
-  "previous_published_commit": "ce595426f0a1f196809167f0a412976d0335bbdd",
+  "previous_published_commit": "78525e0fce2442f10dc710239501cc1bdfda30c5",
   "source_whitelist": {
-    "previous_snapshot_manifest_sha256": "b00a9bcc71664092c0a9bc0d1a1ea9c26af874e2d7e0792f671558a9014ea916",
-    "accepted_numerics_delta_paths": [
+    "previous_snapshot_manifest_sha256": "ccecca16fed742db498e66750f4bc39659fa7dad329aeddffe2971763396b0ee",
+    "accepted_loader_delta_paths": [
+      "scripts/nc_rted_predict.py",
       "scripts/nc_rted_prediction_runtime_probe.py",
-      "tests/test_nc_rted_prediction_runtime_probe.py"
+      "src/nc_rted/prediction_inputs.py",
+      "src/nc_rted/prediction_runtime.py",
+      "tests/test_nc_rted_prediction_runtime.py"
     ],
     "main_governance_paths": [
-      "AGENTS.md",
-      "AGENT_BOARD.md"
+      "AGENT_BOARD.md",
+      "AGENTS.md"
     ],
-    "all_other_paths": "Retained from accepted publication v19"
+    "all_other_paths": "Retained from accepted publication v20",
+    "new_files": [
+      "tests/test_nc_rted_prediction_runtime.py"
+    ]
   },
   "validation": {
     "full_suite_repeated": false,
     "secrets_scan": {
       "status": "PASS",
       "scoped_paths": [
+        "scripts/nc_rted_predict.py",
         "scripts/nc_rted_prediction_runtime_probe.py",
-        "tests/test_nc_rted_prediction_runtime_probe.py",
-        "AGENTS.md",
-        "AGENT_BOARD.md"
+        "src/nc_rted/prediction_inputs.py",
+        "src/nc_rted/prediction_runtime.py",
+        "tests/test_nc_rted_prediction_runtime.py",
+        "AGENT_BOARD.md",
+        "AGENTS.md"
       ]
     },
     "accepted_evidence": [
@@ -90,6 +99,21 @@
         "path": "reports/nc_rted/github_publication_api_v16.json",
         "sha256": "2c96e0e90ae7247a9533c66c6e8d78a90654e28c14830d649595cf61edde32e6",
         "required_status": "PUBLISHED_REMOTE_COMMIT_AND_ALL_FILE_HASHES_VERIFIED"
+      },
+      {
+        "path": "reports/nc_rted/loader_release21_integration_v1.json",
+        "sha256": "c308069d2114dc9ecf97bd3f4ffe0ea87b8ce2a4f5fa4345af59411d0a10333e",
+        "required_status": "INTEGRATED_ACCEPTED_STATIC_CODE"
+      },
+      {
+        "path": "reports/nc_rted/r0_loader_import_native_review_v1.json",
+        "sha256": "f0ab28a4e173777919f97771a9e0f471ddc22ce1006cec27d946edd67fcb478b",
+        "required_status": "PASS_STATIC"
+      },
+      {
+        "path": "reports/nc_rted/github_publication_api_v17.json",
+        "sha256": "933d9dfae1e81774df8dc600b956f55db23526566cfe3b8e9cc6d1d1eabb22a1",
+        "required_status": "PUBLISHED_REMOTE_COMMIT_AND_ALL_FILE_HASHES_VERIFIED"
       }
     ],
     "hotpath_release18_sha256": {
@@ -101,10 +125,10 @@
       "src/nc_rted/observation_seed.py": "8d589e714146b2a530349c3e1fb48606d0c676fbeffb4ffe599cb5efeb54894e",
       "tests/test_nc_rted_observation_seed.py": "4c602970005abbb41e18476865061f654aa1fb2c8e9809bb38a9309533afe840"
     },
-    "prepublication_correction": "Previous snapshot omitted probe source/test; explicit accepted files added after validate KeyError; no remote mutation occurred.",
+    "prepublication_correction": "New accepted loader regression file added after whitelist validation; no remote mutation before corrected validation.",
     "accepted_source_coverage": {
-      "scoped_tracked_count": 128,
-      "source_commit": "f66746ff61117db7fc5277d8b8512f53b7e98014",
+      "scoped_tracked_count": 129,
+      "source_commit": "d3775c67b5d5acc257d18cd7baf50a743a41ce51",
       "missing": [],
       "different": [],
       "scope": [
@@ -113,12 +137,12 @@
         "tests/test_nc_rted*",
         "configs/nc_rted"
       ],
-      "proof": "Prior accepted128-file coverage plus exact independently accepted two-file numerical-order delta; no broad retest."
+      "proof": "Previous scoped coverage plus independently accepted exact five-file loader/bootstrap delta"
     }
   },
   "remaining": [
     "complete2000captionpreparation",
-    "diagnose new R0 model-loading exception; complete actualprediction/training resource admission",
+    "complete actualR0 probe/training andpredictionresource admission",
     "formal12trainings13completeevaluations/statistics"
   ],
   "files": [
@@ -136,8 +160,8 @@
     },
     {
       "path": "AGENT_BOARD.md",
-      "sha256": "5963d5489cf0c81a07115e2a89beb4f4fbe894b62c3a96dcac71b634ad5cf988",
-      "bytes": 133346,
+      "sha256": "3bb86d0329c1a710d698dad78eb4aa1af5f6cbb96b11a9119beac1fa8ea24c31",
+      "bytes": 139587,
       "origin": "main_governance"
     },
     {
@@ -746,14 +770,14 @@
     },
     {
       "path": "scripts/nc_rted_predict.py",
-      "sha256": "5c54c3772bd3303cd00cca7a2032c06fd69f59079bc4b22574fe86c4faec0846",
-      "bytes": 29002,
+      "sha256": "70840edce4525abd9dd77c08ed292e193489f652f90ac719d01d327a29b21475",
+      "bytes": 29060,
       "origin": "release18"
     },
     {
       "path": "scripts/nc_rted_prediction_runtime_probe.py",
-      "sha256": "fb47352e6bec26ece449f7b3443ce26a529ac2e785d446cc37c7d290dd483d7e",
-      "bytes": 40421
+      "sha256": "fd4b3f0144af7ffd841aba831dae82c5aee46673f12b4682a5669b5dcb469075",
+      "bytes": 40475
     },
     {
       "path": "scripts/nc_rted_prepare_caption_observations.py",
@@ -954,8 +978,8 @@
     },
     {
       "path": "src/nc_rted/prediction_inputs.py",
-      "sha256": "831e3e8edfcc31b49b61b54a68b0c87734b9921d39c9d98612b2b0702c716d8f",
-      "bytes": 53452,
+      "sha256": "336827afcd8013f2bd2520bfe6350dddff687703fa21033981262850f378cb23",
+      "bytes": 53514,
       "origin": "release18"
     },
     {
@@ -966,8 +990,8 @@
     },
     {
       "path": "src/nc_rted/prediction_runtime.py",
-      "sha256": "664a2197e65d37005551587c076ffb0754eccd7c82e8dc9efa1872f840cdc161",
-      "bytes": 33361,
+      "sha256": "0756000f5ec01220fd8bd17d6a7f0a0a1218b33a8bbc4b06d8384928b8e08a2b",
+      "bytes": 33390,
       "origin": "release18"
     },
     {
@@ -1264,6 +1288,11 @@
       "origin": "release18"
     },
     {
+      "path": "tests/test_nc_rted_prediction_runtime.py",
+      "sha256": "795bbde292cfb545d8c45844f47198af2aa16faa495955ef4c69ab0c74913fa4",
+      "bytes": 3457
+    },
+    {
       "path": "tests/test_nc_rted_prediction_runtime_probe.py",
       "sha256": "ea7e8aab005b721a5aac210e6670c6fa3de8a9822982c32fe52806589f95853a",
       "bytes": 38383
@@ -1393,5 +1422,5 @@
       "origin": "release18"
     }
   ],
-  "governance_docs_refreshed_at": "2026-10-10T10:04:50.417270+00:00"
+  "governance_docs_refreshed_at": "2026-10-10T10:23:02.324495+00:00"
 }

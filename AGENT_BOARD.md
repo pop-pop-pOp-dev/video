@@ -1,7 +1,7 @@
 # Agent 留言板：先读这里，再继续工作
 
 > 用户于 2026-10-10 明确要求：减少重复工作和 token 浪费。此文件用于上下文压缩、换 agent、会话恢复时交接。它记录执行事实，不替代唯一实验规格。
-> **快照更新：2026-10-10 10:01 UTC。进度数字均为最近观测，不代表实时状态。**
+> **快照更新：2026-10-10 10:23 UTC。进度数字均为最近观测，不代表实时状态。**
 
 ## 接手规则
 
@@ -23,17 +23,17 @@
 | PREP-01 | 6,000训练观测 / v26worker已自然完成 | DONE | 6000=4931复用+1069新算；indexSHAd9fadafb7fb9a33be1fcf833381ed9356c5b59f4896504d91eba177e730500d3，commitSHA6c5eb9bf，completion_v1；133055已自然退出，不再启动 |
 | ACCEL-01 | 观测加速 / root | DONE | 用户授权后4931条保留并完成余1069；原worker自然退出；实际12新条/48.62s=14.81/min（旧约9/min），接受hotpath/seed/live_throughput_v1均复用，不重启 |
 | PREP-02 | 官方盲 Fast 完成封存、组装与转换 / nc_rted_blind_factory | DONE | 1051条自然完成；snapshot v1/v2同SHA50dd73c5；converter独立v6接受并合入，未重算Fast；后续R0是独立任务 |
-| PREP-03 | 2,000描述缓存 / 原worker，root跟踪 | IN_PROGRESS | 09:37UTC完成1237开始1238；09:48远端125128/125797仍alive；空余约270GiB；source15/config4不变 |
+| PREP-03 | 2,000描述缓存 / 原worker，root跟踪 | IN_PROGRESS | 2026-10-10T10:17:48.487090+00:00完成1318，远端125128/125797真实alive；空余268.83GiB；source15/config4不变 |
 | PREP-04 | 观测封存与真实crossfit教师 / teacher_runtime_audit | DONE | TEACHER_COMPLETED09:16:48UTC，31m12s；manifest SHA f66d6ca861be44c041d5a7319639add74d66e4c612937b73f50e9cd69be44598；accepted TeacherIndex一次完整验收6000唯一/U-F直方图/S=F通过；有效265(UCF49/XD216)，coverage_v1；继续核实非空监督数，不能等同科学成功 |
 | CODE-01 | 逐模型预测与实际probe / root | DONE | CODE01A8760d53与CODE01Bc6d26e2均独立PASS_STATIC；精确合入release17 d764e85；实际GPU测量另属GATE02 |
 | CODE-01A | 预测计划/资源准入 / root最终修复，独立astra验收 | DONE | 8760d53独立v6 PASS_STATIC；原57+17增量+setup2项通过；精确5文件合入release9f9fb3e（含builder），无GPU |
 | CODE-01B | 实际probe / root | DONE | c6d26e2独立v6 PASS_STATIC；35+3+1+2窄测沿用，精确4文件合入d764e85。磁盘pending须匹配stdout TERMINAL_RUNTIME_PROBE才可接受 |
 | CODE-02 | 同seed四组诊断配置 / nc_rted_bundle_harness_finish | DONE | 75f8119独立v4 PASS_STATIC；20项+恢复3项接受；逐字合入release_v17 HEAD85f4d09，仅诊断，formal仍serial |
 | CODE-03 | 正式训练资源/队列 / accepted_release18 | DONE | 36898c93独立v5 PASS_STATIC，精确11文件合入clean release18 696bf040；integration_v1 report。未重跑测试，无GPU |
-| PUB-01 | 已验收代码限定发布GitHub / root | DONE | 最新ce595426f0a1f196809167f0a412976d0335bbdd，snapshot19/publisher16，214远端文件hash匹配；含CUDA修复和8个此前漏发已接受入口/测试，github_publication_api_v16.json |
+| PUB-01 | 已验收代码限定发布GitHub / root | DONE | 最新78525e0fce2442f10dc710239501cc1bdfda30c5，snapshot20/publisher17，214远端文件全hash验证；accepted536数值策略顺序及峰值保留修复，github_publication_api_v17.json |
 | GATE-01 | 增量实现独立审查 / 独立gpt-6-astra | DONE | CODE01A v6、01B v6、02 v4、03 v5均PASS_STATIC；不代表运行资源准入，勿重开审查 |
 | GATE-02 | 资源排程与实际运行准入 / root | IN_PROGRESS | 教师与acceptedrelease18已部署远端；gate02_representative_serial_diagnostic_v2固定seed17/u4/32样本四组串行短测，完整caption后执行；勿把diagnostic interleave当正式性能，租期剩余126.113h@09:53 |
-| EXP-01 | R0盲预测 / root、r0_factory_failure | BLOCKED | probev3终态model_loading失败108.418s、CUDApeak0；factory/CUDA顺序已通过；stdout/reportSHA34de82e1匹配；只查loader新异常，不重试相同probe；536b6bd保持已接受冻结 |
+| EXP-01 | R0盲预测 / root | IN_PROGRESS | loader导入/完整启动closure修复36c1c494已独立接受并合入source21 d3775c67；sourcev8 SHA b886695d；probev4 PID161492@10:22:19UTC，截止10:27:49UTC；先收终态，不重复启动 |
 | EXP-02 | A/U/S/F × 17/42/2026正式训练 / root调度 | WAITING_DEPENDENCY | 等GATE-02；最新正式训练仍0/12，既有准备任务不计入 |
 | EXP-03 | 13模型全量盲预测、诊断及统一统计 / root调度 | WAITING_DEPENDENCY | 对应checkpoint冻结后盲预测，完整分母后解锁统一指标；最新完整模型评测0/13 |
 
@@ -51,9 +51,9 @@
 
 1. 6000观测及1051官方盲Fast均已封存，直接复用，不重启。teacher manifest f66d6ca861be44c041d5a7319639add74d66e4c612937b73f50e9cd69be44598已完成并验收，31m12s，不做优化或重算。
 2. 教师265/6000辅助有效，只有12非空a、15行U/F不同。coverage_v1/v2及独立rejection_calibration_native_review_v1证明当前拒绝/校准逻辑无具体规格偏差；这是科研风险，不改阈值、不补标签、不重开路线。
-3. 远端caption原125128/125797继续，最近09:37计数1237/2000；09:48进程仍活。acceptedrelease18及真实teacher/协议已部署，门禁等待完整captionseal。执行入口见gate02_representative_serial_diagnostic_v2.json：seed17/u4、原顺序32样本(24检测8描述)，四组按正式串行入口计时；不是三seed重复冒烟。旧v1内存换算/人为full-GPU1000步等价门禁已由v2纠正。
-4. R0具体故障是deterministic policy在CUDA后配置。最终536b6bd已独立PASS_STATIC，factory在CUDA前，保留启动峰值。sourcev7 preflight SHA f695c47e5c3bda326965f2c03d7af86f91006d9e76f5701b6c9ce5d08d7d246d；原Arson018 probev3 PID159888已退出：108.418s、stage model_loading、peak0；report SHA34de82e1dcf04047142c512bcb1c2c91db1a9ce09f54254c678bdef878db39cc与stdout终态匹配。已越过factory和CUDA。r0_factory_failure只查新loader入口异常；不得重试相同probe或重新修已通过顺序。
-5. R0 frozen source为`/root/autodl-tmp/nc-rted-r0-factory-fix`536b6bd；clean release20 f66746ff61117db7fc5277d8b8512f53b7e98014精确合入。GitHub最近已发布ce595426/v16，release20正在准备snapshot20/publisher17；main不能作为接受源码。
+3. 远端caption原125128/125797继续，最近10:08计数1296/2000、两进程实测仍活。acceptedrelease18及真实teacher/协议已部署，门禁等待完整captionseal。执行入口见gate02_representative_serial_diagnostic_v2.json：seed17/u4、原顺序32样本(24检测8描述)，四组按正式串行入口计时；不是三seed重复冒烟。旧v1内存换算/人为full-GPU1000步等价门禁已由v2纠正。
+4. R0此前数值策略顺序及loader错误导入均已实证修复；最终loader候选36c1c494独立PASS_STATIC，全部三处精确源码closure已加入features/tracking，真实bootstrap子进程测试通过。clean source21 d3775c67b5d5acc257d18cd7baf50a743a41ce51，sourcev8 preflight SHA b886695dee336b6d2e0fe660c0234490066d2fd10a3eed4fd186d08e7a19f94f。相同Arson018 probev4 PID161492，10:22:19UTC启动，10:27:49UTC绝对截止；先查已有进程/report+terminalstdoutSHA，不重复启动。
+5. 当前R0冻结源码`/root/autodl-tmp/lookaway-wm/.cache/nc_rted_release_v21` d3775c67；正式训练准备仍release18，未受probe/预测修复影响。GitHub最近78525e0/v17，source21限定snapshot21/publisher18正在发布。main不能作为接受源码。
 6. 正式训练0/12、完整模型评测0/13。实际串行provider不能假定全局共享；215.94h与102.1h均只是检测部分的不同复用情景，非实测或准入。最长反向三个峰值超过4090容量；recovery 23731.5MiB本身低于24564MiB，不能误报全部超容量。当前目标active，本轮实际完成teacher验收/部署/定位修复/有界探测/代码发布=progress。
 
 ### 描述准备准确入口（当前）
@@ -73,7 +73,7 @@
 | 官方盲Fast | 1051/1051自然完成且封存，原GPU0已用于观测 | PREP-02 DONE，SHA50dd73，不重提取 |
 | 远端描述缓存 | source15/config4 supervisor125128已启动 | PREP-03，当前supervisor状态为准 |
 | 完整teacher | 09:16UTC已封存TEACHER_COMPLETED；133057/153728退出 | PREP-04输出验收，不重复build |
-| R0 GPU1有界运行探测 | v3 PID159888已退出，model_loading失败；source536b6bd/v7 | 新loader异常诊断，非正式全量 |
+| R0 GPU1有界运行探测 | v4 PID161492正在运行source21/sourcev8 | acceptedloader+closure修复后同identity300s诊断，非正式全量 |
 | 四组真实manifest/正式入口 | 缺完整teacher+caption依赖，配置代码收尾 | CODE-02负责人；禁止占位teacher |
 
 ## 已完成：不要再做一遍
@@ -360,3 +360,21 @@
 - **2026-10-10 10:00 UTC | root | EXP01 accepted retry.** Final536b6bd accepted by astra (r0_numerics_order_native_review_v2); source-only refreshv7 preflight SHA f695c47e5c3bda326965f2c03d7af86f91006d9e76f5701b6c9ce5d08d7d246d. Existing diagnostic resumed as newv3 (same Arson018,300sbudget) PID159888 at09:59:48UTC, absolute10:05:18UTC; log/report names r0_gpu1_arson018_runtime_probe_v3. Do not launchagain. The rejected e18/6f11 intermediates were never GPUretried. Clean release20 finaltransplant prepared for publication; stable caption unchanged.
 
 - **2026-10-10 10:03 UTC | root | EXP01 next concrete boundary.** Probev3 final FAILED_RUNTIME_PROBE/model_loading,108.418s,zeroCUDA tensorallocation; originalfactory/numerics error is resolved. PID159888 absent, terminalstdout/reporthash34de82e1dcf04047142c512bcb1c2c91db1a9ce09f54254c678bdef878db39cc matched. Loader stage diagnosis delegated to r0_factory_failure, no unchanged retry. Finalaccepted source536b6bd/release20 remains immutable.
+
+- **2026-10-10 10:06 UTC | r0_factory_failure | EXP-01 loader-only diagnostic prepared.** Accepted source `/root/autodl-tmp/nc-rted-r0-factory-fix` remains clean at `536b6bd14ce048018603108b109cc68728fba75b`; no source edit or hash sweep. External `.cache/nc_rted_r0_loader_gpu_diagnostic_v1.py` passed `.venv-reactvau` `py_compile`. It reconstructs plan/artifact from v7 preflight, executes real factory, CUDA device/reset/sync, then exactly `factory['loader'].load(artifact)` and exits before request/media construction, forward, generation, storage or metrics. JSON checkpoints expose only stage, elapsed and CUDA stats; failure adds exception type, printable bounded message and traceback filename/line/function frames. Root owns one UUID-masked GPU1/CPU56-111 timeout180 execution after script review; output determines an API/config/loader repair. No repeat full probe, GPU execution or integration by this task.
+
+- **2026-10-10 10:08 UTC | root | publication done and loader diagnostic live.** GitHub publication17 78525e0fce2442f10dc710239501cc1bdfda30c5 verified214files. Standalone exact loader-only diagnostic running under tool session63439,180s timeout, accepted536/sourcev7; inputvalidated emitted, no request/inference/store. Poll this samehandle, do not rerun.
+
+- **2026-10-10 10:11 UTC | root | EXP01 loader root cause.** Exactstandalone session63439 ended1 after97.602s: factory completed97.454s and CUDAinitialized97.595s, loader immediately ImportError CELL_FEATURE_DIM from nc_rted.model at prediction_runtime.py335. No tensors/model/forward. Report r0_loader_import_root_cause_v1.json; tera assigned minimal canonicalimport fix in NEWisolatedtree (536 immutable), focusedrealimport boundarycheck plus adjacentloaderAPIname inspection. No repeatedfactory/numerics debugging or unchangedfullprobe. Remote10:08caption1296/2000,125128/125797alive,free268.94GiB.
+
+- **2026-10-10 10:15 UTC | r0_factory_failure | EXP-01 loader import candidate submitted.** New isolated `/root/autodl-tmp/nc-rted-r0-loader-import-fix`, branch `nc_rted_r0_loader_import_fix`, clean commit `198c55e06d36c7d776bb67f6483c95e743348a10` based exactly on immutable accepted `536b6bd`. Authoritative `r0_loader_import_root_cause_v1.json` SHA `f2a30173f950881ec08b5b329a0305fbfa6cfc9570cfc3cbc030546558635717` establishes the pre-allocation ImportError. `CELL_FEATURE_DIM` is canonical in `features.py`; `RelationTimeEvidence` correctly remains in `model.py`. Candidate only splits those imports and adds a direct `_DefaultLoader.load` startup test that reaches a mocked `load_inherited_slow` sentinel, proving actual loader imports reach the inherited-load boundary without weights, CUDA transfer or route construction. Adjacent imports in that same loader block were inspected once, with no other observed wrong name. Test `1 passed in 1.67s`; `.venv-reactvau` `py_compile` and `git diff --check` pass. Exact candidate sent to root and active `code01a_v5_review`; no GPU retry/source refresh/integration.
+
+- **2026-10-10T10:14:54.240229+00:00 | EXP-01 | loader import review OPEN.** Clean198c55e canonical features.py import correct, but features.py and its dependency tracking.py absent from probe/predict/prediction_inputs exact implementation closure; real guarded loader will reject uncaptured import at probe.py114. `r0_loader_import_closure_finding_v1.json` preserves finding/hashes. Requested minimal closure follow-up and guarded-bootstrap loader-start test with noGPU/weights. Direct1test reused; numerics acceptance unchanged; no refresh/retry until closure accepted.
+
+- **2026-10-10 10:18 UTC | root | EXP01 source closure residual before GPU.** Loader candidate198c55 imports canonicalfeatures.CELL_FEATURE_DIM and directstartup testpasses, but independentreview found verifiedclosure excludesfeatures.py andtracking.py (plus exacttransitive dependencies tocheck). Candidate NOTaccepted; implementer nowupdatesallthree exactclosures and adds subprocessverifiedbootstraploaderboundary regression. NoGPUretry/run from198c55. Existing536source/release20 andpublished78525e0 remainacceptedunchanged. Avoidrepeat100sbootuntilbootstrapregressionpasses.
+
+- **2026-10-10T10:19:16Z | r0_factory_failure | EXP-01 loader closure follow-up submitted.** Isolated `nc_rted_r0_loader_import_fix` now HEAD `36c1c49424d02ee35bdca7e2cb5f05a86a98cdf3`, preserving `198c55e` as the import-only parent. All three guarded source closures now include the complete reviewed loader-start set additions `src/nc_rted/features.py` and `src/nc_rted/tracking.py`; exact-set guards remain intact. A subprocess regression builds the manifest from the probe's real `_FILES`, invokes real `_bootstrap` and `_api`, then verifies `_DefaultLoader.load` reaches only a mocked inherited-load sentinel. Targeted test: 2 passed in 3.69s; ReactVAU `py_compile` and `git diff --check` passed. No GPU run, model weights, inference, source refresh, or worker action. Candidate range for independent review: `198c55e06d36c7d776bb67f6483c95e743348a10..36c1c49424d02ee35bdca7e2cb5f05a86a98cdf3`.
+
+- **2026-10-10T10:21:13.540477+00:00 | EXP-01 | independent loader import final acceptance.** Exact clean `36c1c49424d02ee35bdca7e2cb5f05a86a98cdf3` PASS_STATIC; `r0_loader_import_native_review_v1.json`. Canonical features.CELL_FEATURE_DIM=4620; all three strict closures identically add features+tracking, full loader-start transitive set inspected once. Fresh subprocess regression runs actual bootstrap/_api/loader up to inheritedload sentinel,2passed3.69s reused, compile/diffcheck reused; noGPU/retests. Source refresher imports updated authoritative closure. Root may exact-integrate clean source21, refresh directly against finalintegration then existing bounded probe. Earlier198 finding preserved; numerical/measurement acceptance unchanged; no actual loader/inference/formal admission claim.
+
+- **2026-10-10T10:23:02.302713+00:00 | root | EXP01 finalacceptedloader retry.** Exact36c1c494 fivefiledelta integratedsource21 d3775c67 andsource-onlyrefreshedv8 b886695d. Probev4 launchedPID161492 sameArson018/300s withadmissionv5 SHA83cb9c9d; deadline10:27:49UTC. Awaitsamehandle/result. No model/media rehash outside required runtime validation, no observations/Fast/caption restart.

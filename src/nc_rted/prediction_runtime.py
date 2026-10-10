@@ -332,7 +332,8 @@ class _DefaultLoader:
     def load(self, artifact):
         from .bridge import EvidenceSlowBridge
         from .loading import load_inherited_slow
-        from .model import CELL_FEATURE_DIM, RelationTimeEvidence
+        from .features import CELL_FEATURE_DIM
+        from .model import RelationTimeEvidence
         inherited = self.runtime.inherited
         validate_artifact_runtime(artifact, self.runtime)
         slow, report = load_inherited_slow(inherited["base_directory"], inherited["stage2_export"], train_lora=artifact.group != "R0", expected_hashes=inherited["stage2_export_hashes"], device=self.device)

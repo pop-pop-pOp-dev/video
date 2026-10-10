@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#334155"/></marker></defs>
+<style>
+text { font-family: Arial, Helvetica, sans-serif; fill: #182433; text-anchor: middle; }
+.head { font-size: 28px; font-weight: 700; } .sub { font-size: 17px; fill: #425466; }
+.title { font-size: 18px; font-weight: 700; } .body { font-size: 15px; } .edge { font-size: 13px; fill: #425466; }
+.arrow { fill: none; stroke-width: 2.4; marker-end: url(#arrow); } .panel { fill: #ffffff; stroke: #91a4b7; stroke-width: 2; rx: 14; }
+</style><rect width="100%" height="100%" fill="#ffffff"/>
+<text x="800" y="42" class="head">NC-RTED: source-disjoint teacher construction and deployed student</text>
+<text x="800" y="70" class="sub">Method schematic only; no experimental results are implied.</text>
+<rect x="32" y="96" width="1536" height="440" class="panel"/>
+<text x="60" y="130" class="head" style="text-anchor:start">Training only: source-disjoint teacher</text>
+<rect x="32" y="568" width="1536" height="510" class="panel"/>
+<text x="60" y="602" class="head" style="text-anchor:start">Student training and deployment</text>
+<rect x="72" y="170" width="225" height="132" fill="#fae7c5" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="184.5" y="205.5" class="title">Five-fold split</text>
+<text x="184.5" y="235.5" class="body">target Q = fold k</text>
+<text x="184.5" y="257.5" class="body">C = (k + 1) mod 5</text>
+<text x="184.5" y="279.5" class="body">R = other 3 folds</text>
+<rect x="350" y="150" width="245" height="172" fill="#fae7c5" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="472.5" y="194.5" class="title">Normal references</text>
+<text x="472.5" y="224.5" class="body">3 source-disjoint</text>
+<text x="472.5" y="246.5" class="body">normal reference families</text>
+<text x="472.5" y="268.5" class="body">static-context compatible</text>
+<text x="472.5" y="290.5" class="body">no target-process matching</text>
+<rect x="654" y="150" width="240" height="172" fill="#fae7c5" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="774.0" y="205.5" class="title">Relation-time d[e,t]</text>
+<text x="774.0" y="235.5" class="body">monotone 4-step alignment</text>
+<text x="774.0" y="257.5" class="body">robust normal scaling</text>
+<text x="774.0" y="279.5" class="body">d[e,t] and M = max d</text>
+<rect x="954" y="150" width="245" height="172" fill="#fae7c5" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="1076.5" y="205.5" class="title">Normal calibration</text>
+<text x="1076.5" y="235.5" class="body">compatible normals in C</text>
+<text x="1076.5" y="257.5" class="body">min. support required</text>
+<text x="1076.5" y="279.5" class="body">empirical tail p</text>
+<rect x="1258" y="150" width="240" height="172" fill="#fae7c5" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="1378.0" y="194.5" class="title">Teacher target</text>
+<text x="1378.0" y="224.5" class="body">a = clipped tail quality</text>
+<text x="1378.0" y="246.5" class="body">pi = masked softmax(d)</text>
+<text x="1378.0" y="268.5" class="body">reject: aux loss masked</text>
+<text x="1378.0" y="290.5" class="body">empty mass: 1 - a</text>
+<path d="M 297 236 L 350 236" class="arrow" stroke="#334155"/>
+<path d="M 595 236 L 654 236" class="arrow" stroke="#334155"/>
+<path d="M 894 236 L 954 236" class="arrow" stroke="#334155"/>
+<path d="M 1199 236 L 1258 236" class="arrow" stroke="#334155"/>
+<text x="800" y="380" class="sub">Teacher reference identities, calibration sources, and labels do not enter the deployed student.</text>
+<text x="800" y="412" class="sub">Insufficient reference/calibration support rejects distillation; it is not encoded as normal evidence.</text>
+<rect x="72" y="674" width="210" height="135" fill="#dcecf8" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="177.0" y="711.0" class="title">Observed media</text>
+<text x="177.0" y="741.0" class="body">VAD: causal latest 8 s</text>
+<text x="177.0" y="763.0" class="body">frozen Fast trigger</text>
+<text x="177.0" y="785.0" class="body">existing SigLIP patches</text>
+<rect x="325" y="650" width="250" height="184" fill="#dcecf8" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="450.0" y="700.5" class="title">Frozen visual path</text>
+<text x="450.0" y="730.5" class="body">patch pooling</text>
+<text x="450.0" y="752.5" class="body">frozen projector</text>
+<text x="450.0" y="774.5" class="body">existing memory path</text>
+<text x="450.0" y="796.5" class="body">causal observations</text>
+<rect x="620" y="650" width="260" height="184" fill="#dff1e3" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="750.0" y="700.5" class="title">Added evidence module</text>
+<text x="750.0" y="730.5" class="body">relation-time encoder</text>
+<text x="750.0" y="752.5" class="body">2 layers, width 384</text>
+<text x="750.0" y="774.5" class="body">a_hat and pi_hat</text>
+<text x="750.0" y="796.5" class="body">no-candidate bypass</text>
+<rect x="925" y="650" width="255" height="184" fill="#dff1e3" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="1052.5" y="689.5" class="title">Visual evidence tokens</text>
+<text x="1052.5" y="719.5" class="body">pi_hat weights; a_hat gate</text>
+<text x="1052.5" y="741.5" class="body">&lt;=16 visual tokens</text>
+<text x="1052.5" y="763.5" class="body">captions: all observed</text>
+<text x="1052.5" y="785.5" class="body">8 s blocks</text>
+<text x="1052.5" y="807.5" class="body">fixed 16-query aggregation</text>
+<rect x="1225" y="650" width="275" height="184" fill="#f7f9fc" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="1362.5" y="711.5" class="title">Existing Slow pathway</text>
+<text x="1362.5" y="741.5" class="body">frozen backbone + memory</text>
+<text x="1362.5" y="763.5" class="body">trainable existing Slow LoRA</text>
+<text x="1362.5" y="785.5" class="body">direct original + added tokens</text>
+<rect x="1260" y="890" width="220" height="90" fill="#f7f9fc" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="1370.0" y="915.5" class="title">Outputs</text>
+<text x="1370.0" y="945.5" class="body">VAD detection</text>
+<text x="1370.0" y="967.5" class="body">description generation</text>
+<path d="M 282 741 L 325 741" class="arrow" stroke="#334155"/>
+<path d="M 575 741 L 620 741" class="arrow" stroke="#334155"/>
+<path d="M 880 741 L 925 741" class="arrow" stroke="#334155"/>
+<path d="M 1180 741 L 1225 741" class="arrow" stroke="#334155"/>
+<path d="M 1362 834 L 1362 890" class="arrow" stroke="#334155"/>
+<path d="M 880 785 L 980 900" class="arrow" stroke="#2f6e44"/><text x="930.0" y="834.5" class="edge">a_hat / pi_hat</text>
+<path d="M 1378 322 L 1520 540 L 1520 875 L 1220 875 L 1220 900" class="arrow" stroke="#a56500"/><text x="1460" y="585" class="edge" fill="#a56500">teacher targets</text>
+<path d="M 450 834 L 450 860 L 1200 860 L 1225 800" class="arrow"/>
+<rect x="980" y="880" width="240" height="88" fill="#fae7c5" stroke="#243247" stroke-width="2" rx="10"/>
+<text x="1100.0" y="904.5" class="title">Training loss only</text>
+<text x="1100.0" y="934.5" class="body">KL targets: a and pi</text>
+<text x="1100.0" y="956.5" class="body">rejected: auxiliary masked</text>
+<rect x="250" y="920" width="650" height="82" fill="#f7f9fc" stroke="#243247" stroke-width="2" rx="10" stroke-dasharray="5 4"/>
+<text x="575.0" y="941.5" class="title">Auxiliary supervision variants</text>
+<text x="575.0" y="971.5" class="body">A: none | U: strength-matched global quality</text>
+<text x="575.0" y="993.5" class="body">S: calibrated a only | F: calibrated a + relation-time pi</text>
+<text x="80" y="890" class="sub" style="text-anchor:start">Deployment excludes teacher, source identities, calibration data, and test labels.</text>
+<rect x="92" y="1035" width="18" height="18" fill="#dcecf8" stroke="#243247"/><text x="120" y="1050" class="body" style="text-anchor:start">frozen inherited component</text>
+<rect x="390" y="1035" width="18" height="18" fill="#dff1e3" stroke="#243247"/><text x="418" y="1050" class="body" style="text-anchor:start">trainable added module / Slow LoRA</text>
+<rect x="790" y="1035" width="18" height="18" fill="#fae7c5" stroke="#243247"/><text x="818" y="1050" class="body" style="text-anchor:start">training-only teacher material</text>
+</svg>

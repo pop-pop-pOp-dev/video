@@ -83,8 +83,9 @@ PROJECT_VOLUME = Path("/root/autodl-tmp/lookaway-wm")
 CACHE_KEYS = {"TMPDIR", "XDG_CACHE_HOME", "HF_HUB_CACHE", "HF_XET_CACHE", "HF_ASSETS_CACHE",
               "HF_DATASETS_CACHE", "TORCH_HOME", "TORCH_EXTENSIONS_DIR",
               "TRITON_CACHE_DIR", "CUDA_CACHE_PATH"}
+FORMAL_PATH = "/root/autodl-tmp/lookaway-wm/.venv-reactvau/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ENVIRONMENT_KEYS = CACHE_KEYS | {"PYTHONPATH", "HF_HOME", "TRANSFORMERS_CACHE",
-                               "PYTHONNOUSERSITE", "PYTHONDONTWRITEBYTECODE"}
+                               "PYTHONNOUSERSITE", "PYTHONDONTWRITEBYTECODE", "PATH"}
 QUALIFICATION_MAX_AGE = 7 * 24 * 3600
 SOURCE34_APPLICABILITY_SCHEMA = "nc_rted_source34_seed_applicability/v1"
 GROUPS = ("A", "U", "S", "F")
@@ -313,6 +314,8 @@ def validate_environment(environment: object, volume: Path) -> None:
     # above are mandatory and remain on the project volume.
     if environment.get("PYTHONPATH") != str(Path(__file__).resolve().parents[1]):
         raise ResourceAttestationError("formal PYTHONPATH is not the admitted source root")
+    if environment.get("PATH") != FORMAL_PATH:
+        raise ResourceAttestationError("formal PATH is not the admitted deterministic path")
 
 
 def python_runtime_probe(interpreter: dict, environment: dict) -> dict:

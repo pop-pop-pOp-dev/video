@@ -16,7 +16,7 @@ def environment(root):
     (root / "tmpdir").mkdir(parents=True, exist_ok=True)
     return {**{key: str(root / key.lower()) for key in contract.CACHE_KEYS},
             "PYTHONPATH": str(Path(contract.__file__).resolve().parents[1]),
-            "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1"}
+            "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1", "PATH": contract.FORMAL_PATH}
 
 
 def qualification():
@@ -70,7 +70,7 @@ def test_qualification_rejects_unmeasured_or_inapplicable_capacity(mutation):
         contract.validate_qualification(document, **arguments)
 
 
-def test_environment_requires_explicit_caches_without_path_aliases(tmp_path):
+def test_environment_requires_explicit_caches_and_deterministic_path(tmp_path):
     env = environment(tmp_path)
     contract.validate_environment(env, contract.PROJECT_VOLUME)
     for key in contract.CACHE_KEYS:
@@ -78,6 +78,14 @@ def test_environment_requires_explicit_caches_without_path_aliases(tmp_path):
         missing.pop(key)
         with pytest.raises(contract.ResourceAttestationError):
             contract.validate_environment(missing, contract.PROJECT_VOLUME)
+    missing_path = dict(env)
+    missing_path.pop("PATH")
+    with pytest.raises(contract.ResourceAttestationError, match="deterministic path"):
+        contract.validate_environment(missing_path, contract.PROJECT_VOLUME)
+    altered_path = dict(env)
+    altered_path["PATH"] = "/usr/bin"
+    with pytest.raises(contract.ResourceAttestationError, match="deterministic path"):
+        contract.validate_environment(altered_path, contract.PROJECT_VOLUME)
     alias = tmp_path / "alias"
     alias.symlink_to(tmp_path, target_is_directory=True)
     env["TMPDIR"] = str(alias / "temporary")

@@ -5,6 +5,7 @@
 研究复用现有 ReactVAU Stage1 Fast、最终 Stage2 Slow、LoRA 与 projector，正式矩阵为 R0 + A/U/S/F 三种子，共 12 次增量训练、13 个评测模型。绝对截止、资源上限、训练与评测协议以实验规格为准。此前 97,140/97,158 的训练覆盖说明和原复现未完成项继续保留。
 
 - [实验规格](docs/EXPERIMENT_SPEC.md)：唯一活动方案。
+- [复现实验说明](docs/NC_RTED_REPRODUCTION_RUNBOOK.md)：已验收入口、完整实验矩阵与产物交付要求。
 - [执行规则](AGENTS.md)：操作、数据权限、审查与资源边界。
 - [项目状态](PROJECT_STATE.md)与[ReactVAU 状态](docs/REACTVAU_STATE.md)：读取文末最新追加记录；较早的“当前/最新”标题只代表历史时点。
 - [旧方案归档](archive/research_plans/superseded_by_nc_rted_20261009/README.md)：旧文件已移出活动目录，原路径、归档位置和 SHA-256 见[清单](archive/research_plans/superseded_by_nc_rted_20261009/manifest.json)。

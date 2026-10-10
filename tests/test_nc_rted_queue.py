@@ -78,7 +78,7 @@ def formal_fixture(tmp_path, monkeypatch, *, real_probe=False):
     cache_root=run_root/"cache"; cache_root.mkdir(parents=True, exist_ok=True)
     environment={key:str(cache_root/key.lower()) for key in resource_attestation.CACHE_KEYS}
     for value in environment.values(): Path(value).mkdir(parents=True, exist_ok=True)
-    environment.update({"PYTHONPATH":str(Path(__file__).resolve().parents[1]/"src"),"PYTHONNOUSERSITE":"1","PYTHONDONTWRITEBYTECODE":"1"})
+    environment.update({"PYTHONPATH":str(Path(__file__).resolve().parents[1]/"src"),"PYTHONNOUSERSITE":"1","PYTHONDONTWRITEBYTECODE":"1","PATH":resource_attestation.FORMAL_PATH})
     probe_runtime={"fixture":"controlled-import-probe"}
     if real_probe:
         probe_runtime=resource_attestation.python_runtime_probe(interpreter, environment)

@@ -161,11 +161,13 @@ def _completion_record(path: str, expected: str, *, field: str, complete: str, l
 
 
 def _source_manifest(source_root: Path) -> dict:
-    harness = source_root / "scripts" / "nc_rted_interleaved_gpu_diagnostic.py"
+    entries = ("nc_rted_interleaved_gpu_diagnostic.py", "nc_rted_interleaved_formal.py",
+               "nc_rted_qualify_interleaved_formal_bundle.py")
     package = source_root / "src" / "nc_rted"
-    if not source_root.is_absolute() or not harness.is_file() or not package.is_dir():
+    if (not source_root.is_absolute() or not package.is_dir() or
+            any(not (source_root / "scripts" / entry).is_file() for entry in entries)):
         raise BuildError("runtime source root lacks the interleaved harness or nc_rted package")
-    files = {"scripts/nc_rted_interleaved_gpu_diagnostic.py": _sha(harness)}
+    files = {f"scripts/{entry}": _sha(source_root / "scripts" / entry) for entry in entries}
     for candidate in sorted(package.glob("*.py")):
         files[str(candidate.relative_to(source_root))] = _sha(candidate)
     if not files or len(files) < 2:

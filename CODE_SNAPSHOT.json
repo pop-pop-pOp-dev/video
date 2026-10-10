@@ -1,31 +1,24 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "snapshot_format": 32,
-  "created_at": "2026-10-10T17:10:33.643699+00:00",
-  "source_commit": "c482f9c4ad85083e7c33bf751b9a6d03f1780463",
-  "source_base_commit": "48b6f4a4c9643fd1d471c99c14de78a1572fd106",
+  "snapshot_format": 33,
+  "created_at": "2026-10-10T17:54:13.754577+00:00",
+  "source_commit": "e35e088f94d5f68a01261987ade2f08a406c3868",
+  "source_base_commit": "c482f9c4ad85083e7c33bf751b9a6d03f1780463",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
   "previous_published_commit": "4a36cc87d82a267604461f477862c7f010323eed",
   "source_whitelist": {
-    "previous_snapshot_manifest_sha256": "fcd1335ce67d95d8dac9585aff6ab67dbb40f5719223d8f15038d4f4d2294f0f",
-    "source29_basis_commit": "48b6f4a4c9643fd1d471c99c14de78a1572fd106",
-    "accepted_combined_prediction_commit": "c482f9c4ad85083e7c33bf751b9a6d03f1780463",
-    "accepted_combined_prediction_paths": [
-      "scripts/nc_rted_publish_r0_projection.py",
-      "src/nc_rted/prediction_inputs.py",
-      "src/nc_rted/prediction_media.py",
-      "src/nc_rted/prediction_runtime.py",
-      "src/nc_rted/prediction_worker.py",
-      "tests/test_nc_rted_prediction.py"
-    ],
-    "accepted_source31_cache_commit": "a5f6315da7aa10edf24de42054e99fc83875ab88",
-    "source31_cache_byte_identical_paths": [
-      "src/nc_rted/prediction_media.py",
-      "src/nc_rted/prediction_runtime.py"
-    ],
-    "excluded_unreviewed_components": [
-      "source30_current_policy_longest_helper"
+    "previous_snapshot_manifest_sha256": "08baaa0da4db192909eba064e8d74bbbaef665b754f858589dc37c3904ae2355",
+    "published_v32_commit": "e35e088f94d5f68a01261987ade2f08a406c3868",
+    "accepted_source33_root": "/root/autodl-tmp/lookaway-wm/.cache/nc_rted_release33_source",
+    "exact_three_file_delta": {
+      "scripts/nc_rted_qualify_interleaved_formal_bundle.py": "a5f262eb30b9a617bb689befa292e1ef075c411faa202c2c02f97389f518ba4f",
+      "scripts/nc_rted_build_interleaved_diagnostic_manifests.py": "bf3a22cf4583cf32c3686459dc2045c77ae98cc41992532bca1611b0c6877041",
+      "scripts/nc_rted_interleaved_gpu_diagnostic.py": "bdeb5278e49323ab43c6d1988c2ecf34d2749a8332521bde0cf45106c91b1283"
+    },
+    "excluded": [
+      "all other source33 files",
+      "unreviewed main worktree changes"
     ]
   },
   "validation": {
@@ -33,12 +26,9 @@
     "secrets_scan": {
       "status": "PASS",
       "scoped_paths": [
-        "scripts/nc_rted_publish_r0_projection.py",
-        "src/nc_rted/prediction_inputs.py",
-        "src/nc_rted/prediction_media.py",
-        "src/nc_rted/prediction_runtime.py",
-        "src/nc_rted/prediction_worker.py",
-        "tests/test_nc_rted_prediction.py"
+        "scripts/nc_rted_build_interleaved_diagnostic_manifests.py",
+        "scripts/nc_rted_interleaved_gpu_diagnostic.py",
+        "scripts/nc_rted_qualify_interleaved_formal_bundle.py"
       ]
     },
     "accepted_evidence": [
@@ -221,6 +211,16 @@
         "path": "reports/nc_rted/source31/vau869_cache_equivalence_acceptance_v1.json",
         "sha256": "2621e5d927dc8a6c18c22b903f0693b504a20a2de8a8719e65ae795302d94d80",
         "required_status": "PASS_CACHE_EQUIVALENCE_GPU_GATE"
+      },
+      {
+        "path": "reports/nc_rted/source33_two_file_integration_native_review_v1.json",
+        "sha256": "b1385ec1ac71d91a8c6f99e1426c53945c89b56c0c6ee7e2f358c77aa6ffb7a1",
+        "required_status": "PASS_STATIC_SOURCE33_TWO_FILE_INTEGRATION"
+      },
+      {
+        "path": "reports/nc_rted/formal_qualification_static_acceptance_v6.json",
+        "sha256": "6d6ddcbf17c68f944481c0fce82cea0b7df28b71a7d7f842c9c2d7bdf369fdf9",
+        "required_status": "PASS_STATIC_IMPLEMENTATION_RUNTIME_POLICY_UNQUALIFIED"
       }
     ],
     "accepted_source_coverage": {
@@ -237,7 +237,60 @@
       "source31_cache_basis": "a5f6315da7aa10edf24de42054e99fc83875ab88",
       "missing": []
     },
-    "publication_ancestry_correction": "Snapshot26 derives from verified snapshot25/publication22 a9cd640; earlier manifests preserved."
+    "publication_ancestry_correction": "Snapshot26 derives from verified snapshot25/publication22 a9cd640; earlier manifests preserved.",
+    "formal_bundle_dependency_check": {
+      "status": "PASS_STATIC_NO_EXECUTION",
+      "modules": {
+        "nc_rted.interleaved_training": [
+          "Bundle",
+          "SameSeedBundleWorker",
+          "clone_with_shared_frozen"
+        ],
+        "nc_rted.production_runtime": [
+          "ProductionRuntimeError",
+          "RuntimeManifest",
+          "_checkpoint_identity",
+          "_media_catalog",
+          "_validate_detection_bindings",
+          "assemble",
+          "load_manifest",
+          "preflight"
+        ],
+        "nc_rted.recovery": [
+          "CheckpointStore",
+          "capture_rng",
+          "restore_rng"
+        ],
+        "nc_rted.resource_attestation": [
+          "PROJECT_VOLUME",
+          "formal_runtime_identity",
+          "gpu_memory_bytes",
+          "gpu_uuid",
+          "python_runtime_probe",
+          "sha256_file",
+          "validate_environment"
+        ],
+        "nc_rted.storage_lock": [
+          "allocation_lock",
+          "ensure_directory"
+        ],
+        "nc_rted.task_inputs": [
+          "TaskInputError",
+          "TrainingCatalog",
+          "detection_window_id",
+          "sha256_file"
+        ],
+        "nc_rted.train_worker": [
+          "TeacherIndex",
+          "TrainingWorker"
+        ],
+        "nc_rted.training": [
+          "Recipe",
+          "order_sha256",
+          "sample_order"
+        ]
+      }
+    }
   },
   "remaining": [
     "complete2000captionpreparation",
@@ -794,9 +847,9 @@
     },
     {
       "path": "scripts/nc_rted_build_interleaved_diagnostic_manifests.py",
-      "sha256": "b66a188e44b53b5a9df0a1c98acdc9ebb1c079e1d362ea99ee8bb8b4be0a60f1",
-      "bytes": 28854,
-      "origin": "prior_snapshot_retained"
+      "sha256": "bf3a22cf4583cf32c3686459dc2045c77ae98cc41992532bca1611b0c6877041",
+      "bytes": 29008,
+      "origin": "accepted-source33"
     },
     {
       "path": "scripts/nc_rted_build_manifests.py",
@@ -866,9 +919,9 @@
     },
     {
       "path": "scripts/nc_rted_interleaved_gpu_diagnostic.py",
-      "sha256": "5097269eafb65b883cf37f8c81ba5c581c994c7a16813cf85acd179b76779da1",
-      "bytes": 21135,
-      "origin": "release18"
+      "sha256": "bdeb5278e49323ab43c6d1988c2ecf34d2749a8332521bde0cf45106c91b1283",
+      "bytes": 22108,
+      "origin": "accepted-source33"
     },
     {
       "path": "scripts/nc_rted_materialize_vau.py",
@@ -905,6 +958,12 @@
       "sha256": "e6f6ce409ed3c0a4ee3ae408dd2b108852044ea2b7015a98d8534c3275c703a0",
       "bytes": 17231,
       "origin": "combined-source32"
+    },
+    {
+      "path": "scripts/nc_rted_qualify_interleaved_formal_bundle.py",
+      "sha256": "a5f262eb30b9a617bb689befa292e1ef075c411faa202c2c02f97389f518ba4f",
+      "bytes": 36254,
+      "origin": "accepted-source33"
     },
     {
       "path": "scripts/nc_rted_queue.py",

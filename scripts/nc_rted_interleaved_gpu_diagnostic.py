@@ -258,6 +258,21 @@ def _construct_workers(members: dict, harness: dict, *, store_root_override: Pat
     return models, workers
 
 
+def _cuda_binding() -> dict:
+    """Record the CUDA process binding after CUDA has selected its logical device."""
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if not visible or "," in visible:
+        raise RuntimeError("diagnostic requires exactly one CUDA-visible device")
+    if not torch.cuda.is_available():
+        raise RuntimeError("diagnostic requires an available CUDA device")
+    properties = torch.cuda.get_device_properties(torch.cuda.current_device())
+    observed = getattr(properties, "uuid", None)
+    if isinstance(observed, bytes): observed = observed.decode("ascii")
+    if not isinstance(observed, str) or not observed:
+        raise RuntimeError("CUDA runtime did not report its physical UUID")
+    return {"cuda_visible_devices": visible, "gpu_uuid": observed}
+
+
 def _serial_reference(models: dict, workers: dict, updates: int) -> dict:
     initial_rng = capture_rng()
     provider = _DigestingProvider(workers["A"].material_for_sample)
@@ -270,7 +285,7 @@ def _serial_reference(models: dict, workers: dict, updates: int) -> dict:
                     progress=reports.append, stop_after=updates)
         groups[group] = dict(state_digest=_trainer_state_digest(models[group], trainer, capture_rng()), reports=reports,
                              cursor=trainer.cursor, completed_updates=trainer.completed_updates)
-    return dict(groups=groups, material_digests=provider.digests)
+    return dict(groups=groups, material_digests=provider.digests, cuda_binding=_cuda_binding())
 
 
 def _empty_roots(members: dict, harness: dict) -> None:
@@ -318,10 +333,11 @@ def _bundle_run(members: dict, harness: dict, *, fail_group: str | None = None, 
         gradient_and_update[group] = dict(update_l1=changes, gradient_summary=summary)
     return dict(status="BUNDLED_DIAGNOSTIC_COMPLETE", elapsed_seconds=elapsed,
                 peak_memory_bytes=torch.cuda.max_memory_allocated() if torch.cuda.is_available() else 0,
+                peak_reserved_memory_bytes=torch.cuda.max_memory_reserved() if torch.cuda.is_available() else 0,
                 completed={group: item.trainer.completed_updates for group, item in workers.items()},
                 cursor={group: item.trainer.cursor for group, item in workers.items()}, state_digest=state,
                 reports=reports, gradient_and_update=gradient_and_update,
-                material_digests=provider.digests,
+                material_digests=provider.digests, cuda_binding=_cuda_binding(),
                 diagnostic_recipe=dict(updates=1000, accumulation=8,
                                        checkpoint_interval=harness["diagnostic_checkpoint_interval"]))
 

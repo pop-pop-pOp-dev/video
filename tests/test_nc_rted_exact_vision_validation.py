@@ -54,3 +54,11 @@ def test_key_order_and_noncontiguous_layout_do_not_change_values():
     state = {name: value.t().contiguous().t() if value.ndim == 2 else value
              for name, value in reversed(list(state.items()))}
     verifier.verify(state)
+
+
+def test_exact_verifier_does_not_create_a_full_device_reference_or_live_concatenation(monkeypatch):
+    binding, state = sample()
+    verifier = ExactDerivedVisionVerifier(binding)
+    assert not hasattr(verifier, "_device_reference")
+    monkeypatch.setattr(torch, "cat", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected concatenation")))
+    verifier.verify(state)

@@ -128,12 +128,13 @@ def verify_loaded_derived_vision(binding: DerivedVisionBinding, state: dict) -> 
 
 
 class ExactDerivedVisionVerifier:
-    """Keep a detached exact reference on the live tower's device.
+    """Compare against detached CPU tensors without a second full GPU copy.
 
     Initial parent/export validation remains mandatory. Each check compares all
     values in the original dtype, including mutations through ``Tensor.data``
-    that do not increment the tensor version. Only the frozen reference is
-    retained; the concatenated live values are temporary. There is no reduced
+    that do not increment the tensor version. Each live tensor is copied to CPU
+    and compared independently, so verification never retains a full device
+    reference or concatenates all live tower weights. There is no reduced
     checksum, quantization, model output, or trainable-state cache.
     """
     def __init__(self, binding: DerivedVisionBinding):
@@ -148,37 +149,29 @@ class ExactDerivedVisionVerifier:
             raise DetectorError("derived vision reference must retain one original dtype")
         # This private snapshot does not alias the supplied reference tensors.
         with torch.inference_mode(False), torch.no_grad():
-            self._cpu_reference = torch.cat([binding.weights[name].detach().cpu().reshape(-1)
-                                            for name in self.names]).clone()
-        self._device_reference = None
-        self._device = None
+            self._cpu_reference = {name: binding.weights[name].detach().cpu().clone()
+                                   for name in self.names}
 
     @torch.no_grad()
     def verify(self, state: dict) -> None:
         if set(state) != set(self.names):
             raise DetectorError("loaded SigLip state keys differ from derived final-Stage2 binding")
         devices = set()
-        values = []
         for name, shape, dtype in self.layout:
             value = state[name]
             if not isinstance(value, torch.Tensor) or tuple(value.shape) != shape or value.dtype != dtype:
                 raise DetectorError(f"loaded SigLip weight differs from bound shape or dtype: {name}")
             devices.add(value.device)
-            values.append(value.detach().reshape(-1))
         if len(devices) != 1:
             raise DetectorError("loaded SigLip weights span multiple devices")
         device = devices.pop()
         if device.type not in {"cpu", "cuda"}:
             raise DetectorError("unsupported exact SigLip comparison device")
-        if self._device != device or self._device_reference is None:
-            # Retain at most one device copy; device changes cannot reuse a
-            # reference from another GPU. CPU checks use the private CPU copy.
-            self._device_reference = (self._cpu_reference if device.type == "cpu"
-                                      else self._cpu_reference.to(device=device))
-            self._device = device
-        live = torch.cat(values)
-        if not torch.equal(live, self._device_reference):
-            raise DetectorError("loaded SigLip weight differs from bound exact reference")
+        for name in self.names:
+            # This bounded copy preserves original dtype and complete-value
+            # equality while releasing each temporary before the next tensor.
+            if not torch.equal(state[name].detach().cpu(), self._cpu_reference[name]):
+                raise DetectorError("loaded SigLip weight differs from bound exact reference")
 
 
 def provenance_digest(binding: DerivedVisionBinding) -> str:

@@ -258,22 +258,62 @@ def _construct_workers(members: dict, harness: dict, *, store_root_override: Pat
     return models, workers
 
 
-def _cuda_binding() -> dict:
-    """Record the CUDA process binding after CUDA has selected its logical device."""
-    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
-    if not visible or "," in visible:
+def _physical_gpu_inventory() -> dict[str, str]:
+    """Return physical GPU UUIDs from the driver inventory."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index,uuid", "--format=csv,noheader,nounits"],
+            check=True, capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise RuntimeError("CUDA driver inventory is unavailable") from error
+    rows: dict[str, str] = {}
+    try:
+        for line in result.stdout.splitlines():
+            fields = [field.strip() for field in line.split(",")]
+            if len(fields) != 2 or not fields[0].isdigit() or not fields[1] or "\n" in fields[1]:
+                raise ValueError
+            if fields[0] in rows or fields[1] in rows.values():
+                raise ValueError
+            rows[fields[0]] = fields[1]
+    except ValueError as error:
+        raise RuntimeError("CUDA driver inventory is invalid") from error
+    if not rows:
+        raise RuntimeError("CUDA driver inventory is empty")
+    return rows
+
+
+def _visible_gpu_identity(visible: str) -> str:
+    """Resolve one CUDA_VISIBLE_DEVICES token to a unique physical GPU."""
+    token = visible.strip()
+    if not token or "," in visible:
         raise RuntimeError("diagnostic requires exactly one CUDA-visible device")
+    if token.isdigit():
+        raise RuntimeError("diagnostic requires a CUDA-visible GPU UUID, not an ordinal")
+    rows = _physical_gpu_inventory()
+    matches = [gpu_uuid for gpu_uuid in rows.values() if gpu_uuid == token or gpu_uuid.startswith(token)]
+    if len(matches) != 1:
+        raise RuntimeError("CUDA_VISIBLE_DEVICES does not resolve to one physical GPU")
+    return matches[0]
+
+
+def _cuda_binding() -> dict:
+    """Resolve and validate the one real GPU before any model assembly."""
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    gpu_uuid = _visible_gpu_identity(visible)
     if not torch.cuda.is_available():
         raise RuntimeError("diagnostic requires an available CUDA device")
-    properties = torch.cuda.get_device_properties(torch.cuda.current_device())
-    observed = getattr(properties, "uuid", None)
-    if isinstance(observed, bytes): observed = observed.decode("ascii")
-    if not isinstance(observed, str) or not observed:
-        raise RuntimeError("CUDA runtime did not report its physical UUID")
-    return {"cuda_visible_devices": visible, "gpu_uuid": observed}
+    if torch.cuda.device_count() != 1:
+        raise RuntimeError("diagnostic requires exactly one CUDA logical device")
+    if torch.cuda.current_device() != 0:
+        raise RuntimeError("diagnostic requires CUDA logical device 0")
+    # Report the resolved physical UUID in both existing schema fields.  The
+    # launcher sets CUDA_VISIBLE_DEVICES to this UUID, and a unique prefix is
+    # accepted only after driver inventory resolution.
+    return {"cuda_visible_devices": gpu_uuid, "gpu_uuid": gpu_uuid}
 
 
-def _serial_reference(models: dict, workers: dict, updates: int) -> dict:
+def _serial_reference(models: dict, workers: dict, updates: int, cuda_binding: dict) -> dict:
     initial_rng = capture_rng()
     provider = _DigestingProvider(workers["A"].material_for_sample)
     groups = {}
@@ -285,7 +325,7 @@ def _serial_reference(models: dict, workers: dict, updates: int) -> dict:
                     progress=reports.append, stop_after=updates)
         groups[group] = dict(state_digest=_trainer_state_digest(models[group], trainer, capture_rng()), reports=reports,
                              cursor=trainer.cursor, completed_updates=trainer.completed_updates)
-    return dict(groups=groups, material_digests=provider.digests, cuda_binding=_cuda_binding())
+    return dict(groups=groups, material_digests=provider.digests, cuda_binding=cuda_binding)
 
 
 def _empty_roots(members: dict, harness: dict) -> None:
@@ -295,7 +335,8 @@ def _empty_roots(members: dict, harness: dict) -> None:
             raise RuntimeError(f"diagnostic checkpoint root is not empty: {root}")
 
 
-def _bundle_run(members: dict, harness: dict, *, fail_group: str | None = None, resume: bool = False) -> dict:
+def _bundle_run(members: dict, harness: dict, cuda_binding: dict, *, fail_group: str | None = None,
+                resume: bool = False) -> dict:
     # Start before model construction so the reported peak includes inherited
     # loading, clone construction, provider preparation, and all updates.
     if torch.cuda.is_available(): torch.cuda.reset_peak_memory_stats()
@@ -337,7 +378,7 @@ def _bundle_run(members: dict, harness: dict, *, fail_group: str | None = None, 
                 completed={group: item.trainer.completed_updates for group, item in workers.items()},
                 cursor={group: item.trainer.cursor for group, item in workers.items()}, state_digest=state,
                 reports=reports, gradient_and_update=gradient_and_update,
-                material_digests=provider.digests, cuda_binding=_cuda_binding(),
+                material_digests=provider.digests, cuda_binding=cuda_binding,
                 diagnostic_recipe=dict(updates=1000, accumulation=8,
                                        checkpoint_interval=harness["diagnostic_checkpoint_interval"]))
 
@@ -355,11 +396,11 @@ def _child(args, mode: str, output: Path, extra: list[str]) -> subprocess.Comple
     return subprocess.run(command, check=False)
 
 
-def _run_parent(args, harness: dict, members: dict) -> dict:
+def _run_parent(args, harness: dict, members: dict, cuda_binding: dict) -> dict:
     # Parent computes the four serial oracles, then releases all CUDA memory
     # before fault/resume each construct their own independent process.
     models, workers = _construct_workers(members, harness, store_root_override=Path(args.output).with_suffix(".serial-stores"))
-    serial = _serial_reference(models, workers, harness["diagnostic_updates"])
+    serial = _serial_reference(models, workers, harness["diagnostic_updates"], cuda_binding)
     serial_path = Path(args.output).with_suffix(".serial.json")
     _write_json(serial_path, serial)
     models = workers = None
@@ -370,8 +411,12 @@ def _run_parent(args, harness: dict, members: dict) -> dict:
     resume_path = Path(args.output).with_suffix(".resume.json")
     if _child(args, "resume", resume_path, ["--serial-reference", str(serial_path)]).returncode:
         raise RuntimeError("fresh-process recovery failed")
+    fault = json.loads(fault_path.read_text())
+    resumed = json.loads(resume_path.read_text())
+    if fault.get("cuda_binding") != cuda_binding or resumed.get("cuda_binding") != cuda_binding:
+        raise RuntimeError("fresh-process diagnostic GPU binding differs from serial binding")
     return dict(status="BUNDLED_DIAGNOSTIC_COMPLETE", serial_reference=str(serial_path),
-                fault_report=str(fault_path), resumed=json.loads(resume_path.read_text()))
+                fault_report=str(fault_path), cuda_binding=cuda_binding, resumed=resumed)
 
 
 def main() -> None:
@@ -395,19 +440,24 @@ def main() -> None:
                       members={group: str(member.path) for group, member in members.items()},
                       diagnostic_updates=harness["diagnostic_updates"], recipe=dict(updates=1000, accumulation=8))
     elif args.mode == "run":
-        result = _run_parent(args, harness, members)
+        cuda_binding = _cuda_binding()
+        result = _run_parent(args, harness, members, cuda_binding)
     elif args.mode == "fault":
+        cuda_binding = _cuda_binding()
         _empty_roots(members, harness)
         try:
-            _bundle_run(members, harness, fail_group=args.fault_after_group)
+            _bundle_run(members, harness, cuda_binding, fail_group=args.fault_after_group)
         except InjectedInterruption as error:
-            _write_json(output, dict(status="INJECTED_INTERRUPT", detail=str(error)))
+            _write_json(output, dict(status="INJECTED_INTERRUPT", detail=str(error), cuda_binding=cuda_binding))
             raise SystemExit(75)
         raise RuntimeError("fault mode completed without interruption")
     else:
         if not args.serial_reference: raise SystemExit("resume mode requires --serial-reference")
+        cuda_binding = _cuda_binding()
         serial = json.loads(Path(args.serial_reference).read_text())
-        result = _bundle_run(members, harness, resume=True)
+        if serial.get("cuda_binding") != cuda_binding:
+            raise RuntimeError("fresh-process GPU binding differs from serial binding")
+        result = _bundle_run(members, harness, cuda_binding, resume=True)
         if result["state_digest"] != {group: serial["groups"][group]["state_digest"] for group in GROUPS}:
             raise RuntimeError("fresh-process bundled replay differs from serial reference")
         if result["reports"] != {group: serial["groups"][group]["reports"] for group in GROUPS}:

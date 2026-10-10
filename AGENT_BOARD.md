@@ -1,7 +1,7 @@
 # Agent 留言板：先读这里，再继续工作
 
 > 用户于 2026-10-10 明确要求：减少重复工作和 token 浪费。此文件用于上下文压缩、换 agent、会话恢复时交接。它记录执行事实，不替代唯一实验规格。
-> **快照更新：2026-10-10 07:37 UTC。进度数字均为最近观测，不代表实时状态。**
+> **快照更新：2026-10-10 07:44 UTC。进度数字均为最近观测，不代表实时状态。**
 
 ## 接手规则
 
@@ -20,17 +20,17 @@
 | ID | 任务 / 负责人 | 状态 | 依赖、最近证据与下一步 |
 |---|---|---|---|
 | DOC-01 | TODO 模块及 Agent 维护规则 / root | DONE | 本文件与 `AGENTS.md` 已加入任务 ID、归属、依赖、验收与交接规则；文档改动无需新增测试 |
-| PREP-01 | 6,000训练观测 / 原worker，root跟踪 | IN_PROGRESS | 原372217持续运行；v26新journal已核验复用4904条但未启动替代；旧源/配置未动、teacher790384等待，见ACCEL01 |
-| ACCEL-01 | 观测加速 / root | WAITING_DEPENDENCY | v25source10a9d82eaf5c已接受；正式CPU50同3结果逐字相同、2个可比窗口1.573x。helper decd71c独立PASS，真实v26已复用4904/6000，原worker继续。用户已明确授权立即切换，handover执行中，session9287 |
+| PREP-01 | 6,000训练观测 / v26worker133055，root跟踪 | IN_PROGRESS | 2026-10-10 07:44 UTC 4975/6000，其中4931复用；GPU0 CPU50 sourcev25/configv26；余时短测估算约70min随媒体变化，非承诺 |
+| ACCEL-01 | 观测加速 / root | DONE | 用户授权后完成4931条保留与切换，133055/133057运行；实际12新条/48.62s=14.81/min（旧约9/min），hotpath/seed独立接受，live_throughput_v1；本轮不再调参/重启 |
 | PREP-02 | 官方盲 Fast 完成封存、组装与转换 / nc_rted_blind_factory | DONE | 1051条自然完成；snapshot v1/v2同SHA50dd73c5；converter独立v6接受并合入，未重算Fast；后续R0是独立任务 |
-| PREP-03 | 2,000描述缓存 / 原worker，root跟踪 | IN_PROGRESS | 最近06:28UTC125128/125797 alive，完成sequence391开始392，272.91GiB空余；source15/config4不变 |
-| PREP-04 | 观测封存与真实crossfit教师 / root持久链 | WAITING_DEPENDENCY | supervisor PID790384；`artifacts/nc_rted/teacher_after_observations_v24/status.json`。等现有观测自然退出、6000进度和封存index/hash均完整后，自动单次CPU teacher build；不产部分教师，不重启观测 |
+| PREP-03 | 2,000描述缓存 / 原worker，root跟踪 | IN_PROGRESS | 07:43UTC完成sequence698、开始699；原125128/125797继续，source15/config4不变，未重启 |
+| PREP-04 | 观测封存与真实crossfit教师 / root持久链 | WAITING_DEPENDENCY | 新单一supervisor133057，teacher_after_observations_v26/status.json；等v26自然完成6000及seal后自动CPUbuild，旧790384已按用户授权停止，不再启动旧链 |
 | CODE-01 | 逐模型预测与实际probe / root | DONE | CODE01A8760d53与CODE01Bc6d26e2均独立PASS_STATIC；精确合入release17 d764e85；实际GPU测量另属GATE02 |
 | CODE-01A | 预测计划/资源准入 / root最终修复，独立astra验收 | DONE | 8760d53独立v6 PASS_STATIC；原57+17增量+setup2项通过；精确5文件合入release9f9fb3e（含builder），无GPU |
 | CODE-01B | 实际probe / root | DONE | c6d26e2独立v6 PASS_STATIC；35+3+1+2窄测沿用，精确4文件合入d764e85。磁盘pending须匹配stdout TERMINAL_RUNTIME_PROBE才可接受 |
 | CODE-02 | 同seed四组诊断配置 / nc_rted_bundle_harness_finish | DONE | 75f8119独立v4 PASS_STATIC；20项+恢复3项接受；逐字合入release_v17 HEAD85f4d09，仅诊断，formal仍serial |
 | CODE-03 | 正式训练资源/队列 / accepted_release18 | DONE | 36898c93独立v5 PASS_STATIC，精确11文件合入clean release18 696bf040；integration_v1 report。未重跑测试，无GPU |
-| PUB-01 | 已验收代码限定发布GitHub / root | IN_PROGRESS | 旧publication c209b06c/v13；新snapshotv17与publisherv14已本地验证203文件，base cleanrelease18 696bf040，正更新文档后上传 |
+| PUB-01 | 已验收代码限定发布GitHub / root | IN_PROGRESS | release18已发布5f74b23dd42a8e09522897d482ba15157df3cb8f/v14，203远端文件全验证。最后新增seedhelper decd71c与最新board待新v18/v15补充发布 |
 | GATE-01 | 增量实现独立审查 / 独立gpt-6-astra | DONE | CODE01A v6、01B v6、02 v4、03 v5均PASS_STATIC；不代表运行资源准入，勿重开审查 |
 | GATE-02 | 资源排程与实际运行准入 / root | WAITING_DEPENDENCY | 新gate02_resource_schedule_readiness_v3.json含全部135050queries+47458Slow/model+3339VAU；无实际prediction/update端到端计时、无完整teacher/caption，不宣称可装入租期；R0刷新准备由prediction_resource_final整理 |
 | EXP-01 | R0盲预测 / root调度 | WAITING_DEPENDENCY | source refresh v5已实际完成preflight SHA0dfe4e4d，绑定release17 d764e85；GPU0优先加速观测，R0诊断尚未执行 |
@@ -49,12 +49,12 @@
 
 ## 现在做哪一步
 
-1. 用户最高优先级加速：旧372217未停，teacher790384仅一条，Fast1051不重做。用户已两次明确“立即断点切换，加速剩余部分”；旧禁止中断约束对此次受控切换已解除，session9287执行中。
-2. 加速已具体可用：source `/root/autodl-tmp/nc-rted-observation-v25-candidate` HEAD`10a9d82eaf5c3cd6f5e751a9dd6db25ddcb1cd13`；仅移植既有接受两文件ExactDerivedVisionVerifier。CPU8旧24.804→新11.352s，生产保留CPU50复测3窗口13.332s，2可比窗口13.223→8.408s（1.573x）；全部3载荷与旧v24一致。不要重新探测。
-3. 实际生产配置是 **v26** `.cache/nc_rted_observation_extraction_config_v26.json` SHA`8e1dc9eb4609a94da91720efd1306b392ad2b4d88510e2b0f9a4b901735e0309`，CPU50。v25配置CPU8已弃用、未启动。source仍命名v25，不要改名/hash。
-4. `.cache/nc_rted_accel01_seed` helper HEAD`decd71c10cf27fd8413269802bc2c698fb1c18ab`独立seed_native_review_v1 PASS_STATIC，2pass；真实预复用4904条hardlink已完成，report `observation_v26_seed_execution_v1.json`，原目录保留，新journal未封存。终切换需最后补一次新提交窗口。
-5. 确认后用已备 `.cache/nc_rted_handover_observations_v26.py --perform-authorized-handover`，须source原download_environment.sh再执行、用run_logged记录。先停止旧等待链，再SIGINT旧worker，末次seed，GPU0启动新进程，启动唯一v26teacher链。脚本未执行；不要手工重建重复链。新worker初始化约90秒，随后核实真正推进。
-6. release18 HEAD696bf040已含CODE01/02/03全部接受内容；R0preflight绑定release17必须保留。正式仍0/12，完整0/13。snapshotv17/publisherv14准备好，正在root上传已授权代码。main不可冻结或发布。
+1. **用户已明确授权并完成断点切换。旧372217与teacher790384已退出；不要恢复或重跑旧任务。** 新GPU0worker133055（CPUaffinity0–55、cpu_threads50）与唯一teacher133057已启动；已确认新产出；48.62秒12条=14.81/min。ACCEL01完成，不要再调参/复测/重启；观察自然6000封存。
+2. 运行source `/root/autodl-tmp/nc-rted-observation-v25-candidate` HEAD`10a9d82eaf5c3cd6f5e751a9dd6db25ddcb1cd13`；正式config **v26** `.cache/nc_rted_observation_extraction_config_v26.json` SHA`8e1dc9eb4609a94da91720efd1306b392ad2b4d88510e2b0f9a4b901735e0309`，不要改名或热改。输出`artifacts/nc_rted/teacher_observations_derived_stage2_v26`；模型初始化约90秒，resume随后会读取4931旧记录再出现computed新进度。
+3. 实际保留4931/6000条旧记录、剩1069；`observation_v26_handover_execution_v1.json`记录真实新PID、最终尾部seed；旧全部数据和日志保留。第一次SIGINT被旧nohup继承忽略，已记录sigint_ignored_v1并按同一用户授权SIGTERM退出；无需再处理此故障。
+4. 新teacher链`artifacts/nc_rted/teacher_after_observations_v26/status.json`/supervisor133057，完成后教师输出`teacher_crossfit_derived_stage2_v26`。不得创建第二条链。旧teacher_v24已停止，不作当前入口。
+5. 性能证据已完成不重测：CPU8同3窗口2.185x（只诊断），生产CPU50同3载荷完全相同、2可比窗口1.573x；`observation_exact_gpu_cpu50_equivalence_v1.json`。helper decd71c及source10a9d82均独立PASS_STATIC，已真实seed两次（预复用4904、最终4931），不是从头计算。
+6. release18 HEAD696bf040及新队列/预测代码已发布GitHub **5f74b23dd42a8e09522897d482ba15157df3cb8f**，report github_publication_api_v14.json，203文件远端全验证。最后新seedhelper3文件与最终board正在准备snapshotv18/publisherv15补充发布。R0preflight绑定release17保留；实际R0probe仍未启动，正式0/12，完整0/13。
 
 ### 描述准备准确入口（当前）
 
@@ -69,10 +69,10 @@
 
 | 工作 | 最近状态 | 负责人/入口 |
 |---|---|---|
-| 本地GPU1训练观测 | 原PID372217；06:09:39UTC 4141/6000 | PREP-01，source v24；不可热改 |
-| 本地GPU0官方盲Fast | 1051/1051自然结束；封存和转换已完成 | PREP-02 DONE；SHA50dd73，不重提取 |
+| 本地GPU0训练观测 | 新PID133055；4975/6000，4931复用，14.81/min短测 | PREP-01 v26；sourcev25，不热改 |
+| 官方盲Fast | 1051/1051自然完成且封存，原GPU0已用于观测 | PREP-02 DONE，SHA50dd73，不重提取 |
 | 远端描述缓存 | source15/config4 supervisor125128已启动 | PREP-03，当前supervisor状态为准 |
-| 完整teacher | 等既有观测自然完成，supervisor790384 | PREP-04，不另建等待链 |
+| 完整teacher | 新等待链133057，等v26观测自然完成 | PREP-04，仅此一条 |
 | R0逐模型预测门禁/完整登记入口 | 最小实现修复中 | CODE-01负责人；不得读取测试答案/指标 |
 | 四组真实manifest/正式入口 | 缺完整teacher+caption依赖，配置代码收尾 | CODE-02负责人；禁止占位teacher |
 
@@ -298,3 +298,7 @@
 - **2026-10-10 07:37 UTC | root | ACCEL-01就绪待明确断点切换。** helper真实执行85.20s，4904条验证hardlink复用，24.7GiB余量，所有旧记录保留；`observation_v26_seed_execution_v1.json`。原worker/旧teacher等待链仍运行，用户已收到async确认（旧明确不可中断限制），后续用户已明确同意并启动handover（见最新留言）。CPU50最终证据`observation_exact_gpu_cpu50_equivalence_v1.json`，不要复测；并非2.18x生产承诺。全部候选/辅助工具已独立接受，teacher新脚本已写但未启动。
 
 - **2026-10-10 07:37 UTC | root | 用户已授权一次断点切换。** async答复与独立消息均为“立即断点切换，加速剩余部分”，无需再次询问。既有受保护进程可按本次具体方案停止；`authorized-observation-v26-handover` session9287已启动，依序停止旧等待链/旧worker、seed尾部、启动新GPU0worker与唯一teacher链；完成后读execution_v1与进度，不再调用handover脚本第二次。
+
+- **2026-10-10 07:41 UTC | root | 断点切换已实际完成，代码已上传。** 用户明确同意后停止旧等待链，旧worker忽略SIGINT所以同授权SIGTERM（故障证据保留）；最终seed4931条，启动GPU0新133055与teacher133057，仅剩1069。所有原结果保留。GitHub acceptedrelease18成功5f74b23/v14，203文件sha验证。下一步确认新观测computed增长，再登记实际吞吐；不要再次执行handover。
+
+- **2026-10-10 07:44 UTC | root | ACCEL-01完成：真实吞吐。** 新worker4938→4950用48.622s，12条新观测，14.808/min；旧约9/min，仅粗略不配对约1.6x。GPU0采样0–30%仍有CPU/解码段，不能写GPU已吃满。按此短测1050条约71min但媒体异质，不承诺。当前4975/6000；R0 GPU1诊断准备委派accepted_release18。远端caption698→699，原worker保持；此处前一次board小脚本字符串错误未落盘，本次纠正，无任务重复。

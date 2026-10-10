@@ -1,27 +1,19 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "snapshot_format": 17,
-  "created_at": "2026-10-10T07:32:11.546834+00:00",
-  "source_commit": "696bf0407a6bacc9fc170ca1422239fdb0e8a378",
-  "source_base_commit": "d764e853b81cc51b7051913e35d0d0b6af25d0c0",
+  "snapshot_format": 18,
+  "created_at": "2026-10-10T07:44:16.821495+00:00",
+  "source_commit": "decd71c10cf27fd8413269802bc2c698fb1c18ab",
+  "source_base_commit": "696bf0407a6bacc9fc170ca1422239fdb0e8a378",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
-  "previous_published_commit": "c209b06c54255213c72882fad11df866c239e012",
+  "previous_published_commit": "5f74b23dd42a8e09522897d482ba15157df3cb8f",
   "source_whitelist": {
-    "previous_snapshot_manifest_sha256": "7b226f9d90f3e2541ce9284a2f7c80e61a96fad5dcb400a17e5a385bbd57228c",
-    "previous_content_paths": 198,
-    "release18_accepted_delta_paths": [
-      "scripts/nc_rted_attest_formal_resources.py",
-      "scripts/nc_rted_queue.py",
-      "scripts/nc_rted_train.py",
-      "src/nc_rted/captured_sources.py",
-      "src/nc_rted/production_runtime.py",
-      "src/nc_rted/queue.py",
-      "src/nc_rted/resource_attestation.py",
-      "src/nc_rted/storage_lock.py",
-      "src/nc_rted/train_worker.py",
-      "tests/test_nc_rted_queue.py",
-      "tests/test_nc_rted_resource_contract.py"
+    "previous_snapshot_manifest_sha256": "6c2cd59812458cef3bf74fb0d515c5fde34c4f2f3546ff961c0b42c74a937d40",
+    "previous_content_paths": 202,
+    "accepted_seed_delta_paths": [
+      "scripts/nc_rted_seed_observation_prefix.py",
+      "src/nc_rted/observation_seed.py",
+      "tests/test_nc_rted_observation_seed.py"
     ],
     "retained_prior_snapshot_paths": [
       "THIRD_PARTY.md",
@@ -96,17 +88,9 @@
       "scoped_paths": [
         "AGENTS.md",
         "AGENT_BOARD.md",
-        "scripts/nc_rted_attest_formal_resources.py",
-        "scripts/nc_rted_queue.py",
-        "scripts/nc_rted_train.py",
-        "src/nc_rted/captured_sources.py",
-        "src/nc_rted/production_runtime.py",
-        "src/nc_rted/queue.py",
-        "src/nc_rted/resource_attestation.py",
-        "src/nc_rted/storage_lock.py",
-        "src/nc_rted/train_worker.py",
-        "tests/test_nc_rted_queue.py",
-        "tests/test_nc_rted_resource_contract.py"
+        "scripts/nc_rted_seed_observation_prefix.py",
+        "src/nc_rted/observation_seed.py",
+        "tests/test_nc_rted_observation_seed.py"
       ]
     },
     "accepted_evidence": [
@@ -131,14 +115,24 @@
         "required_status": "PASS_EQUIVALENCE"
       },
       {
-        "path": "reports/nc_rted/github_publication_api_v13.json",
-        "sha256": "335f1653de79bf71a14028a774402646f461253c5993d214ebf794f326904d0e",
+        "path": "reports/nc_rted/observation_seed_native_review_v1.json",
+        "sha256": "c3636ba62e5a49c602feb6a455dcd8e0250b163b98043dea47c8c9b38b122900",
+        "required_status": "PASS_STATIC"
+      },
+      {
+        "path": "reports/nc_rted/github_publication_api_v14.json",
+        "sha256": "4fc53130ddd91cd5c6be2b4ef6c6dce02b2c14b0a36c7350b1b883b8b4198566",
         "required_status": "PUBLISHED_REMOTE_COMMIT_AND_ALL_FILE_HASHES_VERIFIED"
       }
     ],
     "hotpath_release18_sha256": {
       "src/nc_rted/detector.py": "4dffd4c50ffa8861e7f34289b382fe868e8316fbd7587dfb5c0bfc5f1f3d8a0c",
       "src/nc_rted/frozen_vision.py": "c3ad91f54e8b9b39af0843246a16e667eec37ad0fe41abf62d65068e16c94f74"
+    },
+    "seed_source_sha256": {
+      "scripts/nc_rted_seed_observation_prefix.py": "9703a11a0c3a522dfd5da5b223b5f64c7da4b438421763df7f49b8cd41809fde",
+      "src/nc_rted/observation_seed.py": "8d589e714146b2a530349c3e1fb48606d0c676fbeffb4ffe599cb5efeb54894e",
+      "tests/test_nc_rted_observation_seed.py": "4c602970005abbb41e18476865061f654aa1fb2c8e9809bb38a9309533afe840"
     }
   },
   "remaining": [
@@ -162,8 +156,8 @@
     },
     {
       "path": "AGENT_BOARD.md",
-      "sha256": "9fa96385fe8c9d30142f1f5f5954d7aadb0069c4e2200f6b724bbd23f79fd641",
-      "bytes": 106488,
+      "sha256": "2fc84c0e97c74c2e3c5b69b36d7f427a92662e4dae86ae28f09d7c1e11d2eea9",
+      "bytes": 107569,
       "origin": "main_governance"
     },
     {
@@ -785,6 +779,12 @@
       "origin": "release18"
     },
     {
+      "path": "scripts/nc_rted_seed_observation_prefix.py",
+      "sha256": "9703a11a0c3a522dfd5da5b223b5f64c7da4b438421763df7f49b8cd41809fde",
+      "bytes": 1262,
+      "origin": "release18"
+    },
+    {
       "path": "scripts/nc_rted_train.py",
       "sha256": "0f55f1948b0364e110660b6ff4a3113292824b67892faadd08e16bdf6f1d0e83",
       "bytes": 7010,
@@ -938,6 +938,12 @@
       "path": "src/nc_rted/observation_extraction.py",
       "sha256": "fb2c1dc085c03eeb5f44cfdfa211ec0901ffefd9b2adf01792684f62445fc1b4",
       "bytes": 15419,
+      "origin": "release18"
+    },
+    {
+      "path": "src/nc_rted/observation_seed.py",
+      "sha256": "8d589e714146b2a530349c3e1fb48606d0c676fbeffb4ffe599cb5efeb54894e",
+      "bytes": 13549,
       "origin": "release18"
     },
     {
@@ -1241,6 +1247,12 @@
       "origin": "release18"
     },
     {
+      "path": "tests/test_nc_rted_observation_seed.py",
+      "sha256": "4c602970005abbb41e18476865061f654aa1fb2c8e9809bb38a9309533afe840",
+      "bytes": 5937,
+      "origin": "release18"
+    },
+    {
       "path": "tests/test_nc_rted_prediction.py",
       "sha256": "44b4092804b55e605c98692a5ab30d115adba8ab7e59689d89ecf8aab79f7e19",
       "bytes": 85637,
@@ -1361,5 +1373,5 @@
       "origin": "release18"
     }
   ],
-  "governance_docs_refreshed_at": "2026-10-10T07:38:12.560387+00:00"
+  "governance_docs_refreshed_at": "2026-10-10T07:45:38.265688+00:00"
 }

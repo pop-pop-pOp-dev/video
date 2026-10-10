@@ -1067,21 +1067,83 @@ def test_blind_detection_runner_matches_released_query_then_frame_smoothing(monk
 
 
 def test_vad_slow_forward_runs_with_gradients_disabled():
-    class Bridge:
-        prediction_evidence_enabled = False
-        def prepare(self, inputs, observations, *, enabled):
-            assert not torch.is_grad_enabled() and observations is None and enabled is False
-            return SimpleNamespace(arguments={})
-        class slow:
-            @staticmethod
-            def __call__(**kwargs):
-                raise AssertionError("unreachable")
-    bridge = Bridge()
-    bridge.slow = lambda **kwargs: SimpleNamespace(logits=torch.tensor([[[0.0, 1.0, 2.0]]], requires_grad=True))
+    class Raw(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.config = SimpleNamespace(hidden_size=2, vocab_size=3)
+            self.lm_head = torch.nn.Linear(2, 3, bias=False)
+            with torch.no_grad(): self.lm_head.weight.copy_(torch.tensor([[1., 0.], [0., 1.], [1., 1.]]))
+        def get_output_embeddings(self): return self.lm_head
+        def forward(self, hidden): return SimpleNamespace(logits=self.lm_head(hidden))
+    class Slow(torch.nn.Module):
+        def __init__(self, raw): super().__init__(); self.raw = raw
+        def forward(self, *, hidden, use_cache, return_dict): return self.raw(hidden)
+    raw = Raw(); slow = Slow(raw); raw.eval(); slow.eval()
+    def prepare(inputs, observations, *, enabled):
+        assert not torch.is_grad_enabled() and observations is None and enabled is False
+        return SimpleNamespace(arguments={"hidden": torch.tensor([[[1., 2.], [3., 4.]]])})
+    bridge = SimpleNamespace(prediction_evidence_enabled=False, raw_slow=raw, slow=slow, prepare=prepare)
     runner = BlindDetectionRunner(bridge=bridge, reader=None, protocol=None, observation_reader=None, prompt_tokenizer=None,
                                   yes_token_ids=(2,), no_token_ids=(1,), fusion="replace", fusion_alpha=.5,
                                   smoother=None)
     assert 0 < runner._slow_probability(object(), None, enabled=False) < 1
+    assert raw.lm_head(torch.ones(1, 2, 2)).shape == (1, 2, 3)
+
+
+def test_vad_last_token_head_hook_is_removed_after_slow_error():
+    class Raw(torch.nn.Module):
+        def __init__(self):
+            super().__init__(); self.config = SimpleNamespace(hidden_size=2, vocab_size=3)
+            self.lm_head = torch.nn.Linear(2, 3, bias=False)
+        def get_output_embeddings(self): return self.lm_head
+    class Slow(torch.nn.Module):
+        def __init__(self, raw): super().__init__(); self.raw = raw
+        def forward(self, *, hidden, use_cache, return_dict):
+            self.raw.lm_head(hidden)
+            raise RuntimeError("injected")
+    raw = Raw(); slow = Slow(raw); raw.eval(); slow.eval()
+    bridge = SimpleNamespace(raw_slow=raw, slow=slow,
+                             prepare=lambda *args, **kwargs: SimpleNamespace(arguments={"hidden": torch.ones(1, 2, 2)}))
+    runner = BlindDetectionRunner(bridge=bridge, reader=None, protocol=None, observation_reader=None, prompt_tokenizer=None,
+                                  yes_token_ids=(2,), no_token_ids=(1,), fusion="replace", fusion_alpha=.5, smoother=None)
+    with pytest.raises(RuntimeError, match="injected"):
+        runner._slow_probability(object(), None, enabled=False)
+    assert not raw.lm_head._forward_pre_hooks
+    assert raw.lm_head(torch.ones(1, 2, 2)).shape == (1, 2, 3)
+
+
+def test_vad_last_token_head_hook_matches_actual_tiny_llava_qwen_cpu():
+    source = str(Path(__file__).resolve().parents[1] / "src")
+    code = f'''
+import sys
+from types import SimpleNamespace
+import torch
+sys.path[:0] = [{source!r}, "/root/autodl-tmp/lookaway-wm/external/ReactVAU-paper"]
+from llava.model.language_model.llava_qwen import LlavaQwenConfig, LlavaQwenForCausalLM
+from nc_rted.prediction_adapters import BlindDetectionRunner
+from nc_rted.prediction_worker import count_slow_execution
+from peft import LoraConfig, get_peft_model
+torch.manual_seed(17)
+raw = LlavaQwenForCausalLM(LlavaQwenConfig(vocab_size=19, hidden_size=16, intermediate_size=32, num_hidden_layers=1, num_attention_heads=2, num_key_value_heads=2, max_position_embeddings=64)).eval()
+input_ids = torch.tensor([[1, 2, 3, 4]])
+with torch.no_grad(): full = raw(input_ids=input_ids, images=None, use_cache=False, return_dict=True).logits
+slow = get_peft_model(raw, LoraConfig(r=2, lora_alpha=2, target_modules=["q_proj"], lora_dropout=0.0)).eval()
+bridge = SimpleNamespace(raw_slow=raw, slow=slow, prepare=lambda *args, **kwargs: SimpleNamespace(arguments={{"input_ids": input_ids, "images": None}}))
+runner = BlindDetectionRunner(bridge=bridge, reader=None, protocol=None, observation_reader=None, prompt_tokenizer=None, yes_token_ids=(1, 2), no_token_ids=(3,), fusion="replace", fusion_alpha=.5, smoother=None)
+counter = {{"completed_slow_forwards": 0}}
+with count_slow_execution(SimpleNamespace(bridge=bridge), counter):
+    with torch.no_grad(): reduced = runner._last_token_head_call(bridge.prepare())
+    probability = runner._slow_probability(object(), None, enabled=False)
+assert reduced.shape == (1, 1, 19)
+assert (reduced[0, -1] - full[0, -1]).abs().max().item() <= 1e-7
+full_probability = (full[0, -1].float()[[1, 2]].max() - torch.logaddexp(full[0, -1].float()[[1, 2]].max(), full[0, -1].float()[[3]].max())).exp()
+assert probability == float(full_probability)
+assert counter == {{"completed_slow_forwards": 2}}
+assert raw(input_ids=input_ids, images=None, use_cache=False, return_dict=True).logits.shape == (1, 4, 19)
+'''
+    result = subprocess.run(["/root/autodl-tmp/lookaway-wm/.venv-reactvau/bin/python", "-c", code], text=True,
+                            capture_output=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_incremental_checkpoint_restores_only_selected_trainable_mapping(tmp_path, monkeypatch):

@@ -119,12 +119,55 @@ class BlindDetectionRunner:
         self.bridge, self.reader, self.protocol, self.observation_reader = bridge, reader, protocol, observation_reader
         self.prompt_tokenizer, self.yes_token_ids, self.no_token_ids = prompt_tokenizer, yes_token_ids, no_token_ids
         self.fusion, self.fusion_alpha, self.smoother = fusion, fusion_alpha, smoother
+        self._slow_head_active = False
+
+    def _last_token_head_call(self, prepared):
+        arguments = prepared.arguments
+        raw = getattr(self.bridge, "raw_slow", None)
+        if (not isinstance(arguments, dict) or arguments.get("labels") is not None or raw is None
+                or not isinstance(raw, torch.nn.Module) or not isinstance(self.bridge.slow, torch.nn.Module)
+                or raw.training or self.bridge.slow.training or torch.is_grad_enabled() or self._slow_head_active):
+            raise PredictionExecutionError("bound Slow scoring route is not inference-safe")
+        output_embeddings = getattr(raw, "get_output_embeddings", None)
+        if not callable(output_embeddings):
+            raise PredictionExecutionError("bound Slow model has no output-head accessor")
+        head = output_embeddings()
+        config = getattr(raw, "config", None)
+        if (head is not getattr(raw, "lm_head", None) or not isinstance(head, torch.nn.Linear) or head.bias is not None
+                or getattr(config, "hidden_size", None) != head.in_features or getattr(config, "vocab_size", None) != head.out_features
+                or head._forward_pre_hooks or head._forward_hooks or torch.nn.utils.parametrize.is_parametrized(head)):
+            raise PredictionExecutionError("bound Slow output head differs from the supported inference shape")
+        calls = 0
+
+        def last_token_only(module, args):
+            nonlocal calls
+            calls += 1
+            if calls != 1 or len(args) != 1 or not isinstance(args[0], torch.Tensor):
+                raise PredictionExecutionError("bound Slow output head was reentered")
+            hidden = args[0]
+            if (hidden.ndim != 3 or hidden.shape[0] != 1 or hidden.shape[1] < 1 or hidden.shape[2] != module.in_features
+                    or hidden.dtype != module.weight.dtype or hidden.device != module.weight.device):
+                raise PredictionExecutionError("bound Slow output head input differs from the expected hidden state")
+            return (hidden[:, -1:, :],)
+
+        handle = head.register_forward_pre_hook(last_token_only)
+        self._slow_head_active = True
+        try:
+            result = self.bridge.slow(**arguments, use_cache=False, return_dict=True)
+            logits = getattr(result, "logits", None)
+            if (calls != 1 or not isinstance(logits, torch.Tensor) or logits.ndim != 3
+                    or tuple(logits.shape[:2]) != (1, 1) or logits.shape[2] != head.out_features
+                    or logits.dtype != head.weight.dtype or logits.device != head.weight.device):
+                raise PredictionExecutionError("bound Slow output head did not return one final-token vocabulary row")
+            return logits
+        finally:
+            handle.remove()
+            self._slow_head_active = False
 
     def _slow_probability(self, inputs, observations, *, enabled: bool) -> float:
         with torch.no_grad():
             prepared = self.bridge.prepare(inputs, observations if enabled else None, enabled=enabled)
-            result = self.bridge.slow(**prepared.arguments, use_cache=False, return_dict=True)
-            logits = result.logits[0, -1].float()
+            logits = self._last_token_head_call(prepared)[0, -1].float()
             yes = logits[list(self.yes_token_ids)].max()
             no = logits[list(self.no_token_ids)].max()
             return float((yes - torch.logaddexp(yes, no)).exp().item())

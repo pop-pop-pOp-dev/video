@@ -255,6 +255,17 @@ def adopt_live(queue, owner):
     host = owner.split(":", 1)[0]
     for job in queue.running_attempts():
         if job.get("lease_owner", "").split(":", 1)[0] != host: continue
+        if job.get("state") == "LAUNCHING":
+            try: repair_lock=acquire_supervisor_lock(attempt_directory(json.loads(job["payload"]),job))
+            except OSError: continue
+            if repair_lock is False: continue
+            try:
+                expected_journal=attempt_directory(json.loads(job["payload"]),job) / f"attempt-{job['attempts']}.json"
+                if not queue.repair_launching_journal(job["job_key"],job["lease_token"],job["attempts"],expected_journal):
+                    continue
+                job=next(candidate for candidate in queue.running_attempts() if candidate["job_key"] == job["job_key"] and candidate["lease_token"] == job["lease_token"])
+            finally:
+                repair_lock.close()
         state=attempt_state(job.get("pid"), job.get("process_starttime"), host)
         if state not in {"live", "group_live"}: continue
         try: lock=acquire_supervisor_lock(attempt_directory(json.loads(job["payload"]), job))
@@ -293,17 +304,26 @@ def reconcile_exited_attempts(queue, owner):
             try: lock=acquire_supervisor_lock(attempt_directory(json.loads(job["payload"]),job))
             except OSError: continue
             if lock is False: continue
-            queue.take_supervision(job["job_key"],job["lease_token"],owner); job["lease_owner"]=owner
-            queue.protected_live(job["job_key"], job["lease_token"], "launch intent has no durable child identity", owner=owner)
-            lock.close()
-            continue
+            expected_journal=attempt_directory(json.loads(job["payload"]),job) / f"attempt-{job['attempts']}.json"
+            if not queue.repair_launching_journal(job["job_key"],job["lease_token"],job["attempts"],expected_journal):
+                queue.take_supervision(job["job_key"],job["lease_token"],owner); job["lease_owner"]=owner
+                queue.protected_live(job["job_key"], job["lease_token"], "launch intent has no durable child identity", owner=owner)
+                lock.close()
+                continue
+            job=next(candidate for candidate in queue.running_attempts() if candidate["job_key"] == job["job_key"] and candidate["lease_token"] == job["lease_token"])
+        else:
+            lock=None
         state = attempt_state(job.get("pid"), job.get("process_starttime"), host)
-        if state == "live": continue
-        if state == "group_live":
+        if state == "live":
+            if lock is not None: lock.close()
             continue
-        try: lock=acquire_supervisor_lock(attempt_directory(json.loads(job["payload"]),job))
-        except OSError: continue
-        if lock is False: continue
+        if state == "group_live":
+            if lock is not None: lock.close()
+            continue
+        if lock is None:
+            try: lock=acquire_supervisor_lock(attempt_directory(json.loads(job["payload"]),job))
+            except OSError: continue
+            if lock is False: continue
         queue.take_supervision(job["job_key"],job["lease_token"],owner); job["lease_owner"]=owner
         # The job row is policy authority. Re-read it after ownership transfer
         # so a stop written by a prior controller cannot be bypassed by this

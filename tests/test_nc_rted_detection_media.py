@@ -1,10 +1,11 @@
 import json
 from dataclasses import replace
 
+import numpy as np
 import pytest
 import torch
 
-from nc_rted.detection_media import StreamingDetectionReader
+from nc_rted.detection_media import OpenCVFrames, StreamingDetectionReader
 from nc_rted.detection_provider import DetectionProtocol
 from nc_rted.task_inputs import TaskInputError, sha256_file
 
@@ -33,6 +34,29 @@ def setup(tmp_path, *, total=10, rt=True):
         return StreamingDetectionReader(snapshot, snapshot_sha256=sha256_file(snapshot),
             fast_identity=document["fast_identity"], protocols={"ucf":protocol}, encode=encode, decoder_factory=Decoder)
     return build, document, snapshot, calls, encodings
+
+
+def test_opencv_frames_uses_exact_monotone_grab_retrieve_and_backward_seek_fallback():
+    class Capture:
+        def __init__(self): self.position, self.calls = 0, []
+        def grab(self):
+            self.calls.append(("grab", self.position)); self.position += 1; return True
+        def retrieve(self):
+            self.calls.append(("retrieve", self.position - 1))
+            return True, np.full((1, 1, 3), self.position - 1, dtype=np.uint8)
+        def set(self, key, index): self.calls.append(("set", key, index)); self.position = index
+        def read(self):
+            self.calls.append(("read", self.position)); value = self.position; self.position += 1
+            return True, np.full((1, 1, 3), value, dtype=np.uint8)
+
+    capture = Capture()
+    decoder = object.__new__(OpenCVFrames)
+    decoder.capture, decoder._next_index = capture, 0
+    decoder.cv2 = type("CV2", (), {"CAP_PROP_POS_FRAMES": 1, "COLOR_BGR2RGB": 2,
+                                    "cvtColor": staticmethod(lambda frame, code: frame)})()
+    assert [np.asarray(decoder.read(index))[0, 0, 0] for index in (0, 1, 3, 2)] == [0, 1, 3, 2]
+    assert capture.calls == [("grab", 0), ("retrieve", 0), ("grab", 1), ("retrieve", 1),
+                             ("grab", 2), ("grab", 3), ("retrieve", 3), ("set", 1, 2), ("read", 2)]
 
 
 def test_decoder_is_lazy_and_never_decodes_after_target(tmp_path):

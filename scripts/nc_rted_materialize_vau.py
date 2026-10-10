@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+APPROVED_PROJECT_ROOT = Path("/root/autodl-tmp/lookaway-wm")
 sys.path.insert(0, str(ROOT / "src"))
 from nc_rted.vau_media import (MIN_FREE_BYTES, VAUMediaError, _atomic_json_new, build_plans,
                                estimate, materialize, plan_document, raw_frame_capacity, sha256_file,
@@ -30,7 +31,7 @@ def main() -> None:
     parser.add_argument("--hard-guard-gib", type=float, default=20.0)
     parser.add_argument("--max-artifact-gib", type=float, default=50.0)
     args = parser.parse_args()
-    if args.project_root is not None and args.project_root.resolve() != ROOT.resolve():
+    if args.project_root is not None and args.project_root.resolve() != APPROVED_PROJECT_ROOT:
         raise VAUMediaError("--project-root must be this approved project root")
     identities = _read_identity(args.identity)
     identity_sha256 = sha256_file(args.identity)

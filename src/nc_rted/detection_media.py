@@ -31,11 +31,26 @@ class OpenCVFrames:
         self.frame_count = int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
         self.height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self._next_index = 0
 
     def read(self, index: int):
         from PIL import Image
-        self.capture.set(self.cv2.CAP_PROP_POS_FRAMES, index)
-        ok, frame = self.capture.read()
+        if type(index) is not int or index < 0:
+            raise TaskInputError("bound original frame index is invalid")
+        if index < self._next_index:
+            # Repeated/backward access is uncommon but preserves the precise
+            # seek/read semantics of the original implementation.
+            self.capture.set(self.cv2.CAP_PROP_POS_FRAMES, index)
+            ok, frame = self.capture.read()
+            self._next_index = index + 1
+        else:
+            # OpenCV's read() is grab()+retrieve(). Advance a monotone stream
+            # without expensive keyframe seeks, then retrieve the requested RGB.
+            for _ in range(index - self._next_index + 1):
+                if not self.capture.grab():
+                    raise TaskInputError(f"bound original frame {index} could not be decoded")
+            ok, frame = self.capture.retrieve()
+            self._next_index = index + 1
         if not ok:
             raise TaskInputError(f"bound original frame {index} could not be decoded")
         return Image.fromarray(self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2RGB))

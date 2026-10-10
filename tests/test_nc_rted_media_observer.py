@@ -58,6 +58,13 @@ def _observer(tmp_path, *, duration_frames=37):
     return instance, reads, calls
 
 
+def test_caption_observation_implementation_identity_hashes_real_producers():
+    identity = CausalMediaObserver.caption_observation_implementation_identity()
+    assert set(identity) == {"batches", "detection_media", "detector", "features", "media_observer",
+                             "observation", "observation_cache", "tracking"}
+    assert all(isinstance(digest, str) and len(digest) == 64 for digest in identity.values())
+
+
 def test_detection_reads_only_global_2fps_frames_at_or_before_query(tmp_path):
     observer, reads, calls = _observer(tmp_path)
     observer("ucf-crime", "frozen/clip.mp4", 3.)

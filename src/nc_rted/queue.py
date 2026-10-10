@@ -30,6 +30,10 @@ class HardLimit(QueueError):
     def __init__(self, code: str): self.code=code; super().__init__(code)
 
 
+def after_attempt_journal_write():
+    """Test seam for the file-before-SQL crash boundary."""
+
+
 class JobQueue:
     def __init__(self, database: str | Path):
         self.path = Path(database)
@@ -208,10 +212,41 @@ class JobQueue:
         record={"job_key":job_key,"lease_token":token,"pid":pid,"process_starttime":process_starttime,"gpu_identity":gpu_identity,"state":state,"member_identities":member_identities or {},"updated_at":time.time()}
         from .worker_runtime import write_journal
         path=Path(journal_path); write_journal(path,record)
+        after_attempt_journal_write()
         with self.connect() as db: db.execute("INSERT OR REPLACE INTO attempt_journal VALUES(?,?,?,?,?,?,?,?)",(token,job_key,pid,process_starttime,gpu_identity,str(path),state,time.time()))
 
     def update_attempt_journal(self, job_key, token, pid, process_starttime, gpu_identity, journal_path, state="RUNNING", member_identities=None):
         self.start_attempt_journal(job_key, token, pid, process_starttime, gpu_identity, journal_path, state, member_identities)
+
+    def repair_launching_journal(self, job_key, token, attempt_number, journal_path):
+        """Adopt a durable post-launch identity left before its SQL replacement."""
+        expected_path=Path(journal_path).resolve()
+        try:
+            record=json.loads(expected_path.read_text())
+            if not isinstance(record,dict): return False
+            pid=record.get("pid"); starttime=record.get("process_starttime")
+            members=record.get("member_identities")
+            if (record.get("job_key") != job_key or
+                    record.get("lease_token") != token or record.get("state") != RUNNING or
+                    not isinstance(pid,int) or pid <= 0 or not isinstance(starttime,str) or not starttime or
+                    not isinstance(members,dict) or members.get(str(pid)) != starttime or
+                    any(not isinstance(member,str) or not member.isdigit() or not isinstance(member_start,str) or not member_start for member,member_start in members.items())):
+                return False
+            normalized_members={int(member): str(member_start) for member,member_start in members.items()}
+            if any(member <= 0 or not member_start for member,member_start in normalized_members.items()):
+                return False
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return False
+        now=time.time()
+        with self.connect() as db, self.transaction(db):
+            row=db.execute("SELECT j.*,q.id AS job_id,q.status,q.lease_token,q.attempts FROM attempt_journal j JOIN jobs q ON q.job_key=j.job_key AND q.lease_token=j.lease_token WHERE q.job_key=? AND q.lease_token=?",(job_key,token)).fetchone()
+            if (not row or row["status"] != RUNNING or row["state"] != "LAUNCHING" or
+                    row["attempts"] != attempt_number or Path(row["journal_path"]).resolve() != expected_path or
+                    not db.execute("SELECT 1 FROM attempts WHERE job_id=? AND number=? AND lease_token=?",(row["job_id"],attempt_number,token)).fetchone()):
+                return False
+            db.execute("UPDATE attempt_journal SET pid=?,process_starttime=?,state=?,updated_at=? WHERE lease_token=?",(pid,starttime,RUNNING,now,token))
+            db.execute("UPDATE jobs SET pid=?,process_starttime=?,updated_at=? WHERE id=? AND status=? AND lease_token=?",(pid,starttime,now,row["job_id"],RUNNING,token))
+        return True
 
     def release_unstarted(self, job_key, token, detail):
         """Undo a resource-preflight claim before a child or journal exists."""

@@ -18,7 +18,7 @@ from .caption_sampling import OriginalSamplingAudit
 from .detector import CausalWindowObservation, observe_causal_window
 from .features import FeatureAssemblyResult, FeatureStatus
 from .observation_cache import FrozenFrameCache
-from .task_inputs import TaskInputError
+from .task_inputs import TaskInputError, sha256_file
 
 
 class MediaObserverError(TaskInputError):

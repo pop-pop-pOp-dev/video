@@ -1,27 +1,57 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "created_at": "2026-10-10T01:46:49.795780+00:00",
-  "source_commit": "1afda1df0e7cd0563c22d552280a1a19f698feed",
+  "created_at": "2026-10-10T02:54:17.336114+00:00",
+  "source_commit": "73c6bd128bb5edf61d501b0cbd7cf93e94d41405",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
   "validation": {
-    "cpu_passed": 421,
-    "cpu_tested_commit": "1afda1df0e7cd0563c22d552280a1a19f698feed",
-    "cpu_report_sha256": "76027ce54266ec7165609a9c10ed82cf64beafb859324d191044f148668af3a3",
+    "previous_complete_suite": {
+      "cpu_passed": 421,
+      "cpu_tested_commit": "1afda1df0e7cd0563c22d552280a1a19f698feed",
+      "cpu_report_sha256": "76027ce54266ec7165609a9c10ed82cf64beafb859324d191044f148668af3a3",
+      "independent_reviews_sha256": {
+        "blind_prediction_native_astra_review_v2.json": "0f36ed63189fe563d8436dd10f8e11ce49784bdadd1786353b1ffabac9107bb8",
+        "vau_media_native_astra_review_v5.json": "9fbfd81ad6c26705218d8c3de7d52e45b6b3eb1c4c03fb545449cac63ee65110",
+        "caption_observation_native_astra_review_v2.json": "dfc72d32a3aa333cbc8ed6f1b37a5b7e573246c737476d3911228231507107ee",
+        "caption_preparation_native_review_v1.json": "71af47c6bbdc609c4036c04c66e0bbc5ba328e20e7daa8337e4f5aee8288bf4e",
+        "exact_vision_hotpath_native_review_v1.json": "2654b444ab0247d971e1c5b36ba3a702e2e56544d623abb6e7a93ed18e35da34"
+      }
+    },
+    "full_suite_repeated": false,
+    "focused_checks": {
+      "queue_recovery_base": 43,
+      "queue_guard_delta": 8,
+      "real_caption_identity_method": 1
+    },
+    "prior_new_suite_failure": "421 pass/1 queue crash-gap failure retained; fixed and covered by focused crash/recovery tests",
     "independent_reviews_sha256": {
-      "blind_prediction_native_astra_review_v2.json": "0f36ed63189fe563d8436dd10f8e11ce49784bdadd1786353b1ffabac9107bb8",
-      "vau_media_native_astra_review_v5.json": "9fbfd81ad6c26705218d8c3de7d52e45b6b3eb1c4c03fb545449cac63ee65110",
-      "caption_observation_native_astra_review_v2.json": "dfc72d32a3aa333cbc8ed6f1b37a5b7e573246c737476d3911228231507107ee",
-      "caption_preparation_native_review_v1.json": "71af47c6bbdc609c4036c04c66e0bbc5ba328e20e7daa8337e4f5aee8288bf4e",
-      "exact_vision_hotpath_native_review_v1.json": "2654b444ab0247d971e1c5b36ba3a702e2e56544d623abb6e7a93ed18e35da34"
-    }
+      "vau_deployment_root_native_review_v1.json": "f0342da1ab1e9d859307d30428c8280906beecf009cf21167f20ba60d23f0063",
+      "caption_preparation_config_native_review_v1.json": "c28daf8f2a18287731a51b19d0b1abbc5081b60cdf468a5852941b03b26b2367",
+      "caption_runner_native_review_v2.json": "5599a7fb9c1c9021ac193a07a8b7308ef807243e6d497119860723af80707cb5",
+      "monotone_decoder_native_review_v1.json": "7325e894369d73c0c2451350c5e329fce04036f878b946c73dad83c5c86eeeef",
+      "queue_crash_repair_native_review_v1.json": "b813f4f5ced6bcc27c5deaa4339b5205799b0cd5e707309d60495fa4be4db302",
+      "caption_identity_import_native_review_v1.json": "8f823f6a96551b0953666da878149c7b29e3377157d19d738613f56963b0cfdc"
+    },
+    "real_decoder_provider_parity_sha256": "46adcf08b38052a78765e2312e84cf1096939ceb9f2769e56037d3299c6841c3"
   },
   "remaining": [
-    "complete crossfit teacher and caption observation preparation",
-    "real full production assemble with fixed8000 throughput",
-    "longest and complete protocol prediction acceptance",
-    "full ten engineering gates and rental resource admission",
-    "formal12training13fullmodel evaluations and statistical analysis"
+    "complete crossfit teachers and caption preparation",
+    "four-group execution/recovery equivalence",
+    "real full R0 prediction factory",
+    "formal engineering admission and measured full schedule",
+    "formal12training13completeevaluations/statistics"
+  ],
+  "changed_scoped_files": [
+    "scripts/nc_rted_build_caption_preparation_manifest.py",
+    "scripts/nc_rted_caption_preparation_runner.py",
+    "scripts/nc_rted_materialize_vau.py",
+    "scripts/nc_rted_queue.py",
+    "src/nc_rted/detection_media.py",
+    "src/nc_rted/media_observer.py",
+    "src/nc_rted/queue.py",
+    "tests/test_nc_rted_detection_media.py",
+    "tests/test_nc_rted_media_observer.py",
+    "tests/test_nc_rted_queue_lifecycle.py"
   ],
   "files": [
     {
@@ -31,8 +61,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "e31fe24a941ac05163de37ad0cf5f88f19e644bfcdfb0f7c38e8fe5b7bbd5556",
-      "bytes": 8115
+      "sha256": "4b4dfe4e0614e049bfd3db20deaa3745c0888ce23dcd52cbfbe54e0a9c986125",
+      "bytes": 8699
     },
     {
       "path": "THIRD_PARTY.md",
@@ -460,6 +490,11 @@
       "bytes": 7698
     },
     {
+      "path": "scripts/nc_rted_build_caption_preparation_manifest.py",
+      "sha256": "b67d765755a48ffd62100e8b6ee76b4887c0efc64ffd879781e8dc390c38d4b1",
+      "bytes": 17575
+    },
+    {
       "path": "scripts/nc_rted_build_manifests.py",
       "sha256": "bad0e780869983b456ba9d9aa441e18c464f553d30d0ad1924b130d8ad103351",
       "bytes": 3482
@@ -468,6 +503,11 @@
       "path": "scripts/nc_rted_build_teacher.py",
       "sha256": "99227112e961a7c6b01096e98d556979786cd35cd2251b691cd68b07827cf9f9",
       "bytes": 1589
+    },
+    {
+      "path": "scripts/nc_rted_caption_preparation_runner.py",
+      "sha256": "d587ca65189dff013c2ba3b3b241d619640302f81f3900becaa61fe8967dce3c",
+      "bytes": 13657
     },
     {
       "path": "scripts/nc_rted_caption_streaming_probe.py",
@@ -491,8 +531,8 @@
     },
     {
       "path": "scripts/nc_rted_materialize_vau.py",
-      "sha256": "24fd7a3422725200f782d6a057091c3ff700295e051d492adde9f6c4643d582d",
-      "bytes": 4606
+      "sha256": "f73c26b99b8bfcdb7376c26bcb2191ff60078ffe6dc0607182802753cd172177",
+      "bytes": 4674
     },
     {
       "path": "scripts/nc_rted_predict.py",
@@ -511,8 +551,8 @@
     },
     {
       "path": "scripts/nc_rted_queue.py",
-      "sha256": "5ef40211718d0e46ec60815c178985a98ddfa853886f9568735f3d14db392763",
-      "bytes": 30599
+      "sha256": "8f3882c2bffc1170b5572ae9f3c5cfd405e76db1e7f3d4d76d68626a0bb3cd1e",
+      "bytes": 31940
     },
     {
       "path": "scripts/nc_rted_train.py",
@@ -561,8 +601,8 @@
     },
     {
       "path": "src/nc_rted/detection_media.py",
-      "sha256": "b7cf0547982af1b9161fcc1d8bbe364ad698230c175d6bdb2233d477029c2b8a",
-      "bytes": 8481
+      "sha256": "4ea0492ad5b1f14cb6ca7b468808b374a0fb9a40cf4a82e93990ec4e750a4be1",
+      "bytes": 9320
     },
     {
       "path": "src/nc_rted/detection_provider.py",
@@ -606,8 +646,8 @@
     },
     {
       "path": "src/nc_rted/media_observer.py",
-      "sha256": "fb766f2270ed79eebd881ea5cba3d32705efefeb07dc0a4cbff1b3a43ceb67d2",
-      "bytes": 13443
+      "sha256": "5a6ca0710ad8acb71494927b6ff3771673bb1801fcd6c987193ad07535cdfccc",
+      "bytes": 13456
     },
     {
       "path": "src/nc_rted/model.py",
@@ -671,8 +711,8 @@
     },
     {
       "path": "src/nc_rted/queue.py",
-      "sha256": "2f064cdc486e189df9baabc4f3b3a07c10e9e96260870afbc5ebc4624f0e6d07",
-      "bytes": 30311
+      "sha256": "77b22c996e38d064ac4fd47e56c9f37c9f8de363f20f337e76ed8472e3b2b3c7",
+      "bytes": 32868
     },
     {
       "path": "src/nc_rted/recovery.py",
@@ -786,8 +826,8 @@
     },
     {
       "path": "tests/test_nc_rted_detection_media.py",
-      "sha256": "b7960683bf322be5f1eca93690c0f29bb76d16d6d0fb7acf0a3f0328d87d6bc3",
-      "bytes": 6012
+      "sha256": "9ba76c91ccd7ecfddabce754a28b48c7dcaf74199a1bc2d13a9af2d669c4aa16",
+      "bytes": 7363
     },
     {
       "path": "tests/test_nc_rted_detection_provider.py",
@@ -841,8 +881,8 @@
     },
     {
       "path": "tests/test_nc_rted_media_observer.py",
-      "sha256": "590c70a58a58108b56e02f64de31eb82e7ea32d4e55d9756021472ac4b823032",
-      "bytes": 13706
+      "sha256": "22df58bff696d0f9f2a53d2aa31fe5531bc6bd03eddb21717bd89db87af4a727",
+      "bytes": 14139
     },
     {
       "path": "tests/test_nc_rted_model.py",
@@ -886,8 +926,8 @@
     },
     {
       "path": "tests/test_nc_rted_queue_lifecycle.py",
-      "sha256": "3e38a87096f8bc06fd8a590cdc2c6d47179ce2a890024c6fd1aee4c6c818e0e7",
-      "bytes": 22959
+      "sha256": "d9d1463cdb9f18e1e35b5426bd484a1257acfbfd9c62b0d6f4470a7bb700959e",
+      "bytes": 30385
     },
     {
       "path": "tests/test_nc_rted_recovery.py",

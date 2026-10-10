@@ -12,6 +12,7 @@ import time
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+import nc_rted.queue as queue_module
 from nc_rted.queue import BLOCKED, RETRY_WAIT, RUNNING, SUCCEEDED, JobQueue, QueueError
 from nc_rted.worker_runtime import process_starttime
 
@@ -64,6 +65,106 @@ def test_controller_death_adopts_same_child_and_commits_once(tmp_path):
     assert queue.status()[0]["status"] == SUCCEEDED
     assert queue.status()[0]["attempts"] == 1
     assert any((tmp_path / "runs" / "job").glob("attempt-*/result.json"))
+
+
+def test_post_journal_crash_repairs_and_adopts_live_child_without_relaunch(tmp_path, monkeypatch):
+    queue=JobQueue(tmp_path / "queue.sqlite"); output=tmp_path / "output.json"
+    queue.add_job("job", "smoke", payload(tmp_path, output, ["/bin/true"]))
+    job=queue.claim(f"{socket.gethostname()}:dead")
+    run=worker_script.attempt_directory(json.loads(job["payload"]),job); run.mkdir(parents=True)
+    journal=run / f"attempt-{job['attempts']}.json"
+    queue.start_attempt_journal("job",job["lease_token"],None,None,"0",journal,state="LAUNCHING")
+    child=subprocess.Popen([sys.executable,"-c","import time; time.sleep(5)"],start_new_session=True)
+    try:
+        start=process_starttime(child.pid)
+        monkeypatch.setattr(queue_module,"after_attempt_journal_write",lambda: (_ for _ in ()).throw(RuntimeError("injected journal/SQL crash")))
+        with pytest.raises(RuntimeError,match="injected"):
+            queue.update_attempt_journal("job",job["lease_token"],child.pid,start,"0",journal,member_identities={child.pid:start})
+        monkeypatch.setattr(queue_module,"after_attempt_journal_write",lambda: None)
+        assert queue.status()[0]["pid"] is None and queue.running_attempts()[0]["state"] == "LAUNCHING"
+        adopted=worker_script.adopt_live(queue,f"{socket.gethostname()}:replacement")
+        assert adopted is not None and child.poll() is None
+        repaired=queue.running_attempts()[0]
+        assert repaired["state"] == "RUNNING" and repaired["pid"] == child.pid
+        assert queue.claim("another-controller") is None
+        adopted[2].lock.close()
+    finally:
+        child.terminate(); child.wait(timeout=5)
+
+
+def test_post_journal_crash_reconciles_exited_child_completion(tmp_path, monkeypatch):
+    queue=JobQueue(tmp_path / "queue.sqlite"); output=tmp_path / "artifact"
+    queue.add_job("job", "smoke", payload(tmp_path, output, ["/bin/true"]))
+    job=queue.claim(f"{socket.gethostname()}:dead")
+    run=worker_script.attempt_directory(json.loads(job["payload"]),job); run.mkdir(parents=True)
+    journal=run / f"attempt-{job['attempts']}.json"; queue.start_attempt_journal("job",job["lease_token"],None,None,"0",journal,state="LAUNCHING")
+    artifact=run / "artifact"; artifact.write_text("ok")
+    records=[{"path":str(artifact),"checksum":hashlib.sha256(artifact.read_bytes()).hexdigest()}]
+    (run / "producer_completion.json").write_text(json.dumps({"job_key":"job","lease_token":job["lease_token"],"input_hash":job["input_hash"],"artifacts":records}))
+    (run / "result.tmp").write_text(json.dumps({"job_key":"job","lease_token":job["lease_token"],"artifacts":records}))
+    child=subprocess.Popen(["/bin/true"],start_new_session=True); start=process_starttime(child.pid); child.wait(timeout=5)
+    monkeypatch.setattr(queue_module,"after_attempt_journal_write",lambda: (_ for _ in ()).throw(RuntimeError("injected journal/SQL crash")))
+    with pytest.raises(RuntimeError,match="injected"):
+        queue.update_attempt_journal("job",job["lease_token"],child.pid,start,"0",journal,member_identities={child.pid:start})
+    monkeypatch.setattr(queue_module,"after_attempt_journal_write",lambda: None)
+    worker_script.reconcile_exited_attempts(queue,f"{socket.gethostname()}:replacement")
+    assert queue.status()[0]["status"] == SUCCEEDED and queue.status()[0]["attempts"] == 1
+
+
+@pytest.mark.parametrize("record",[
+    {"job_key":"other","lease_token":"wrong","pid":999999,"process_starttime":"1","gpu_identity":"0","state":"RUNNING","member_identities":{"999999":"1"}},
+    {"job_key":"job","lease_token":None,"pid":999999,"process_starttime":"1","gpu_identity":"0","state":"RUNNING","member_identities":{"999999":"wrong"}},
+])
+def test_launch_repair_rejects_foreign_or_invalid_member_journal(tmp_path, record):
+    queue=JobQueue(tmp_path / "queue.sqlite"); output=tmp_path / "artifact"
+    queue.add_job("job", "smoke", payload(tmp_path, output, ["/bin/true"]))
+    job=queue.claim(f"{socket.gethostname()}:dead")
+    run=worker_script.attempt_directory(json.loads(job["payload"]),job); run.mkdir(parents=True)
+    journal=run / f"attempt-{job['attempts']}.json"; queue.start_attempt_journal("job",job["lease_token"],None,None,"0",journal,state="LAUNCHING")
+    record["lease_token"] = record["lease_token"] or job["lease_token"]
+    from nc_rted.worker_runtime import write_journal
+    write_journal(journal,record)
+    worker_script.reconcile_exited_attempts(queue,f"{socket.gethostname()}:replacement")
+    row=queue.status()[0]
+    assert row["status"] == RUNNING and row["pid"] is None and "launch intent" in row["failure"]
+
+
+def test_launch_repair_rejects_journal_from_another_path(tmp_path):
+    queue=JobQueue(tmp_path / "queue.sqlite"); output=tmp_path / "artifact"
+    queue.add_job("job", "smoke", payload(tmp_path, output, ["/bin/true"]))
+    job=queue.claim(f"{socket.gethostname()}:dead")
+    run=worker_script.attempt_directory(json.loads(job["payload"]),job); run.mkdir(parents=True)
+    journal=run / f"attempt-{job['attempts']}.json"; queue.start_attempt_journal("job",job["lease_token"],None,None,"0",journal,state="LAUNCHING")
+    foreign=tmp_path / "foreign-attempt.json"
+    from nc_rted.worker_runtime import write_journal
+    write_journal(foreign,{"job_key":"job","lease_token":job["lease_token"],"pid":999999,"process_starttime":"1","gpu_identity":"0","state":"RUNNING","member_identities":{"999999":"1"}})
+    with queue.connect() as db: db.execute("UPDATE attempt_journal SET journal_path=? WHERE lease_token=?",(str(foreign),job["lease_token"]))
+    worker_script.reconcile_exited_attempts(queue,f"{socket.gethostname()}:replacement")
+    row=queue.status()[0]
+    assert row["status"] == RUNNING and row["pid"] is None and "launch intent" in row["failure"]
+
+
+@pytest.mark.parametrize("contents", ["[]", "null"])
+def test_launch_repair_rejects_non_object_journal(tmp_path, contents):
+    queue=JobQueue(tmp_path / "queue.sqlite"); output=tmp_path / "artifact"
+    queue.add_job("job", "smoke", payload(tmp_path, output, ["/bin/true"]))
+    job=queue.claim(f"{socket.gethostname()}:dead")
+    run=worker_script.attempt_directory(json.loads(job["payload"]),job); run.mkdir(parents=True)
+    journal=run / f"attempt-{job['attempts']}.json"; queue.start_attempt_journal("job",job["lease_token"],None,None,"0",journal,state="LAUNCHING")
+    journal.write_text(contents)
+    assert not queue.repair_launching_journal("job",job["lease_token"],job["attempts"],journal)
+
+
+def test_adoption_does_not_repair_foreign_host_launch(tmp_path):
+    queue=JobQueue(tmp_path / "queue.sqlite"); output=tmp_path / "artifact"
+    queue.add_job("job", "smoke", payload(tmp_path, output, ["/bin/true"]))
+    job=queue.claim("remote-host:dead")
+    run=worker_script.attempt_directory(json.loads(job["payload"]),job); run.mkdir(parents=True)
+    journal=run / f"attempt-{job['attempts']}.json"; queue.start_attempt_journal("job",job["lease_token"],None,None,"0",journal,state="LAUNCHING")
+    from nc_rted.worker_runtime import write_journal
+    write_journal(journal,{"job_key":"job","lease_token":job["lease_token"],"pid":999999,"process_starttime":"1","gpu_identity":"0","state":"RUNNING","member_identities":{"999999":"1"}})
+    assert worker_script.adopt_live(queue,f"{socket.gethostname()}:replacement") is None
+    assert queue.running_attempts()[0]["state"] == "LAUNCHING" and queue.status()[0]["pid"] is None
 
 
 def test_restart_commits_existing_result_temp_without_new_attempt(tmp_path):

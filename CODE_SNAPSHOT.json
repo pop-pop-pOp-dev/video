@@ -1,35 +1,23 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "snapshot_format": 19,
-  "created_at": "2026-10-10T09:27:29.001563+00:00",
-  "source_commit": "efd4a2edd2a9df03bd490b3e8f57da4978249a30",
-  "source_base_commit": "decd71c10cf27fd8413269802bc2c698fb1c18ab",
+  "snapshot_format": 20,
+  "created_at": "2026-10-10T10:01:55.606971+00:00",
+  "source_commit": "f66746ff61117db7fc5277d8b8512f53b7e98014",
+  "source_base_commit": "efd4a2edd2a9df03bd490b3e8f57da4978249a30",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
-  "previous_published_commit": "6cf88986e557b40090508dd28414632d8b0fcc17",
+  "previous_published_commit": "ce595426f0a1f196809167f0a412976d0335bbdd",
   "source_whitelist": {
-    "previous_snapshot_manifest_sha256": "9c66566854d81b05f7fc60f1b1da48a20464d2d5b73200a449263b34f6cc7222",
-    "accepted_cuda_delta_paths": [
+    "previous_snapshot_manifest_sha256": "b00a9bcc71664092c0a9bc0d1a1ea9c26af874e2d7e0792f671558a9014ea916",
+    "accepted_numerics_delta_paths": [
       "scripts/nc_rted_prediction_runtime_probe.py",
       "tests/test_nc_rted_prediction_runtime_probe.py"
     ],
     "main_governance_paths": [
-      "AGENT_BOARD.md",
-      "AGENTS.md"
+      "AGENTS.md",
+      "AGENT_BOARD.md"
     ],
-    "all_other_paths": "Retained from accepted publication v18",
-    "newly_published_accepted_probe_paths": [
-      "scripts/nc_rted_prediction_runtime_probe.py",
-      "tests/test_nc_rted_prediction_runtime_probe.py"
-    ],
-    "accepted_release19_prior_publication_omissions": [
-      "scripts/nc_rted_build_interleaved_diagnostic_manifests.py",
-      "scripts/nc_rted_build_prediction_plan.py",
-      "scripts/nc_rted_refresh_r0_source_bindings.py",
-      "tests/test_nc_rted_interleaved_manifest_builder.py",
-      "tests/test_nc_rted_probe_geometry.py",
-      "tests/test_nc_rted_refresh_r0_source_bindings.py"
-    ]
+    "all_other_paths": "Retained from accepted publication v19"
   },
   "validation": {
     "full_suite_repeated": false,
@@ -38,14 +26,8 @@
       "scoped_paths": [
         "scripts/nc_rted_prediction_runtime_probe.py",
         "tests/test_nc_rted_prediction_runtime_probe.py",
-        "AGENT_BOARD.md",
         "AGENTS.md",
-        "scripts/nc_rted_build_interleaved_diagnostic_manifests.py",
-        "scripts/nc_rted_build_prediction_plan.py",
-        "scripts/nc_rted_refresh_r0_source_bindings.py",
-        "tests/test_nc_rted_interleaved_manifest_builder.py",
-        "tests/test_nc_rted_probe_geometry.py",
-        "tests/test_nc_rted_refresh_r0_source_bindings.py"
+        "AGENT_BOARD.md"
       ]
     },
     "accepted_evidence": [
@@ -93,6 +75,21 @@
         "path": "reports/nc_rted/github_publication_api_v15.json",
         "sha256": "4dc752c59a4da11dc4a7acfa2fc52977e33a7fad530e32f440becaa6ab00d461",
         "required_status": "PUBLISHED_REMOTE_COMMIT_AND_ALL_FILE_HASHES_VERIFIED"
+      },
+      {
+        "path": "reports/nc_rted/numerics_release20_integration_v1.json",
+        "sha256": "ea76c6b9e47fc8e8dbf42f6192974264fcf47a424687124cab39fe0026ccd4e7",
+        "required_status": "INTEGRATED_ACCEPTED_STATIC_CODE"
+      },
+      {
+        "path": "reports/nc_rted/r0_numerics_order_native_review_v2.json",
+        "sha256": "4308bd59f6603a4ee3c1fca57feee72cce65340b714efd957bbe9e96a676cebc",
+        "required_status": "PASS_STATIC"
+      },
+      {
+        "path": "reports/nc_rted/github_publication_api_v16.json",
+        "sha256": "2c96e0e90ae7247a9533c66c6e8d78a90654e28c14830d649595cf61edde32e6",
+        "required_status": "PUBLISHED_REMOTE_COMMIT_AND_ALL_FILE_HASHES_VERIFIED"
       }
     ],
     "hotpath_release18_sha256": {
@@ -107,7 +104,7 @@
     "prepublication_correction": "Previous snapshot omitted probe source/test; explicit accepted files added after validate KeyError; no remote mutation occurred.",
     "accepted_source_coverage": {
       "scoped_tracked_count": 128,
-      "source_commit": "efd4a2edd2a9df03bd490b3e8f57da4978249a30",
+      "source_commit": "f66746ff61117db7fc5277d8b8512f53b7e98014",
       "missing": [],
       "different": [],
       "scope": [
@@ -115,14 +112,14 @@
         "scripts/nc_rted*",
         "tests/test_nc_rted*",
         "configs/nc_rted"
-      ]
+      ],
+      "proof": "Prior accepted128-file coverage plus exact independently accepted two-file numerical-order delta; no broad retest."
     }
   },
   "remaining": [
-    "finish teacher artifact acceptance (generation completed)",
-    "complete2000 caption preparation",
-    "diagnose R0 factory failure and pass actual resource diagnostics",
-    "formal12training13completeevaluations/statistics"
+    "complete2000captionpreparation",
+    "diagnose new R0 model-loading exception; complete actualprediction/training resource admission",
+    "formal12trainings13completeevaluations/statistics"
   ],
   "files": [
     {
@@ -139,8 +136,8 @@
     },
     {
       "path": "AGENT_BOARD.md",
-      "sha256": "89d98fff6732fa86d465ee046b66392cb901fd90b420aca3602f34d8e4a43636",
-      "bytes": 114597,
+      "sha256": "5963d5489cf0c81a07115e2a89beb4f4fbe894b62c3a96dcac71b634ad5cf988",
+      "bytes": 133346,
       "origin": "main_governance"
     },
     {
@@ -755,8 +752,8 @@
     },
     {
       "path": "scripts/nc_rted_prediction_runtime_probe.py",
-      "sha256": "57514d778e087836377063a31fcdcd777bbabe88cd74e60cacdf17073117b277",
-      "bytes": 40005
+      "sha256": "fb47352e6bec26ece449f7b3443ce26a529ac2e785d446cc37c7d290dd483d7e",
+      "bytes": 40421
     },
     {
       "path": "scripts/nc_rted_prepare_caption_observations.py",
@@ -1268,8 +1265,8 @@
     },
     {
       "path": "tests/test_nc_rted_prediction_runtime_probe.py",
-      "sha256": "a6419a2dca5d7dffe15a34f8c5f6ad6389ad720f91dfda58b864e237cc239b5c",
-      "bytes": 34643
+      "sha256": "ea7e8aab005b721a5aac210e6670c6fa3de8a9822982c32fe52806589f95853a",
+      "bytes": 38383
     },
     {
       "path": "tests/test_nc_rted_probe_geometry.py",
@@ -1396,5 +1393,5 @@
       "origin": "release18"
     }
   ],
-  "governance_docs_refreshed_at": "2026-10-10T09:27:29.001797+00:00"
+  "governance_docs_refreshed_at": "2026-10-10T10:04:50.417270+00:00"
 }

@@ -428,8 +428,12 @@ def _peaks(context):
     torch = context.get("_torch")
     if torch is not None and context.get("cuda_started"):
         device = context["device"]
-        context["peak_cuda_allocated_bytes"] = int(torch.cuda.max_memory_allocated(device))
-        context["peak_cuda_reserved_bytes"] = int(torch.cuda.max_memory_reserved(device))
+        allocated = int(torch.cuda.max_memory_allocated(device))
+        reserved = int(torch.cuda.max_memory_reserved(device))
+        prior_allocated = context.get("peak_cuda_allocated_bytes")
+        prior_reserved = context.get("peak_cuda_reserved_bytes")
+        context["peak_cuda_allocated_bytes"] = allocated if prior_allocated is None else max(prior_allocated, allocated)
+        context["peak_cuda_reserved_bytes"] = reserved if prior_reserved is None else max(prior_reserved, reserved)
 
 
 def _snapshot(context):
@@ -565,21 +569,25 @@ def run(args, context):
             raise
         except Exception as error:
             raise ProbeError("PREFLIGHT_INVALID") from error
-    _stage(context, "cuda_initialization")
-    _remaining(context)
     import torch
+    context["_torch"] = torch
+    _stage(context, "factory")
+    _remaining(context)
+    try:
+        factory = default_factory(SimpleNamespace(bindings=bound, binding_sha256={key[:-7]: value for key, value in bound.items() if key.endswith("_sha256")}, protocol=protocol), artifact, device=args.device)
+    finally:
+        if torch.cuda.is_initialized():
+            context["cuda_started"] = True
+            _peaks(context)
+    _remaining(context)
+    _stage(context, "cuda_initialization")
     if not torch.cuda.is_available():
         raise ProbeError("CUDA_UNAVAILABLE")
     _remaining(context)
-    context["_torch"] = torch
     context["cuda_started"] = True
     torch.cuda.set_device(args.device)
     torch.cuda.reset_peak_memory_stats(args.device)
     torch.cuda.synchronize(args.device)
-    _stage(context, "factory")
-    factory = default_factory(SimpleNamespace(bindings=bound, binding_sha256={key[:-7]: value for key, value in bound.items() if key.endswith("_sha256")}, protocol=protocol), artifact, device=args.device)
-    torch.cuda.synchronize(args.device)
-    _peaks(context)
     _stage(context, "model_loading")
     loaded = factory["loader"].load(artifact)
     try:

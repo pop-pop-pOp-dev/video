@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
+from nc_rted.numerics import configure_deterministic_algorithms, deterministic_policy
 from nc_rted.prediction_worker import count_slow_execution
 
 
@@ -108,6 +109,7 @@ def _cuda(monkeypatch, *, allocated=11, reserved=22):
         calls.append(("reset", device))
 
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "is_initialized", lambda: state["selected"])
     monkeypatch.setattr(torch.cuda, "set_device", set_device)
     monkeypatch.setattr(torch.cuda, "reset_peak_memory_stats", reset)
     monkeypatch.setattr(torch.cuda, "synchronize", lambda device: calls.append(("sync", device)))
@@ -615,12 +617,81 @@ def test_run_maps_adapter_structured_output_error_to_payload_invalid(monkeypatch
         probe.run(args, context)
 
 
+def test_factory_failure_records_peaks_when_factory_initialized_cuda(monkeypatch, tmp_path):
+    probe, args, context, _docs = _install_success_environment(monkeypatch, tmp_path, "vad")
+    _cuda(monkeypatch, allocated=31, reserved=47)
+
+    def initialized_factory(*_args, **_kwargs):
+        torch.cuda.set_device("cuda:3")
+        raise RuntimeError("factory failed after CUDA initialization")
+
+    monkeypatch.setattr(probe, "default_factory", initialized_factory)
+    with pytest.raises(RuntimeError, match="factory failed"):
+        probe.run(args, context)
+    assert context["cuda_started"] is True
+    assert context["peak_cuda_allocated_bytes"] == 31
+    assert context["peak_cuda_reserved_bytes"] == 47
+
+
+def test_factory_peak_survives_reset_before_lower_loader_peak(monkeypatch, tmp_path):
+    probe, args, context, _docs = _install_success_environment(monkeypatch, tmp_path, "vad")
+    state = {"selected": False, "factory": True}
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "is_initialized", lambda: state["selected"])
+    monkeypatch.setattr(torch.cuda, "set_device", lambda _device: state.update(selected=True))
+    monkeypatch.setattr(torch.cuda, "reset_peak_memory_stats", lambda _device: state.update(factory=False))
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda _device: None)
+    monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda _device: 101 if state["factory"] else 11)
+    monkeypatch.setattr(torch.cuda, "max_memory_reserved", lambda _device: 151 if state["factory"] else 17)
+    factory = probe.default_factory
+
+    def initialized_factory(*factory_args, **factory_kwargs):
+        torch.cuda.set_device("cuda:3")
+        return factory(*factory_args, **factory_kwargs)
+
+    monkeypatch.setattr(probe, "default_factory", initialized_factory)
+    result = probe.run(args, context)
+    assert result["peak_cuda_allocated_bytes"] == 101
+    assert result["peak_cuda_reserved_bytes"] == 151
+
+
+def test_post_factory_deadline_retains_factory_peak(monkeypatch, tmp_path):
+    probe, args, context, _docs = _install_success_environment(monkeypatch, tmp_path, "vad")
+    state = {"selected": False}
+    monkeypatch.setattr(torch.cuda, "is_initialized", lambda: state["selected"])
+    monkeypatch.setattr(torch.cuda, "set_device", lambda _device: state.update(selected=True))
+    monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda _device: 73)
+    monkeypatch.setattr(torch.cuda, "max_memory_reserved", lambda _device: 89)
+    factory = probe.default_factory
+
+    def initialized_factory(*factory_args, **factory_kwargs):
+        torch.cuda.set_device("cuda:3")
+        context["deadline_utc_epoch"] = time.time() - 1
+        return factory(*factory_args, **factory_kwargs)
+
+    monkeypatch.setattr(probe, "default_factory", initialized_factory)
+    with pytest.raises(probe.ProbeError, match="DEADLINE_EXCEEDED"):
+        probe.run(args, context)
+    assert context["peak_cuda_allocated_bytes"] == 73
+    assert context["peak_cuda_reserved_bytes"] == 89
+
+
 @pytest.mark.parametrize("kind", ("vad", "vau"))
 def test_successful_routes_use_real_request_geometry_validators_and_counters(monkeypatch, tmp_path, kind):
     probe, args, context, _docs = _install_success_environment(monkeypatch, tmp_path, kind)
+    monkeypatch.delenv("CUBLAS_WORKSPACE_CONFIG", raising=False)
     calls = _cuda(monkeypatch)
+    factory = probe.default_factory
+
+    def policy_configuring_factory(*factory_args, **factory_kwargs):
+        configure_deterministic_algorithms()
+        return factory(*factory_args, **factory_kwargs)
+
+    monkeypatch.setattr(probe, "default_factory", policy_configuring_factory)
     result = probe.run(args, context)
     assert result["status"] == "PASS_RUNTIME_PROBE"
+    assert os.environ["CUBLAS_WORKSPACE_CONFIG"] == deterministic_policy().cublas_workspace_config
+    assert torch.are_deterministic_algorithms_enabled()
     assert result["summary"]["kind"] == kind
     assert result["peak_cuda_allocated_bytes"] == 11
     assert result["peak_cuda_reserved_bytes"] == 22

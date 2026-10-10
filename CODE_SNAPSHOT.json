@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-10-10T22:01:06.206661+00:00",
+  "created_at": "2026-10-10T22:43:27.527711+00:00",
   "files": [
     {
       "bytes": 334,
@@ -567,6 +567,11 @@
       "sha256": "f73c26b99b8bfcdb7376c26bcb2191ff60078ffe6dc0607182802753cd172177"
     },
     {
+      "bytes": 6399,
+      "path": "scripts/nc_rted_measure_production_cold.py",
+      "sha256": "6745cd47d6eb75ededd5a48385ec3b314bfce3c764771bdd810116fa41344398"
+    },
+    {
       "bytes": 29134,
       "path": "scripts/nc_rted_predict.py",
       "sha256": "6796ff94a60f22744d3e7eedae37a74ff5804a59b0bedac3febe67570bd023ea"
@@ -687,9 +692,9 @@
       "sha256": "3df6e98f9db37c5d6e1c1aab8572dadad000ad512b8e807c898f0cf74014fb15"
     },
     {
-      "bytes": 33192,
+      "bytes": 33585,
       "path": "src/nc_rted/detector.py",
-      "sha256": "4dffd4c50ffa8861e7f34289b382fe868e8316fbd7587dfb5c0bfc5f1f3d8a0c"
+      "sha256": "e2874f436aeba63a848893baa052c8238d29d444c5a8ea3aaf6d740df7b02355"
     },
     {
       "bytes": 12824,
@@ -742,9 +747,9 @@
       "sha256": "0a4d01e338f7c1a5845115f31519ced052ae44c67f22fa5d35c0c2693c474b69"
     },
     {
-      "bytes": 15005,
+      "bytes": 15843,
       "path": "src/nc_rted/media_observer.py",
-      "sha256": "aaf2a4778d43fe4c93ca97278e5992eec241c77542a7e829b95295f2a6482d85"
+      "sha256": "64e319220fb625f20374c68018b4e65f5004ceb3fe42292eccb64670d1aeae4b"
     },
     {
       "bytes": 11448,
@@ -805,6 +810,11 @@
       "bytes": 16087,
       "path": "src/nc_rted/prediction_worker.py",
       "sha256": "86dcbfcffef7c27ca951cae4c26eefddf7b82af6da6a528fddb4052bc37badfd"
+    },
+    {
+      "bytes": 12100,
+      "path": "src/nc_rted/production_cold.py",
+      "sha256": "d152048233d63f822cc7d05838da2d947d183c8a85b623247e55bef5f2f0cefa"
     },
     {
       "bytes": 46117,
@@ -1072,6 +1082,11 @@
       "sha256": "be9e45ceb0fc5daf047b1a73d4a049f6227a6e14dffff82a8cef2be5067e241b"
     },
     {
+      "bytes": 7793,
+      "path": "tests/test_nc_rted_production_cold.py",
+      "sha256": "1913e8217869a7bbb430e99eb1544f7cbb68c40ab497133807dc508e2b5584bf"
+    },
+    {
       "bytes": 33013,
       "path": "tests/test_nc_rted_production_runtime.py",
       "sha256": "5bd81c3851aeb3da81d672700153aedeb91a225b9720f451f7dff5a70c20a899"
@@ -1188,46 +1203,46 @@
     }
   ],
   "formal_execution_allowed": false,
-  "previous_published_commit": "e3973835e1182c92efe74272546b43e255dbdd94",
+  "previous_published_commit": "e7600200d84bbcbb63b98eb60a8e60c78e82fd27",
   "scientific_results": "not_available",
-  "snapshot_format": 37,
+  "snapshot_format": 38,
   "source_base_commit": "e35e088f94d5f68a01261987ade2f08a406c3868",
-  "source_commit": "e3973835e1182c92efe74272546b43e255dbdd94",
+  "source_commit": "e7600200d84bbcbb63b98eb60a8e60c78e82fd27",
   "source_whitelist": {
-    "accepted_v36_plus_exact_five_path_delta": {
-      "scripts/nc_rted_interleaved_gpu_diagnostic.py": "fe60601e0b7c678dbf80463543f5520a2e4ef117bb34769db3aeddb610c63c02",
-      "scripts/nc_rted_score_development_fast.py": "e6950370faa4be353ea19faf31b0b037b1b39393411afcc356dba6a83d25d4da",
-      "src/nc_rted/development_fast_runtime.py": "ae7c4d3624234c471a2db40ea67933345a69fcb3a791a6f8b9512d082be9710b",
-      "tests/test_nc_rted_development_fast_runtime.py": "9711b221801b635ea608e261b3ddbc882312b10e7fb8ee515a6453777c143e2f",
-      "tests/test_nc_rted_formal_bundle_qualification.py": "9b56d87fa9426150ddf02779d4a50dd67540a14e624661f9205c6a727ff6ee67"
+    "accepted_v37_plus_exact_five_path_delta": {
+      "scripts/nc_rted_measure_production_cold.py": "6745cd47d6eb75ededd5a48385ec3b314bfce3c764771bdd810116fa41344398",
+      "src/nc_rted/detector.py": "e2874f436aeba63a848893baa052c8238d29d444c5a8ea3aaf6d740df7b02355",
+      "src/nc_rted/media_observer.py": "64e319220fb625f20374c68018b4e65f5004ceb3fe42292eccb64670d1aeae4b",
+      "src/nc_rted/production_cold.py": "d152048233d63f822cc7d05838da2d947d183c8a85b623247e55bef5f2f0cefa",
+      "tests/test_nc_rted_production_cold.py": "1913e8217869a7bbb430e99eb1544f7cbb68c40ab497133807dc508e2b5584bf"
     },
-    "published_v36_commit": "e3973835e1182c92efe74272546b43e255dbdd94",
-    "v36_snapshot_sha256": "2216bcaad662d160f51809beeda245ef236d5a9d5a441236269fb0b0b0b3e032"
+    "published_v37_commit": "e7600200d84bbcbb63b98eb60a8e60c78e82fd27",
+    "v37_snapshot_sha256": "65c26e9f465974ab756eb36cc5fb4070f2c3e03f7ebccc97797865b2fd3e1413"
   },
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
   "validation": {
     "accepted_evidence": [
       {
-        "path": "reports/nc_rted/development_fast_native_review_v2.json",
-        "required_status": "PASS_STATIC",
-        "sha256": "b457638ecb27f02945ddfc7ac791095cd0bb2c86bbac223544a5c324c0c454e5"
+        "path": "reports/nc_rted/code05_production_cold_native_review_v1.json",
+        "required_status": "PASS_STATIC_PRODUCTION_COLD_ENTRY",
+        "sha256": "91ce891ea09ff53a87da601bba53c87f81240dbe6eb29e0fbc3d18eef4057c41"
       },
       {
-        "path": "reports/nc_rted/source35_cuda_uuid_native_review_v1.json",
-        "required_status": "PASS_STATIC",
-        "sha256": "58b1bbe6c9db9bcbf12047dafc5dc6bce80bfefd730f33107a6d1085489bd23e"
+        "path": "reports/nc_rted/code05_geometry_cold_increment_native_review_v3.json",
+        "required_status": "PASS_STATIC_INCREMENT_ONLY",
+        "sha256": "be68e2906743e7e812a8b8e0bca72952b19d9053cbdfb049953011d5d5206318"
       }
     ],
     "formal_execution_allowed": false,
     "full_suite_repeated": false,
-    "publication_scope": "accepted v36 source plus the independently accepted resumable development Fast and CUDA UUID compatibility changes",
+    "publication_scope": "accepted v37 source plus independently accepted production cold VAD entry and its observer timing dependencies",
     "secrets_scan": {
       "scoped_paths": [
-        "scripts/nc_rted_interleaved_gpu_diagnostic.py",
-        "scripts/nc_rted_score_development_fast.py",
-        "src/nc_rted/development_fast_runtime.py",
-        "tests/test_nc_rted_development_fast_runtime.py",
-        "tests/test_nc_rted_formal_bundle_qualification.py"
+        "scripts/nc_rted_measure_production_cold.py",
+        "src/nc_rted/detector.py",
+        "src/nc_rted/media_observer.py",
+        "src/nc_rted/production_cold.py",
+        "tests/test_nc_rted_production_cold.py"
       ],
       "status": "PENDING_LOCAL_PUBLISHER_VALIDATE_ONLY"
     }

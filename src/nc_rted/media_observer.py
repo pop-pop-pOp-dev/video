@@ -147,7 +147,8 @@ class CausalMediaObserver:
     def __init__(self, *, detector=None, siglip=None, cache: FrozenFrameCache | None = None,
                  media_catalog: Mapping[tuple[str, str], BoundMedia],
                  lease_resolver: Callable[[BoundMedia], ContextManager[Path]] = lease_verified_media,
-                 decoder_factory: Callable[[Path], FrameDecoder] | None = None,
+                 decoder_factory: Callable[[Path], FrameDecoder] | None = None, meter=None,
+                 capture_raw_geometry: bool = False,
                  observe: Callable = observe_causal_window):
         self.media = dict(media_catalog)
         if not self.media:
@@ -157,7 +158,8 @@ class CausalMediaObserver:
                 raise MediaObserverError("media registry key differs from bound identity")
             item.validate()
         self.detector, self.siglip, self.cache = detector, siglip, cache
-        self.lease, self.decoder_factory, self.observe = lease_resolver, decoder_factory, observe
+        self.lease, self.decoder_factory, self.observe, self.meter = lease_resolver, decoder_factory, observe, meter
+        self.capture_raw_geometry = capture_raw_geometry
         self.ready = detector is not None and siglip is not None and cache is not None and decoder_factory is not None
 
     def _bound(self, dataset: str, media_key: str) -> BoundMedia:
@@ -232,8 +234,14 @@ class CausalMediaObserver:
         verify_content()
         timestamps = [index / media.fps for index in indices]
         # The block list and RGB images are local and released after this call.
-        return self.observe(images, timestamps, end_s, self.detector, self.siglip, self.cache,
-                            cache_identity, self.siglip.identity(), window_start_s=start_s)
+        detector = self.detector if self.meter is None else _MeteredDetector(self.detector, self.meter)
+        encode = self.siglip
+        arguments = {"window_start_s": start_s}
+        if self.capture_raw_geometry:
+            arguments["capture_raw_geometry"] = True
+        operation = lambda: self.observe(images, timestamps, end_s, detector, encode, self.cache,
+                                         cache_identity, self.siglip.identity(), **arguments)
+        return operation() if self.meter is None else self.meter.process(operation)
 
     def detection(self, dataset: str, media_key: str, query_s: float) -> CausalWindowObservation:
         media = self._bound(dataset, media_key)
@@ -283,3 +291,10 @@ class CausalMediaObserver:
         observation = pack_observation_blocks([block.features for block in blocks], task="caption")
         return CaptionObservationAudit(observation, sampling.sampled_frame_times, media.duration_s,
                                        sampling.time_message, self.detector.identity())
+
+
+class _MeteredDetector:
+    """Preserve detector identity while counting actual detection calls."""
+    def __init__(self, detector, meter): self.detector, self.meter = detector, meter
+    def identity(self): return self.detector.identity()
+    def detect(self, image): return self.meter.detector(lambda: self.detector.detect(image))

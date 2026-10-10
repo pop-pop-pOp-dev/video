@@ -41,6 +41,10 @@ class CausalWindowObservation:
     features: object
     relation_class_pairs: tuple[tuple[int, int], ...]
     relation_ids: tuple[str, ...]
+    # These remain process-local diagnostic inputs. They are never persisted in
+    # prediction stores or mechanism reports.
+    tracking: object | None = None
+    frozen_frames: tuple[object, ...] = ()
 
 
 def _normalized_box(box: torch.Tensor, width: int, height: int) -> tuple[float, float, float, float] | None:
@@ -443,7 +447,8 @@ class InheritedSigLipAdapter:
 
 def observe_causal_window(images: list[Image.Image], timestamps: list[float], query_s: float,
                           detector: FrozenRTDetr, siglip_encode, cache, media_hash: str,
-                          siglip_identity: dict, *, window_start_s: float | None = None) -> CausalWindowObservation:
+                          siglip_identity: dict, *, window_start_s: float | None = None,
+                          capture_raw_geometry: bool = False) -> CausalWindowObservation:
     """Connect frozen detector/SigLIP outputs to the existing causal tracker/features.
 
     ``siglip_encode`` receives uncropped RGB images and returns [N,729,1152] final
@@ -523,7 +528,8 @@ def observe_causal_window(images: list[Image.Image], timestamps: list[float], qu
                               for relation in features.relations)
         except KeyError as error:
             raise DetectorError("assembled relation is absent from its tracking result") from error
-        return CausalWindowObservation(features, class_pairs, relation_ids)
+        raw_tracking, raw_frames = (tracking, tuple(frozen)) if capture_raw_geometry else (None, ())
+        return CausalWindowObservation(features, class_pairs, relation_ids, raw_tracking, raw_frames)
 
 
 def build_causal_window(images: list[Image.Image], timestamps: list[float], query_s: float,

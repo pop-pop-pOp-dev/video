@@ -49,6 +49,7 @@ _REPORT_FIELDS = frozenset({
     "prediction_store_written", "preflight_report", "runtime", "source_manifest", "identity_manifest",
     "model_manifest", "embedded_vision_binding", "decoder_binding", "implementation_binding", "bindings",
     "identity", "counters", "summary", "error_code", "peak_measurement_incomplete", "elapsed_seconds",
+    "phase_seconds",
     "publication_deadline_utc_epoch", "child_pid",
 })
 
@@ -503,6 +504,7 @@ def _remaining(context):
 
 
 def run(args, context):
+    phases = context.setdefault("phase_seconds", {})
     _stage(context, "preflight")
     report, preflight = _bound(args.preflight_report, args.preflight_report_sha256, "PREFLIGHT_INVALID")
     try:
@@ -573,14 +575,17 @@ def run(args, context):
     context["_torch"] = torch
     _stage(context, "factory")
     _remaining(context)
+    factory_started = time.perf_counter()
     try:
         factory = default_factory(SimpleNamespace(bindings=bound, binding_sha256={key[:-7]: value for key, value in bound.items() if key.endswith("_sha256")}, protocol=protocol), artifact, device=args.device)
     finally:
+        phases["factory"] = time.perf_counter() - factory_started
         if torch.cuda.is_initialized():
             context["cuda_started"] = True
             _peaks(context)
     _remaining(context)
     _stage(context, "cuda_initialization")
+    cuda_started = time.perf_counter()
     if not torch.cuda.is_available():
         raise ProbeError("CUDA_UNAVAILABLE")
     _remaining(context)
@@ -588,7 +593,9 @@ def run(args, context):
     torch.cuda.set_device(args.device)
     torch.cuda.reset_peak_memory_stats(args.device)
     torch.cuda.synchronize(args.device)
+    phases["cuda_initialization"] = time.perf_counter() - cuda_started
     _stage(context, "model_loading")
+    load_started = time.perf_counter()
     loaded = factory["loader"].load(artifact)
     try:
         validate_loaded_model_identity(loaded, artifact)
@@ -596,6 +603,7 @@ def run(args, context):
         raise ProbeError("MODEL_IDENTITY_INVALID") from error
     torch.cuda.synchronize(args.device)
     _peaks(context)
+    phases["model_loading"] = time.perf_counter() - load_started
     _remaining(context)
     context["counters"] = {"completed_slow_forwards": 0, "completed_generation_calls": 0}
     _stage(context, args.kind + "_inference")
@@ -604,6 +612,7 @@ def run(args, context):
         _stage(context, context["stage"])
 
     try:
+        inference_started = time.perf_counter()
         with count_slow_execution(loaded, context["counters"], on_progress=forward_progress), count_generation_execution(loaded, context["counters"]):
             if args.kind == "vad":
                 payload = factory["vad"].predict(request, loaded, protocol=protocol)
@@ -612,6 +621,7 @@ def run(args, context):
     except (PredictionInputError, PredictionExecutionError, ValueError, TypeError, KeyError) as error:
         raise ProbeError("PAYLOAD_INVALID") from error
     torch.cuda.synchronize(args.device)
+    phases["inference"] = time.perf_counter() - inference_started
     _peaks(context)
     _stage(context, "payload_validation")
     try:

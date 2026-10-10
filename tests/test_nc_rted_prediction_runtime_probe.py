@@ -695,6 +695,8 @@ def test_successful_routes_use_real_request_geometry_validators_and_counters(mon
     assert result["summary"]["kind"] == kind
     assert result["peak_cuda_allocated_bytes"] == 11
     assert result["peak_cuda_reserved_bytes"] == 22
+    assert set(result["phase_seconds"]) == {"factory", "cuda_initialization", "model_loading", "inference"}
+    assert all(value >= 0 for value in result["phase_seconds"].values())
     assert calls[:3] == [("set_device", "cuda:3"), ("reset", "cuda:3"), ("sync", "cuda:3")]
     assert ("allocated", "cuda:3") in calls and ("reserved", "cuda:3") in calls
     if kind == "vad":

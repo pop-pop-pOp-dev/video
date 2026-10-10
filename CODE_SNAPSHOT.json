@@ -1,17 +1,17 @@
 {
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
-  "snapshot_format": 24,
-  "created_at": "2026-10-10T11:05:15.202572+00:00",
-  "source_commit": "e8b10060fcf2f871194d57a88a471cc701ccd3f2",
-  "source_base_commit": "e75299105c80f7cfab82091b15070b4838a2c7b1",
+  "snapshot_format": 25,
+  "created_at": "2026-10-10T11:21:15.172759+00:00",
+  "source_commit": "6a5a5cf0fdf5bfc73ddad14c411c2df22bb19e05",
+  "source_base_commit": "e8b10060fcf2f871194d57a88a471cc701ccd3f2",
   "formal_execution_allowed": false,
   "scientific_results": "not_available",
-  "previous_published_commit": "33a3111282d2eaa76732fd091917e370b38b0f66",
+  "previous_published_commit": "7c348c5eda06cddc8d5a1bea107273fbb6635fb8",
   "source_whitelist": {
-    "previous_snapshot_manifest_sha256": "80929523a6fc5eaef8d9a73af391b0074ee595e72ec1f0c349d0fbbacb980414",
-    "accepted_vision_memory_delta_paths": [
-      "src/nc_rted/frozen_vision.py",
-      "tests/test_nc_rted_exact_vision_validation.py"
+    "previous_snapshot_manifest_sha256": "b75fc92804251bbb7e06aa6581ed5c96100cdb0c58dbd8d0c458a5df387106b1",
+    "accepted_phase_timing_delta_paths": [
+      "scripts/nc_rted_prediction_runtime_probe.py",
+      "tests/test_nc_rted_prediction_runtime_probe.py"
     ],
     "new_files": []
   },
@@ -20,8 +20,8 @@
     "secrets_scan": {
       "status": "PASS",
       "scoped_paths": [
-        "src/nc_rted/frozen_vision.py",
-        "tests/test_nc_rted_exact_vision_validation.py"
+        "scripts/nc_rted_prediction_runtime_probe.py",
+        "tests/test_nc_rted_prediction_runtime_probe.py"
       ]
     },
     "accepted_evidence": [
@@ -128,6 +128,21 @@
       {
         "path": "reports/nc_rted/github_publication_api_v20.json",
         "sha256": "51db94271824918838611ebc1bc20d9efb44b161b23ae28fee5fa3639ba8899c",
+        "required_status": "PUBLISHED_REMOTE_COMMIT_AND_ALL_FILE_HASHES_VERIFIED"
+      },
+      {
+        "path": "reports/nc_rted/gate02_prediction_phase_timing_native_review_v1.json",
+        "sha256": "5289585c55988196a5bee7f7fd7f910d7a1573902c85d07d6f0fc374e3e4817d",
+        "required_status": "PASS_STATIC"
+      },
+      {
+        "path": "reports/nc_rted/prediction_timing_release24_integration_v1.json",
+        "sha256": "d482826728a6c4e30839b3fad0cb57040c3ba58431432f6fb64fd1629aeb0e3d",
+        "required_status": "INTEGRATED_ACCEPTED_STATIC_CODE"
+      },
+      {
+        "path": "reports/nc_rted/github_publication_api_v21.json",
+        "sha256": "9b31226f02de40b353de310d0c76026ef5f2ae860ec62d125a2c80e6aee9ebb2",
         "required_status": "PUBLISHED_REMOTE_COMMIT_AND_ALL_FILE_HASHES_VERIFIED"
       }
     ],
@@ -782,9 +797,9 @@
     },
     {
       "path": "scripts/nc_rted_prediction_runtime_probe.py",
-      "sha256": "3d2b6bea4ec618b95cae3286e2a9255cca2a8847c7d376f534abc88a341d958f",
-      "bytes": 40545,
-      "origin": "release22"
+      "sha256": "ef3d71b44c593f212bd9db59a372dce937dc8b4acf8c92c44caf8af2d6bf64de",
+      "bytes": 41055,
+      "origin": "release24"
     },
     {
       "path": "scripts/nc_rted_prepare_caption_observations.py",
@@ -1304,9 +1319,9 @@
     },
     {
       "path": "tests/test_nc_rted_prediction_runtime_probe.py",
-      "sha256": "ea7e8aab005b721a5aac210e6670c6fa3de8a9822982c32fe52806589f95853a",
-      "bytes": 38383,
-      "origin": "prior_snapshot_retained"
+      "sha256": "b699fbb377e9f2ff68b58a80ac8a1268ce9e0b57c1b8a200374cfc8ad454d55c",
+      "bytes": 38564,
+      "origin": "release24"
     },
     {
       "path": "tests/test_nc_rted_probe_geometry.py",

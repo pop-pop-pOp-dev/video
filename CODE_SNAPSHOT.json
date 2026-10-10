@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-10-10T20:03:15.570753+00:00",
+  "created_at": "2026-10-10T21:20:44.741310+00:00",
   "files": [
     {
       "bytes": 334,
@@ -532,6 +532,11 @@
       "sha256": "283e1a0152c0ad93d562f628451c2028e1736d06364609941960d470bae2256d"
     },
     {
+      "bytes": 1632,
+      "path": "scripts/nc_rted_evaluate.py",
+      "sha256": "9b3f47fefebbadb4d495b0e57ab17b58573707d6b526588ed2b7eb4b5a6eebd1"
+    },
+    {
       "bytes": 2056,
       "path": "scripts/nc_rted_export_fast_snapshot.py",
       "sha256": "4a7bd4c07bf3f12958636b11b7aee2415761dd56dbda89c4ab25a253df66040d"
@@ -680,6 +685,11 @@
       "bytes": 33192,
       "path": "src/nc_rted/detector.py",
       "sha256": "4dffd4c50ffa8861e7f34289b382fe868e8316fbd7587dfb5c0bfc5f1f3d8a0c"
+    },
+    {
+      "bytes": 22096,
+      "path": "src/nc_rted/evaluation.py",
+      "sha256": "53eae9a6e31698252b48b0d285820ccdacd4dcbfdeec12fab0b73deb34fcc4ff"
     },
     {
       "bytes": 7065,
@@ -937,6 +947,11 @@
       "sha256": "dbf2e661752bc62c989f0c8a52306890ec8d9e8a178b97ba90c089a544188c0f"
     },
     {
+      "bytes": 16481,
+      "path": "tests/test_nc_rted_evaluation.py",
+      "sha256": "250241fb8447bd5ba5df80ce6b3a222d8955d1e32a39fc3a18599bbcc82f1bb0"
+    },
+    {
       "bytes": 2727,
       "path": "tests/test_nc_rted_exact_vision_validation.py",
       "sha256": "0a04c22a6bfdd8b4220fd40264505ee80b2d7d407aaa4db36c77a23ffc6ad320"
@@ -1153,88 +1168,37 @@
     }
   ],
   "formal_execution_allowed": false,
-  "previous_published_commit": "208b213a27bf9600d1819c1416753bbdd137a633",
+  "previous_published_commit": "1db1037f96bd3c9b7a4e115a76cfab54850b6685",
   "scientific_results": "not_available",
-  "snapshot_format": 35,
+  "snapshot_format": 36,
   "source_base_commit": "e35e088f94d5f68a01261987ade2f08a406c3868",
-  "source_commit": "208b213a27bf9600d1819c1416753bbdd137a633",
+  "source_commit": "1db1037f96bd3c9b7a4e115a76cfab54850b6685",
   "source_whitelist": {
-    "accepted_v34_plus_exact_ten_path_delta": {
-      "README.md": "98efd22bc9b5d7669ccef67c2635ab74fe7a98dd2872cd2ae4ad9051321c48da",
-      "docs/NC_RTED_REPRODUCTION_RUNBOOK.md": "8f32c9f1fcbcf6ecb5e31280bd0fb3560af37669956ae64bf4e2e2557124e902",
-      "paper/figures/nc_rted_method_architecture_v1.pdf": "1482587344d91264ea07ca795b6aa455a242807b5fbd60c924056deae1339984",
-      "paper/figures/nc_rted_method_architecture_v1.png": "7ec8364893071ea00e0705b331a5724d62926a3c9d44bdde6edf14cc266fe38b",
-      "paper/figures/nc_rted_method_architecture_v1.svg": "3afa6eafb41987716c74472431d0dc3e4691c261c2f4717f3f86fd235c6230b0",
-      "paper/figures/nc_rted_method_architecture_v1_caption.md": "b5a85382a4c8c4d976312bc8ce64a7df36942b054cdb69363a8970bc7e13c432",
-      "paper/figures/render_nc_rted_method_architecture.py": "23682e671b9f38a29576e0b256c8c4ddc267d0b3bfe5025271a223ddcb90378c",
-      "scripts/nc_rted_build_source34_seed_applicability.py": "5c009ce8dde09ca3f45fc797a94dc2060a929f499a10b1a672b16b3a6b596d71",
-      "scripts/nc_rted_produce_source33_formal_bundle_inputs.py": "a9692572eaefc7c2bca4594d67754dd5da078f055273351a7047ee94560c21b1",
-      "scripts/nc_rted_produce_source34_formal_bundle_inputs.py": "98e333996d7425c8b446c4982f4e11d9cad86524501b825e4f20ce958d8894a6",
-      "src/nc_rted/resource_attestation.py": "784f995b6a1cc10d0ed652f2aae518e4cbf2ebf00fdaf831f2b523a67429b0ef",
-      "tests/test_nc_rted_queue.py": "db053298b4d3aca807938d017f81355095ea27a10f020e2ef77cb37439e6de4e",
-      "tests/test_nc_rted_resource_contract.py": "fb5f4bc2a4e29fb6f44109475828e9f726b7db4bd643c817bcdcb88eb711ff93",
-      "tests/test_nc_rted_source33_formal_bundle_input_producer.py": "9445408827616110bc0276672fbdefaf0191cac4a893ad4aaf62c3796c4ee929",
-      "tests/test_nc_rted_source34_formal_bundle_input_producer.py": "3ff0e26ec088441ae714ca6a5834666fd2ddf48839f48952c18e143bce7f04b4",
-      "tests/test_nc_rted_source34_seed_applicability.py": "ccda6bf1ba31411d46ee86624d6eb704930d1d420f17c60eb6cda8dfd9a1aece"
+    "accepted_v35_plus_exact_three_path_delta": {
+      "scripts/nc_rted_evaluate.py": "9b3f47fefebbadb4d495b0e57ab17b58573707d6b526588ed2b7eb4b5a6eebd1",
+      "src/nc_rted/evaluation.py": "53eae9a6e31698252b48b0d285820ccdacd4dcbfdeec12fab0b73deb34fcc4ff",
+      "tests/test_nc_rted_evaluation.py": "250241fb8447bd5ba5df80ce6b3a222d8955d1e32a39fc3a18599bbcc82f1bb0"
     },
-    "published_v34_commit": "208b213a27bf9600d1819c1416753bbdd137a633",
-    "v34_snapshot_sha256": "8cc9550c448488ebf79802c935a2a10d7df68251f40beadb79691b060dce7877"
+    "published_v35_commit": "1db1037f96bd3c9b7a4e115a76cfab54850b6685",
+    "v35_snapshot_sha256": "c3f2b6fe0dc938ff7b3a6eed28f2e229925673caa3b1811210fe17fa4bd76725"
   },
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
   "validation": {
     "accepted_evidence": [
       {
-        "path": "reports/nc_rted/source33_formal_input_producer_native_review_v1.json",
-        "required_status": "PASS_STATIC_CPU_SOURCE33_SEED17_FORMAL_INPUT_PRODUCER",
-        "sha256": "f489d343d9004d94849f8233ad3aa0ac8b54622997ad522b066e024558b31152"
-      },
-      {
-        "path": "reports/nc_rted/source34_seed_applicability_native_review_v1.json",
-        "required_status": "ACCEPTED_FOCUSED_CONSUMER_AND_APPLICABILITY_BUILDER",
-        "sha256": "3cfcc6250e7edd675db364a42d59f0a3abb6409b007f70c591b4115f07e21bb8"
-      },
-      {
-        "path": "reports/nc_rted/source34_target_formal_input_producer_native_review_v1.json",
-        "required_status": "ACCEPTED_SOURCE34_TARGET_FORMAL_INPUT_PRODUCER",
-        "sha256": "09ec0d7686accd64b5f80e079ea0adf3019884f2cc1fea5f82de4cb58c6eb05a"
-      },
-      {
-        "path": "reports/nc_rted/reproduction_runbook_integration_v1.json",
-        "required_status": "INTEGRATED_ACCEPTED_DOCUMENTATION",
-        "sha256": "4ec352698686ba9bd52f5056cda63d7b7a7cd5e68e73b0fd32181bb5284bbc1a"
-      },
-      {
-        "path": "reports/nc_rted/method_figure_integration_v1.json",
-        "required_status": "INTEGRATED_METHOD_ONLY_FIGURE",
-        "sha256": "7ab1cba1a3edbe94a38bc0568622ccae91734f46e0532ddbbfe8e97d52f3aa6f"
-      },
-      {
-        "path": "reports/nc_rted/source35_source36_path_native_review_v1.json",
-        "required_status": "PASS_STATIC_DETERMINISTIC_PATH_FIX",
-        "sha256": "a004e283c23e89f0904c6819f55ced66dfcd0976ad08c42f2843c5ee6d0c4237"
+        "path": "reports/nc_rted/code04_evaluator_native_review_v3.json",
+        "required_status": "PASS_STATIC_UNIFIED_EVALUATOR_WITH_SYNTHETIC_INTEGRATION",
+        "sha256": "2e62c12ae938d1b5f9ac28d4a939e604f99f4c38b829984f30ec266f6b68ff51"
       }
     ],
     "formal_execution_allowed": false,
     "full_suite_repeated": false,
-    "publication_scope": "accepted v34 source plus accepted docs, method figure, and PATH fix",
+    "publication_scope": "accepted v35 source plus the independently accepted three-file unified evaluator",
     "secrets_scan": {
       "scoped_paths": [
-        "README.md",
-        "docs/NC_RTED_REPRODUCTION_RUNBOOK.md",
-        "paper/figures/nc_rted_method_architecture_v1.pdf",
-        "paper/figures/nc_rted_method_architecture_v1.png",
-        "paper/figures/nc_rted_method_architecture_v1.svg",
-        "paper/figures/nc_rted_method_architecture_v1_caption.md",
-        "paper/figures/render_nc_rted_method_architecture.py",
-        "scripts/nc_rted_build_source34_seed_applicability.py",
-        "scripts/nc_rted_produce_source33_formal_bundle_inputs.py",
-        "scripts/nc_rted_produce_source34_formal_bundle_inputs.py",
-        "src/nc_rted/resource_attestation.py",
-        "tests/test_nc_rted_queue.py",
-        "tests/test_nc_rted_resource_contract.py",
-        "tests/test_nc_rted_source33_formal_bundle_input_producer.py",
-        "tests/test_nc_rted_source34_formal_bundle_input_producer.py",
-        "tests/test_nc_rted_source34_seed_applicability.py"
+        "scripts/nc_rted_evaluate.py",
+        "src/nc_rted/evaluation.py",
+        "tests/test_nc_rted_evaluation.py"
       ],
       "status": "PENDING_LOCAL_PUBLISHER_VALIDATE_ONLY"
     }

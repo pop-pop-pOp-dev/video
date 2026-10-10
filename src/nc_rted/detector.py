@@ -22,6 +22,7 @@ COCO_PERSON_CLASS = 0
 RTDETR_MODEL_ID = "PekingU/rtdetr_r50vd_coco_o365"
 RTDETR_PROVENANCE_FILE = "nc_rted_provenance.json"
 _STAGING_RESERVE_BYTES = 20 * 1024 ** 3
+SMALL_OBJECT_NORMALIZED_AREA_THRESHOLD = 0.01
 
 
 class DetectorError(RuntimeError): pass
@@ -41,10 +42,11 @@ class CausalWindowObservation:
     features: object
     relation_class_pairs: tuple[tuple[int, int], ...]
     relation_ids: tuple[str, ...]
-    # These remain process-local diagnostic inputs. They are never persisted in
-    # prediction stores or mechanism reports.
+    # Tracking and frames remain process-local geometry inputs. Compact boolean
+    # diagnostics may be copied into a prediction query by the VAD runner.
     tracking: object | None = None
     frozen_frames: tuple[object, ...] = ()
+    diagnostic_metadata: dict[str, bool] | None = None
 
 
 def _normalized_box(box: torch.Tensor, width: int, height: int) -> tuple[float, float, float, float] | None:
@@ -528,8 +530,16 @@ def observe_causal_window(images: list[Image.Image], timestamps: list[float], qu
                               for relation in features.relations)
         except KeyError as error:
             raise DetectorError("assembled relation is absent from its tracking result") from error
+        diagnostics = {
+            "small_object": any((box[2] - box[0]) * (box[3] - box[1]) < SMALL_OBJECT_NORMALIZED_AREA_THRESHOLD
+                                for rows in detections.values() for item in rows for box in (item.box_xyxy,)),
+            "no_candidate": not bool(features.relations),
+            # Tracks existed, but fixed causal association emitted no eligible
+            # endpoint pair for the current window.
+            "association_failure": bool(tracking.tracks) and not bool(tracking.pairs),
+        }
         raw_tracking, raw_frames = (tracking, tuple(frozen)) if capture_raw_geometry else (None, ())
-        return CausalWindowObservation(features, class_pairs, relation_ids, raw_tracking, raw_frames)
+        return CausalWindowObservation(features, class_pairs, relation_ids, raw_tracking, raw_frames, diagnostics)
 
 
 def build_causal_window(images: list[Image.Image], timestamps: list[float], query_s: float,

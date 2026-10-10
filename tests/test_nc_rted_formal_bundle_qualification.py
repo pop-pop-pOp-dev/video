@@ -136,13 +136,13 @@ def test_diagnostic_cuda_binding_rejects_nonunique_cuda_logical_device(monkeypat
         diagnostic._cuda_binding()
 
 
-def test_diagnostic_main_binds_cuda_before_parent_assembly(monkeypatch, tmp_path):
+def test_diagnostic_main_uses_a_fresh_binding_probe_before_parent_assembly(monkeypatch, tmp_path):
     events = []
     monkeypatch.setattr(diagnostic, "_load_bundle_manifest", lambda *args: {})
     monkeypatch.setattr(diagnostic, "_load_members", lambda *args: {})
     monkeypatch.setattr(diagnostic, "_verify_source_manifest", lambda *args: events.append("source_verified"))
     binding = {"cuda_visible_devices": "GPU-bound", "gpu_uuid": "GPU-bound"}
-    monkeypatch.setattr(diagnostic, "_cuda_binding", lambda: events.append("bound") or binding)
+    monkeypatch.setattr(diagnostic, "_binding_probe", lambda args: events.append("probe") or binding)
     def run_parent(args, harness, members, observed_binding):
         events.append("parent")
         assert observed_binding == binding
@@ -152,7 +152,36 @@ def test_diagnostic_main_binds_cuda_before_parent_assembly(monkeypatch, tmp_path
                                                    "--runtime-source-root", str(diagnostic.ROOT), "--output", str(tmp_path / "out.json"),
                                                    "--mode", "run"])
     diagnostic.main()
-    assert events == ["source_verified", "bound", "parent"]
+    assert events == ["source_verified", "probe", "parent"]
+
+
+def test_binding_probe_exits_before_loading_bundle_members_or_sources(monkeypatch, tmp_path):
+    binding = {"cuda_visible_devices": "GPU-bound", "gpu_uuid": "GPU-bound"}
+    monkeypatch.setattr(diagnostic, "_cuda_binding", lambda: binding)
+    for name in ("_load_bundle_manifest", "_load_members", "_verify_source_manifest"):
+        monkeypatch.setattr(diagnostic, name, lambda *args, **kwargs: pytest.fail("binding probe loaded bundle inputs"))
+    output = tmp_path / "probe.json"
+    monkeypatch.setattr(diagnostic.sys, "argv", ["diagnostic", "--manifest", "manifest", "--manifest-sha256", "a" * 64,
+                                                   "--runtime-source-root", str(diagnostic.ROOT), "--output", str(output),
+                                                   "--mode", "binding-probe"])
+    diagnostic.main()
+    assert json.loads(output.read_text()) == {"status": "CUDA_BINDING_PROBE_COMPLETE", "cuda_binding": binding}
+
+
+def test_parent_defers_actual_cuda_binding_until_after_production_construction(monkeypatch):
+    import torch
+    events = []
+    binding = {"cuda_visible_devices": "GPU-bound", "gpu_uuid": "GPU-bound"}
+
+    def construct(*args, **kwargs):
+        events.append("construct")
+        assert not torch.cuda.is_initialized()
+        return "models", "workers"
+
+    monkeypatch.setattr(diagnostic, "_construct_workers", construct)
+    monkeypatch.setattr(diagnostic, "_cuda_binding", lambda: events.append("bind") or binding)
+    assert diagnostic._verified_parent_binding({}, {}, binding) == ("models", "workers", binding)
+    assert events == ["construct", "bind"]
 
 
 def test_diagnostic_prefix_requires_actual_derived_fixed_material_set():

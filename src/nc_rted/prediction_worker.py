@@ -22,6 +22,20 @@ class PredictionExecutionError(RuntimeError):
     pass
 
 
+_DIAGNOSTIC_METADATA_FIELDS = ("small_object", "no_candidate", "association_failure", "reference_insufficient")
+
+
+def _validate_diagnostic_metadata(value: object) -> None:
+    if value is None:
+        return
+    if not isinstance(value, dict) or set(value) != set(_DIAGNOSTIC_METADATA_FIELDS):
+        raise PredictionExecutionError("VAD diagnostic metadata has an invalid schema")
+    if any(item is not None and type(item) is not bool for item in value.values()):
+        raise PredictionExecutionError("VAD diagnostic metadata must contain booleans or null")
+    if value["reference_insufficient"] is not None:
+        raise PredictionExecutionError("reference insufficiency is unsupported at prediction deployment")
+
+
 class BoundModel(Protocol):
     group: str
     evidence_enabled: bool
@@ -94,6 +108,7 @@ def validate_vad_payload(payload: object, *, expected_media: object = None,
         for name in ("slow_score", "fused_score"):
             if query.get(name) is not None:
                 PredictionWorker._probability(query[name], name=name)
+        _validate_diagnostic_metadata(query.get("diagnostic_metadata"))
     for value in causal:
         PredictionWorker._probability(value, name="causal_smoothed_score")
     if expected_media is not None:

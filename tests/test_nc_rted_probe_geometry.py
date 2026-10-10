@@ -29,6 +29,16 @@ def test_strict_vad_geometry_accepts_the_complete_bound_timeline():
     assert validate_vad_payload(_payload(), expected_media=_media(), trigger_threshold=0.5)["total_frames"] == 12
 
 
+def test_vad_payload_accepts_observer_diagnostics_but_rejects_deployment_reference_inference():
+    payload = _payload()
+    payload["queries"][1]["diagnostic_metadata"] = {"small_object": False, "no_candidate": False,
+                                                       "association_failure": False, "reference_insufficient": None}
+    assert validate_vad_payload(payload)["queries"][1]["diagnostic_metadata"]["small_object"] is False
+    payload["queries"][1]["diagnostic_metadata"]["reference_insufficient"] = True
+    with pytest.raises(PredictionExecutionError, match="unsupported"):
+        validate_vad_payload(payload)
+
+
 @pytest.mark.parametrize("change,error", [
     (lambda value: (value.update(total_frames=11), value.update(causal_smoothed_scores=value["causal_smoothed_scores"][:11])), "geometry differs"),
     (lambda value: value["queries"].pop(), "omits bound Fast queries"),

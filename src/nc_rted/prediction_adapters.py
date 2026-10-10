@@ -199,6 +199,20 @@ class BlindDetectionRunner:
         if self.fusion == "adaptive": return (1.0 - slow) * fast + slow * slow
         raise PredictionExecutionError("unknown inherited VAD fusion")
 
+    @staticmethod
+    def _diagnostic_metadata(observed) -> dict[str, bool | None]:
+        """Persist only facts from a concrete current-query observer call."""
+        unavailable = {"small_object": None, "no_candidate": None,
+                       "association_failure": None, "reference_insufficient": None}
+        if observed is None:
+            return unavailable
+        source = getattr(observed, "diagnostic_metadata", None)
+        if not isinstance(source, dict) or set(source) != {"small_object", "no_candidate", "association_failure"}:
+            raise PredictionExecutionError("causal observation lacks diagnostic metadata")
+        if any(type(value) is not bool for value in source.values()):
+            raise PredictionExecutionError("causal observation diagnostic metadata is invalid")
+        return {**source, "reference_insufficient": None}
+
     def detect(self, request: VadRequest) -> dict[str, Any]:
         replay = DetectionMemoryReplay(self.bridge.slow, self.protocol)
         prefix = self.reader(request.dataset, request.media_id, expected_media_path=request.media_path,
@@ -211,6 +225,7 @@ class BlindDetectionRunner:
                     raise PredictionExecutionError("blind VAD reader omitted required four-frame RT anomaly patches for a trigger")
                 captured = replay.step(query, capture=triggered, image_height=prefix.image_height, image_width=prefix.image_width)
                 slow = None
+                observed = None
                 if captured is not None:
                     context, question = captured
                     enabled = getattr(self.bridge, "prediction_evidence_enabled", True)
@@ -226,7 +241,8 @@ class BlindDetectionRunner:
                 final = query.fast_score if slow is None else self._fuse(query.fast_score, slow)
                 raw_scores.append(final)
                 queries.append({"query_index": query.index, "frame_indices": list(query.frame_indices), "fast_score": query.fast_score,
-                                "triggered": triggered, "slow_score": slow, "final_score": final})
+                                "triggered": triggered, "slow_score": slow, "final_score": final,
+                                "diagnostic_metadata": self._diagnostic_metadata(observed)})
         finally:
             close = getattr(prefix.queries, "close", None)
             if close is not None: close()

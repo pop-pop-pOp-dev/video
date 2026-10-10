@@ -298,7 +298,7 @@ def _visible_gpu_identity(visible: str) -> str:
 
 
 def _cuda_binding() -> dict:
-    """Resolve and validate the one real GPU before any model assembly."""
+    """Resolve and validate the one real GPU after deterministic setup."""
     visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
     gpu_uuid = _visible_gpu_identity(visible)
     if not torch.cuda.is_available():
@@ -311,6 +311,16 @@ def _cuda_binding() -> dict:
     # launcher sets CUDA_VISIBLE_DEVICES to this UUID, and a unique prefix is
     # accepted only after driver inventory resolution.
     return {"cuda_visible_devices": gpu_uuid, "gpu_uuid": gpu_uuid}
+
+
+def _verified_parent_binding(members: dict, harness: dict, expected: dict, *,
+                             store_root_override: Path | None = None):
+    """Assemble first so production numerical policy precedes parent CUDA init."""
+    models, workers = _construct_workers(members, harness, store_root_override=store_root_override)
+    observed = _cuda_binding()
+    if observed != expected:
+        raise RuntimeError("parent diagnostic GPU binding differs from fresh binding probe")
+    return models, workers, observed
 
 
 def _serial_reference(models: dict, workers: dict, updates: int, cuda_binding: dict) -> dict:
@@ -335,12 +345,13 @@ def _empty_roots(members: dict, harness: dict) -> None:
             raise RuntimeError(f"diagnostic checkpoint root is not empty: {root}")
 
 
-def _bundle_run(members: dict, harness: dict, cuda_binding: dict, *, fail_group: str | None = None,
+def _bundle_run(members: dict, harness: dict, expected_cuda_binding: dict, *, fail_group: str | None = None,
                 resume: bool = False) -> dict:
     # Start before model construction so the reported peak includes inherited
-    # loading, clone construction, provider preparation, and all updates.
-    if torch.cuda.is_available(): torch.cuda.reset_peak_memory_stats()
-    models, workers = _construct_workers(members, harness)
+    # loading, clone construction, provider preparation, and all updates. Each
+    # bundle mode is a fresh process, so its CUDA peak begins empty without a
+    # post-assembly reset that would discard the construction peak.
+    models, workers, cuda_binding = _verified_parent_binding(members, harness, expected_cuda_binding)
     updates = harness["diagnostic_updates"]
     initial = {group: {name: parameter.detach().cpu().clone() for name, parameter in models[group].named_parameters()
                        if parameter.requires_grad} for group in GROUPS}
@@ -396,10 +407,25 @@ def _child(args, mode: str, output: Path, extra: list[str]) -> subprocess.Comple
     return subprocess.run(command, check=False)
 
 
-def _run_parent(args, harness: dict, members: dict, cuda_binding: dict) -> dict:
+def _binding_probe(args) -> dict:
+    """Get CUDA runtime evidence in a disposable process before parent assembly."""
+    output = Path(args.output).with_suffix(".binding-probe.json")
+    if _child(args, "binding-probe", output, []).returncode:
+        raise RuntimeError("fresh CUDA binding probe failed")
+    document = json.loads(output.read_text())
+    binding = document.get("cuda_binding")
+    if (document.get("status") != "CUDA_BINDING_PROBE_COMPLETE" or not isinstance(binding, dict)
+            or set(binding) != {"cuda_visible_devices", "gpu_uuid"}
+            or any(not isinstance(value, str) or not value for value in binding.values())):
+        raise RuntimeError("fresh CUDA binding probe emitted invalid evidence")
+    return binding
+
+
+def _run_parent(args, harness: dict, members: dict, expected_cuda_binding: dict) -> dict:
     # Parent computes the four serial oracles, then releases all CUDA memory
     # before fault/resume each construct their own independent process.
-    models, workers = _construct_workers(members, harness, store_root_override=Path(args.output).with_suffix(".serial-stores"))
+    models, workers, cuda_binding = _verified_parent_binding(
+        members, harness, expected_cuda_binding, store_root_override=Path(args.output).with_suffix(".serial-stores"))
     serial = _serial_reference(models, workers, harness["diagnostic_updates"], cuda_binding)
     serial_path = Path(args.output).with_suffix(".serial.json")
     _write_json(serial_path, serial)
@@ -425,25 +451,29 @@ def main() -> None:
     parser.add_argument("--manifest-sha256", required=True)
     parser.add_argument("--runtime-source-root", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--mode", choices=("prepare", "run", "fault", "resume"), required=True)
+    parser.add_argument("--mode", choices=("prepare", "binding-probe", "run", "fault", "resume"), required=True)
     parser.add_argument("--fault-after-group", choices=GROUPS, default="U")
     parser.add_argument("--serial-reference")
     args = parser.parse_args()
     if Path(args.runtime_source_root).resolve() != ROOT.resolve():
         raise SystemExit("runtime source root must match this immutable harness checkout")
+    output = Path(args.output)
+    if args.mode == "binding-probe":
+        # This child exists solely to obtain disposable driver/Torch metadata.
+        # It must not repeat the parent's sealed bundle/member/media validation.
+        _write_json(output, dict(status="CUDA_BINDING_PROBE_COMPLETE", cuda_binding=_cuda_binding()))
+        return
     harness = _load_bundle_manifest(args.manifest, args.manifest_sha256)
     members = _load_members(harness)
     _verify_source_manifest(harness, members)
-    output = Path(args.output)
     if args.mode == "prepare":
         result = dict(status="PREFLIGHT_COMPLETE", schema=SCHEMA,
                       members={group: str(member.path) for group, member in members.items()},
                       diagnostic_updates=harness["diagnostic_updates"], recipe=dict(updates=1000, accumulation=8))
     elif args.mode == "run":
-        cuda_binding = _cuda_binding()
-        result = _run_parent(args, harness, members, cuda_binding)
+        result = _run_parent(args, harness, members, _binding_probe(args))
     elif args.mode == "fault":
-        cuda_binding = _cuda_binding()
+        cuda_binding = _binding_probe(args)
         _empty_roots(members, harness)
         try:
             _bundle_run(members, harness, cuda_binding, fail_group=args.fault_after_group)
@@ -453,7 +483,7 @@ def main() -> None:
         raise RuntimeError("fault mode completed without interruption")
     else:
         if not args.serial_reference: raise SystemExit("resume mode requires --serial-reference")
-        cuda_binding = _cuda_binding()
+        cuda_binding = _binding_probe(args)
         serial = json.loads(Path(args.serial_reference).read_text())
         if serial.get("cuda_binding") != cuda_binding:
             raise RuntimeError("fresh-process GPU binding differs from serial binding")

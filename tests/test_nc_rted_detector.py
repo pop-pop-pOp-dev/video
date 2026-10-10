@@ -45,8 +45,24 @@ def test_observed_window_exposes_tracking_class_pairs_and_honors_partial_start(t
     assert observed.relation_class_pairs == ((0,1),)
     assert observed.relation_ids == ('0:1',)
     assert calls == [1,1]
+    assert observed.diagnostic_metadata == {"small_object": False, "no_candidate": False,
+                                            "association_failure": False}
     assert (observed.features.relations[0].observed_times_s[
         observed.features.relations[0].feature_valid] > 8.).all()
+
+
+def test_observed_window_derives_small_object_and_candidate_diagnostics(tmp_path):
+    class Detector:
+        def identity(self): return {"detector": "diagnostic"}
+        def detect(self, image): return (Detection((.1, .1, .15, .15), 0, .9),)
+
+    observed = observe_causal_window(
+        [Image.new("RGB", (8, 8))], [.5], .5, Detector(),
+        lambda images: torch.ones(len(images), 729, 1152), FrozenFrameCache(tmp_path, 10**9, min_free_bytes=0),
+        "diagnostic-media", {"siglip": "fixed"}, window_start_s=0.,
+    )
+    assert observed.diagnostic_metadata == {"small_object": True, "no_candidate": True,
+                                            "association_failure": True}
 
 def test_detector_clips_out_of_bounds_boxes_and_rejects_nonfinite_output():
     assert _normalized_box(torch.tensor([-1., -2., 10., 12.]), 8, 8) == (0., 0., 1., 1.)

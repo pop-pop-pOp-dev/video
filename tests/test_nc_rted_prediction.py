@@ -1381,8 +1381,40 @@ def test_blind_detection_runner_matches_released_query_then_frame_smoothing(monk
     assert result["causal_smoothed_scores"] == reference
     assert result["total_frames"] == 19
     assert smoother.calls == [.1, .4]
+    assert result["queries"][0]["diagnostic_metadata"] == {"small_object": None, "no_candidate": None,
+                                                              "association_failure": None, "reference_insufficient": None}
     runner.detect(SimpleNamespace(dataset="ucf", media_id="next", media_path="/bound-next", media_sha256="b" * 64))
     assert len(Replay.instances) == 2 and Replay.instances[0] is not Replay.instances[1]
+
+
+def test_blind_detection_runner_persists_actual_observer_diagnostics(monkeypatch):
+    from nc_rted.detector import CausalWindowObservation
+    from nc_rted.features import FeatureAssemblyResult, FeatureStatus
+
+    class Replay:
+        def __init__(self, *args, **kwargs): pass
+        def step(self, query, *, capture, image_height, image_width):
+            return (SimpleNamespace(visual_embeddings=torch.zeros(1, 1), observed_seconds=1.), "Q") if capture else None
+
+    monkeypatch.setattr("nc_rted.prediction_adapters.DetectionMemoryReplay", Replay)
+    query = SimpleNamespace(index=0, frame_indices=(0,), fast_score=.9, dense_patches=None, end_seconds=1.)
+    prefix = SimpleNamespace(queries=[query], image_height=2, image_width=2, frame_count=4, sample_interval=1)
+    observed = CausalWindowObservation(
+        FeatureAssemblyResult(FeatureStatus.NO_RELATION_PAIRS, ()), (), (),
+        diagnostic_metadata={"small_object": True, "no_candidate": True, "association_failure": False},
+    )
+    smoother = SimpleNamespace(reset=lambda: None, step=lambda value: value)
+    runner = BlindDetectionRunner(
+        bridge=SimpleNamespace(slow=object(), prediction_evidence_enabled=True), reader=lambda *args, **kwargs: prefix,
+        protocol=DetectionProtocol("Q", "default", "none", False, False, .5, .6),
+        observation_reader=lambda *args: observed, prompt_tokenizer=SimpleNamespace(encode=lambda **kwargs: object()),
+        yes_token_ids=(1,), no_token_ids=(2,), fusion="replace", fusion_alpha=.5, smoother=smoother,
+    )
+    runner._slow_probability = lambda inputs, observations, *, enabled: .4
+    result = runner.detect(SimpleNamespace(dataset="ucf", media_id="m", media_path="/bound", media_sha256="a" * 64))
+    assert result["queries"][0]["triggered"] is True and result["queries"][0]["final_score"] == .4
+    assert result["queries"][0]["diagnostic_metadata"] == {"small_object": True, "no_candidate": True,
+                                                             "association_failure": False, "reference_insufficient": None}
 
 
 def test_vad_slow_forward_runs_with_gradients_disabled():

@@ -15,7 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from nc_rted.evaluation import (EvaluationError, _caption_references, _read_task_store,
-                                _task_execution_binding, _validate_vau_payload, _caption_metrics)
+                                _task_execution_binding, _validate_vad_payload, _validate_vau_payload, _caption_metrics)
 from nc_rted.prediction_inputs import canonical_json
 from nc_rted.prediction_store import PredictionStore
 import nc_rted.evaluation as evaluation
@@ -62,6 +62,19 @@ def test_v2_store_requires_exact_task_binding_and_complete_identities(tmp_path):
     with pytest.raises(EvaluationError, match="matrix binding"):
         _read_task_store(tmp_path / "stale", plan=stale_plan, group="A", seed=17, artifact=stale_artifact,
                          expected_identities={"vad:ucf:alpha"})
+
+
+def test_frozen_evaluator_accepts_optional_deployment_diagnostics():
+    payload = {"total_frames": 1, "causal_smoothed_scores": [.1], "queries": [
+        {"query_index": 0, "frame_indices": [0], "fast_score": .1, "final_score": .1,
+         "slow_score": None, "fused_score": None,
+         "diagnostic_metadata": {"small_object": False, "no_candidate": False,
+                                 "association_failure": False, "reference_insufficient": None}},
+    ]}
+    _validate_vad_payload(payload)
+    payload["queries"][0]["diagnostic_metadata"]["reference_insufficient"] = True
+    with pytest.raises(EvaluationError, match="diagnostic metadata"):
+        _validate_vad_payload(payload)
 
 
 def test_actual_prediction_store_retry_history_is_accepted(tmp_path):

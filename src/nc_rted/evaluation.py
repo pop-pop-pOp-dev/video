@@ -52,6 +52,13 @@ def _validate_vad_payload(payload: object) -> None:
         for name in ("slow_score", "fused_score"):
             if query.get(name) is not None:
                 _probability(query[name], name=f"VAD {name}")
+        metadata = query.get("diagnostic_metadata")
+        if metadata is not None:
+            fields = {"small_object", "no_candidate", "association_failure", "reference_insufficient"}
+            if (not isinstance(metadata, dict) or set(metadata) != fields
+                    or any(value is not None and type(value) is not bool for value in metadata.values())
+                    or metadata["reference_insufficient"] is not None):
+                raise EvaluationError("VAD diagnostic metadata differs")
 
 
 def _validate_vau_payload(payload: object, *, max_new_tokens: int) -> None:

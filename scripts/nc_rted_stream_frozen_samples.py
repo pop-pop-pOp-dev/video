@@ -144,8 +144,8 @@ def main() -> None:
                         help="delete only the local recomputable record after exact remote ACK verification")
     parser.add_argument("--execution-report", type=Path, required=True)
     args = parser.parse_args()
-    if args.local_max_bytes != 1 << 30 or args.remote_max_bytes > 80 << 30:
-        parser.error("transport cache limits are fixed at local <=1GiB and remote <=80GiB")
+    if args.local_max_bytes != 1 << 30 or args.remote_max_bytes > 200 << 30:
+        parser.error("transport cache limits are fixed at local <=1GiB and remote <=200GiB")
     if args.local_min_free_bytes < 23_074_836_480 or args.remote_min_free_bytes < 20 << 30:
         parser.error("transport free-space reserves are below the admitted floors")
     if not 0 < args.max_record_bytes <= args.local_max_bytes - ACK_RESERVATION_BYTES:

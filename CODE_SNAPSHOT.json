@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-10-11T08:06:44.172881+00:00",
+  "created_at": "2026-10-11T08:12:45.934944+00:00",
   "files": [
     {
       "bytes": 334,
@@ -677,9 +677,9 @@
       "sha256": "d0b33c0e64dcea4c0f9571987518cd3462874d9008888937e8cd905b66f0c81a"
     },
     {
-      "bytes": 13623,
+      "bytes": 13625,
       "path": "scripts/nc_rted_stream_frozen_samples.py",
-      "sha256": "948e4ac493843ebe5e26fca173134867f59f21943a9616c6746a8d74fa40d008"
+      "sha256": "b5d759e0bbd1b07088d2726e5ace0d34f9c1c22f80e8554808dcb6cd4c7cb9f0"
     },
     {
       "bytes": 7010,
@@ -1373,168 +1373,23 @@
     }
   ],
   "formal_execution_allowed": false,
-  "previous_published_commit": "8956a6fc83014b9fdb654e92d419b1fed9d98570",
+  "previous_published_commit": "69acc0e49f2042f9082a424d500508fed13e87f5",
   "scientific_results": "not_available",
-  "snapshot_format": 42,
+  "snapshot_format": 43,
   "source_base_commit": "e35e088f94d5f68a01261987ade2f08a406c3868",
-  "source_commit": "8956a6fc83014b9fdb654e92d419b1fed9d98570",
+  "source_commit": "69acc0e49f2042f9082a424d500508fed13e87f5",
   "source_whitelist": {
-    "committed_gpu_pipeline_delta": {
-      "scripts/nc_rted_interleaved_formal.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "3c48cc3bbef440d2fc583f88cade8f7bea32df66d17d482754182f5be1bac0d8"
-      },
-      "scripts/nc_rted_produce_frozen_samples.py": {
-        "commit": "8fe9986691e55a68388995e024a9059af7c1949d",
-        "component": "producer",
-        "sha256": "47ba5f67dcffe8ba77828310710302fc6615fb2e6a2c5da17016d767bb81210c"
-      },
-      "scripts/nc_rted_queue.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "9fb03cfe28e4ae6cb682287edecc03681d771e4343f5203c2f3f1ab1168ab188"
-      },
-      "scripts/nc_rted_receive_frozen_sample.py": {
-        "commit": "8fe9986691e55a68388995e024a9059af7c1949d",
-        "component": "producer",
-        "sha256": "3a18ec017f429bc88108ab332319471474583f687d589d181505195045058366"
-      },
-      "scripts/nc_rted_segmented_materialization.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "897c784f95f977056355725ee4d7e9b22c1320546cf056ccf17941579ee2986d"
-      },
-      "scripts/nc_rted_source39_segmented_formal_v1.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "f6269de058caa9845918b2647294f00f7d5b3ff6f4802bdc0879431e29646b04"
-      },
-      "scripts/nc_rted_stream_frozen_samples.py": {
-        "commit": "8fe9986691e55a68388995e024a9059af7c1949d",
-        "component": "producer",
-        "sha256": "948e4ac493843ebe5e26fca173134867f59f21943a9616c6746a8d74fa40d008"
-      },
-      "src/nc_rted/formal_bundle.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "94abb4dca3f52d596b4d560c813af2a9af734324a311db339ecd51ec4b37a983"
-      },
-      "src/nc_rted/frozen_provider_runtime.py": {
-        "commit": "8fe9986691e55a68388995e024a9059af7c1949d",
-        "component": "producer",
-        "sha256": "e44c5c6f70a1c596e79302f1cd175684126150268fa80be0551b73382991df43"
-      },
-      "src/nc_rted/frozen_sample_cache.py": {
-        "commit": "8fe9986691e55a68388995e024a9059af7c1949d",
-        "component": "producer",
-        "sha256": "6f7fea08dc17c9d0ce8db6275b01e24ba0e64205cbf7e38f9d776c3894b22faf"
-      },
-      "src/nc_rted/frozen_sample_consumer.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "d5856012f3b3076aaaefde310988c094c1ac26105d229d109c22ab3c26166811"
-      },
-      "src/nc_rted/frozen_sample_store.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "404a1b9da42ffdd1ab065989057e1492fd9cb0baecfc1cd05f0f218dd1e87ef4"
-      },
-      "src/nc_rted/frozen_sample_transport.py": {
-        "commit": "8fe9986691e55a68388995e024a9059af7c1949d",
-        "component": "producer",
-        "sha256": "628834d505857a0d57e7d96c34d7714fd4f90abc218bf0ab99b4b6123a69b518"
-      },
-      "src/nc_rted/interleaved_training.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "9fb7d0ab428043a7a13cd0fc76960f50ea0cda66c90749eef266ed0a3b508ff3"
-      },
-      "src/nc_rted/production_runtime.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "0a491a9315790e588516bfef4812b9a1ace91b7f0c916d9e03a476980ba864b6"
-      },
-      "src/nc_rted/recovery.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "09f9c36a39d8d70baba05c439cd813ed445b715f4059aa92dc2df542a983a21c"
-      },
-      "tests/test_nc_rted_frozen_provider_runtime.py": {
-        "commit": "8fe9986691e55a68388995e024a9059af7c1949d",
-        "component": "producer",
-        "sha256": "485ff02e7ba504defd8f1d88c7f3833311fdc407cf806e6787cb7476318cd40c"
-      },
-      "tests/test_nc_rted_frozen_sample_cache.py": {
-        "commit": "8fe9986691e55a68388995e024a9059af7c1949d",
-        "component": "producer",
-        "sha256": "da107cbba7041aaca58b0e3823b47adf1a2dd957879aa3d2f4ae449b94a369d5"
-      },
-      "tests/test_nc_rted_frozen_sample_consumer.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "95a7323e799e433cbe95d5df83c131df760aeaa59e852d99240914701857b6aa"
-      },
-      "tests/test_nc_rted_frozen_sample_transport.py": {
-        "commit": "8fe9986691e55a68388995e024a9059af7c1949d",
-        "component": "producer",
-        "sha256": "e32b45416c5351940af5069d4e6b989b64f20bd0256084ac246cb9a5b6129c3d"
-      },
-      "tests/test_nc_rted_interleaved_training.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "667fc6952770e1bd7d465ca9b3b373e199c3add0280ae2671bb5c74d0f7a388e"
-      },
-      "tests/test_nc_rted_production_runtime.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "25a0a0d5d5e7d7dc4b1f0eb98ce446eeaffd50664d4be31bef2ecb7fcb4ab269"
-      },
-      "tests/test_nc_rted_segmented_materialization.py": {
-        "commit": "50278e257a78aa444b6e2a9d0b3f048b6af50e31",
-        "component": "consumer",
-        "sha256": "5ffc523b17b83491ed308e069f44d15652e367465e8886cb6ceb99fec79e85dd"
-      }
-    },
-    "merged_over_publication_files": [
-      "tests/test_nc_rted_interleaved_training.py"
-    ],
-    "published_v41_commit": "8956a6fc83014b9fdb654e92d419b1fed9d98570",
-    "v41_snapshot_sha256": "1c56aab7b6f4642d494b021cf9a1d635dc559897552c719b08748725034ec66c"
+    "cap_delta_commit": "534af7a46ee74634c2f680117959ea7faf07a264",
+    "published_v42_commit": "69acc0e49f2042f9082a424d500508fed13e87f5",
+    "scoped_delta": {
+      "scripts/nc_rted_stream_frozen_samples.py": "b5d759e0bbd1b07088d2726e5ace0d34f9c1c22f80e8554808dcb6cd4c7cb9f0"
+    }
   },
   "status": "SCOPED_GPU_PIPELINE_DEVELOPMENT_SNAPSHOT",
   "validation": {
     "formal_execution_allowed": false,
     "full_suite_repeated": false,
     "new_tests_run": false,
-    "publication_scope": "Published v41 plus committed GPU frozen-input producer/transport and consumer/controller; latest owner instruction waives further independent review prerequisites. Prior focused tests reused. Publication does not claim experiment completion.",
-    "secrets_scan": {
-      "scoped_paths": [
-        "scripts/nc_rted_interleaved_formal.py",
-        "scripts/nc_rted_produce_frozen_samples.py",
-        "scripts/nc_rted_queue.py",
-        "scripts/nc_rted_receive_frozen_sample.py",
-        "scripts/nc_rted_segmented_materialization.py",
-        "scripts/nc_rted_source39_segmented_formal_v1.py",
-        "scripts/nc_rted_stream_frozen_samples.py",
-        "src/nc_rted/formal_bundle.py",
-        "src/nc_rted/frozen_provider_runtime.py",
-        "src/nc_rted/frozen_sample_cache.py",
-        "src/nc_rted/frozen_sample_consumer.py",
-        "src/nc_rted/frozen_sample_store.py",
-        "src/nc_rted/frozen_sample_transport.py",
-        "src/nc_rted/interleaved_training.py",
-        "src/nc_rted/production_runtime.py",
-        "src/nc_rted/recovery.py",
-        "tests/test_nc_rted_frozen_provider_runtime.py",
-        "tests/test_nc_rted_frozen_sample_cache.py",
-        "tests/test_nc_rted_frozen_sample_consumer.py",
-        "tests/test_nc_rted_frozen_sample_transport.py",
-        "tests/test_nc_rted_interleaved_training.py",
-        "tests/test_nc_rted_production_runtime.py",
-        "tests/test_nc_rted_segmented_materialization.py"
-      ],
-      "status": "PASSED"
-    }
+    "publication_scope": "Published v42 plus one-file two-line argument ceiling/message adjustment permitting an explicitly requested remote cache up to200GiB within existing300GiB authorization; default80GiB retained. No running source, input identity, model, target, or storage allocation change."
   }
 }

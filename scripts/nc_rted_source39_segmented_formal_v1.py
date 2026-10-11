@@ -82,9 +82,15 @@ def run_intervals(m,root,lease,expiry):
   start=stop
  publish(root/"controller-outcome.json",{"state":"FORMAL_SEED17_COMPLETE","complete":True,"completed_updates_per_group":1000,"formal_models_completed":4,"formal_matrix_target":12,"settled_actual_seconds":spent,"final_bundle_checkpoint":previous,"utc_epoch":time.time()});announce("FORMAL_SEED17_COMPLETE",formal_models_completed=4,formal_matrix_target=12)
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument("--runtime-source-root",type=Path,required=True);p.add_argument("--output-root",type=Path,required=True);p.add_argument("--lease-id",default="pro6000-user-seven-day-rental-20261009");p.add_argument("--lease-expires-utc",type=int,default=CUTOFF);p.add_argument("--run",action="store_true");a=p.parse_args();source,root=a.runtime_source_root.resolve(),a.output_root.resolve()
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument("--runtime-source-root",type=Path,required=True);p.add_argument("--output-root",type=Path,required=True);p.add_argument("--lease-id",default="pro6000-user-seven-day-rental-20261009");p.add_argument("--lease-expires-utc",type=int,default=CUTOFF);p.add_argument("--frozen-sample-consumer",type=Path);p.add_argument("--frozen-sample-consumer-sha256");p.add_argument("--run",action="store_true");a=p.parse_args();source,root=a.runtime_source_root.resolve(),a.output_root.resolve()
  if source!=Path(__file__).resolve().parents[1] or PROJECT not in source.parents or PROJECT not in root.parents or a.lease_id!="pro6000-user-seven-day-rental-20261009" or a.lease_expires_utc!=CUTOFF:p.error("source, output or authorized lease differs from this incident-scoped controller")
- sys.path.insert(0,str(source/"src"));inv={"source_root":str(source),"output_root":str(root),"lease_id":a.lease_id,"lease_expiry":a.lease_expires_utc,"qualification":{"path":str(PROJECT/"reports/nc_rted/source39_runtime_qualification_uuid_v1.json"),"sha256":QUALIFICATION_SHA},"profile":{"path":str(PROJECT/"artifacts/nc_rted/source39_formal_qualification_profile_uuid_v1/qualification_profile.json"),"sha256":PROFILE_SHA},"gates":{"path":str(PROJECT/"reports/nc_rted/source39_recovered_gpu_gates_v1/gate_bindings.json"),"sha256":GATES_SHA}};root.parent.mkdir(parents=True,exist_ok=True)
+ if (a.frozen_sample_consumer is None)!=(a.frozen_sample_consumer_sha256 is None):p.error("frozen consumer path and SHA-256 must be supplied together")
+ consumer=None
+ if a.frozen_sample_consumer is not None:
+  consumer={"path":str(a.frozen_sample_consumer.resolve()),"sha256":a.frozen_sample_consumer_sha256}
+  try: read_bound(consumer)
+  except (OSError, ValueError, TypeError) as error:p.error(f"frozen consumer binding differs: {error}")
+ sys.path.insert(0,str(source/"src"));inv={"source_root":str(source),"output_root":str(root),"lease_id":a.lease_id,"lease_expiry":a.lease_expires_utc,"qualification":{"path":str(PROJECT/"reports/nc_rted/source39_runtime_qualification_uuid_v1.json"),"sha256":QUALIFICATION_SHA},"profile":{"path":str(PROJECT/"artifacts/nc_rted/source39_formal_qualification_profile_uuid_v1/qualification_profile.json"),"sha256":PROFILE_SHA},"gates":{"path":str(PROJECT/"reports/nc_rted/source39_recovered_gpu_gates_v1/gate_bindings.json"),"sha256":GATES_SHA},"frozen_sample_consumer":consumer};root.parent.mkdir(parents=True,exist_ok=True)
  with(root.parent/f".{root.name}.controller.lock").open("a+") as lock:
   fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB);mp=root/"materialization.json"
   if mp.exists():
@@ -92,7 +98,7 @@ def main():
    if stored.get("invocation")!=inv:raise ValueError("immutable materialization invocation differs")
    m=stored["material"]
    for n in("bundle","qualification","profile","gates","scope"):read_bound(m[n])
-  else:m=materialize_seed(source_root=source,output_root=root,qualification_binding=inv["qualification"],profile_binding=inv["profile"],gates_binding=inv["gates"],lease_id=a.lease_id,lease_expiry=a.lease_expires_utc);publish(mp,{"schema":"nc_rted_segment_materialization_receipt/v1","invocation":inv,"material":m})
+  else:m=materialize_seed(source_root=source,output_root=root,qualification_binding=inv["qualification"],profile_binding=inv["profile"],gates_binding=inv["gates"],lease_id=a.lease_id,lease_expiry=a.lease_expires_utc,frozen_sample_consumer_binding=consumer);publish(mp,{"schema":"nc_rted_segment_materialization_receipt/v1","invocation":inv,"material":m})
   announce("CPU_MATERIALIZATION_COMPLETE",materialization=bind(mp))
   if a.run:
    if(root/"controller-run.json").exists():raise ValueError("prior controller run exists; preserve it and recover explicitly, never reset resource accounting")

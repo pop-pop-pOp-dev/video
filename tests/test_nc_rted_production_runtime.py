@@ -133,6 +133,10 @@ def test_runtime_checkpoint_identity_matches_the_existing_store_contract(tmp_pat
     assert CheckpointStore(tmp_path, identity, min_free_bytes=0).identity == identity
     with pytest.raises(RecoveryError, match="identity is incomplete"):
         CheckpointStore(tmp_path / "extended", {**identity, "numerical_policy_identity": "policy"}, min_free_bytes=0)
+    consumer_identity = _checkpoint_identity(manifest, SimpleNamespace(identity="f" * 64),
+                                             frozen_sample_consumer_sha256="1" * 64)
+    assert consumer_identity["frozen_sample_consumer_sha256"] == "1" * 64
+    assert CheckpointStore(tmp_path / "consumer", consumer_identity, min_free_bytes=0).identity == consumer_identity
 
 
 @pytest.mark.parametrize("section,key,value", [("sampling", "frames_upbound", 63), ("stage2_cache", "accepted_status", "REVIEW_REQUIRED_NOT_AUTHORIZED_TO_LAUNCH")])

@@ -238,6 +238,15 @@ def capture_formal_bundle_inputs(payload, run_dir):
             raise QueueError("formal bundle inputs changed before capture") from error
         copies={Path("bundle.json"):bundle, Path("bundle-source-manifest.json"):source_manifest,
                 Path("source-map.json"):source_map}
+        consumer=document.get("frozen_sample_consumer")
+        if consumer is not None:
+            try:
+                consumer_path=Path(consumer["path"])
+                if (set(consumer)!={"path","sha256"} or not consumer_path.is_absolute() or not consumer_path.is_file() or
+                        hashlib.sha256(consumer_path.read_bytes()).hexdigest()!=consumer["sha256"]): raise ValueError
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                raise QueueError("formal bundle frozen sample consumer changed before capture") from error
+            copies[Path("frozen-sample-consumer.json")]=consumer_path
         def add(relative, source):
             if (not isinstance(relative,Path) or relative.is_absolute() or ".." in relative.parts or
                     not source.is_file()): raise QueueError("formal bundle capture path is invalid")
@@ -309,6 +318,13 @@ def capture_formal_bundle_inputs(payload, run_dir):
         except (OSError, ValueError, KeyError, TypeError) as error:
             raise QueueError("captured formal bundle closure is invalid") from error
         allowed={Path("bundle.json"),Path("bundle-source-manifest.json"),Path("source-map.json"),Path("launch-contract.json")}
+        consumer=document.get("frozen_sample_consumer")
+        if consumer is not None:
+            config=root/"frozen-sample-consumer.json"
+            if (not config.is_file() or not isinstance(consumer,dict) or set(consumer)!={"path","sha256"} or
+                    hashlib.sha256(config.read_bytes()).hexdigest()!=consumer["sha256"]):
+                raise QueueError("captured frozen sample consumer differs")
+            allowed.add(Path("frozen-sample-consumer.json"))
         for relative,digest in files.items():
             candidate=root/relative
             if (not isinstance(relative,str) or not isinstance(digest,str) or Path(relative).is_absolute() or ".." in Path(relative).parts or
@@ -508,6 +524,12 @@ def observe_progress(queue, job, path, owner=None):
                         manifest_document.get("final") != (counter == 1000)):
                     raise ValueError
                 validate_checkpoint_payload(state, manifest_document)
+        elif transaction == "formal_bundle_update":
+            if (artifact_document.get("schema") != "nc_rted_formal_bundle_update/v1" or
+                    artifact_document.get("job_key") != job["job_key"] or
+                    artifact_document.get("lease_token") != job["lease_token"] or
+                    artifact_document.get("counter") != counter or counter < 1):
+                raise ValueError
         elif transaction == "media":
             ids=artifact_document.get("committed_ids")
             results=artifact_document.get("results")

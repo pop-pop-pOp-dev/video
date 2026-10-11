@@ -18,18 +18,23 @@ import sys
 import tempfile
 import uuid
 
+import torch
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from nc_rted.captured_sources import CapturedSourceError, load_captured_runtime, load_captured_sources
+from nc_rted.frozen_sample_consumer import FrozenSampleConsumer
 from nc_rted.interleaved_training import Bundle, SameSeedBundleWorker, clone_with_shared_frozen
 from nc_rted.production_runtime import (_checkpoint_identity, assemble, load_formal_admission,
                                         load_manifest, preflight)
 from nc_rted.recovery import CheckpointStore, capture_rng
+from nc_rted.task_inputs import TrainingCatalog
 from nc_rted.train_worker import TrainingWorker, publish_progress
 
 GROUPS = ("A", "U", "S", "F")
 SCHEMA = "nc_rted_interleaved_formal_bundle/v1"
+FROZEN_INPUT_SOURCE_BOOKKEEPING = {"runtime_source", "builder", "caption_cache_producer"}
 
 
 class FormalBundleError(ValueError):
@@ -57,7 +62,8 @@ def _load_bundle(path: str, expected_sha256: str) -> dict:
     except (OSError, ValueError) as error:
         raise FormalBundleError("formal bundle manifest is invalid JSON") from error
     required = {"schema", "bundle_checkpoint_root", "members", "source_manifest", "source_manifest_sha256", "captured_source_map"}
-    if not isinstance(document, dict) or set(document) != required or document.get("schema") != SCHEMA:
+    allowed = required | {"frozen_sample_consumer"}
+    if not isinstance(document, dict) or set(document) not in (required, allowed) or document.get("schema") != SCHEMA:
         raise FormalBundleError("formal bundle manifest fields differ")
     for key in ("bundle_checkpoint_root", "source_manifest"):
         if not isinstance(document[key], str) or not Path(document[key]).is_absolute():
@@ -77,6 +83,59 @@ def _load_bundle(path: str, expected_sha256: str) -> dict:
             if not isinstance(member[path_key], str) or not Path(member[path_key]).is_absolute() or not isinstance(member[hash_key], str) or len(member[hash_key]) != 64:
                 raise FormalBundleError("formal bundle member binding is invalid")
     return document
+
+
+def _frozen_sample_consumer_config(bundle: dict, captured_root: Path, members: dict, catalog) -> tuple[dict, str] | None:
+    binding = bundle.get("frozen_sample_consumer")
+    if binding is None:
+        return None
+    if not isinstance(binding, dict) or set(binding) != {"path", "sha256"}:
+        raise FormalBundleError("frozen sample consumer binding differs")
+    path = captured_root / "frozen-sample-consumer.json"
+    if not path.is_file() or _sha(path) != binding["sha256"]:
+        raise FormalBundleError("captured frozen sample consumer configuration differs")
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise FormalBundleError("captured frozen sample consumer configuration is invalid") from error
+    required = {"schema", "root", "identity", "producer_implementation", "device", "wait_seconds", "poll_seconds", "prefetch_depth"}
+    if (not isinstance(config, dict) or set(config) != required or
+            config.get("schema") != "nc_rted_frozen_sample_consumer/v1" or
+            not isinstance(config["root"], str) or not Path(config["root"]).is_absolute() or
+            not isinstance(config["producer_implementation"], dict) or not config["producer_implementation"] or
+            not isinstance(config["identity"], dict)):
+        raise FormalBundleError("frozen sample consumer device or schema differs")
+    identity = config["identity"]
+    required_identity = {"schema", "catalog_sha256", "frozen_inputs", "implementation"}
+    if (set(identity) != required_identity or identity.get("schema") != "nc_rted_frozen_material_producer/v1" or
+            identity.get("implementation") != config["producer_implementation"] or
+            identity.get("catalog_sha256") != catalog.identity or not isinstance(identity.get("frozen_inputs"), dict) or
+            any(not isinstance(name, str) or not isinstance(digest, str) or len(digest) != 64 or
+                any(char not in "0123456789abcdef" for char in digest)
+                for name, digest in config["producer_implementation"].items())):
+        raise FormalBundleError("frozen producer identity differs from the admitted runtime")
+    for manifest in members.values():
+        expected_inputs = {key: value for key, value in manifest.document.items()
+                           if key not in {"run", "hashes", "teacher"} | FROZEN_INPUT_SOURCE_BOOKKEEPING}
+        producer_inputs = identity["frozen_inputs"]
+        if (set(producer_inputs) != set(expected_inputs) | FROZEN_INPUT_SOURCE_BOOKKEEPING or
+                {key: value for key, value in producer_inputs.items()
+                 if key not in FROZEN_INPUT_SOURCE_BOOKKEEPING} != expected_inputs):
+            raise FormalBundleError("frozen producer inputs differ from the admitted runtime")
+    return config, binding["sha256"]
+
+
+def _frozen_sample_consumer(config: dict | None, catalog, device: str):
+    if config is None:
+        return None
+    if config["device"] != device:
+        raise FormalBundleError("frozen sample consumer device differs")
+    try:
+        return FrozenSampleConsumer(catalog.tasks, root=config["root"], identity=config["identity"], device=device,
+                                    wait_seconds=config["wait_seconds"], poll_seconds=config["poll_seconds"],
+                                    prefetch_depth=config["prefetch_depth"])
+    except (TypeError, ValueError, RuntimeError) as error:
+        raise FormalBundleError("frozen sample consumer configuration differs") from error
 
 
 def _verify_source_manifest(bundle: dict, captured_root: Path) -> None:
@@ -156,8 +215,10 @@ def _empty_or_recoverable(bundle: dict, members: dict, *, resume: bool | None) -
     return bool(populated)
 
 
-def _construct(members: dict, admissions: dict, captured: dict) -> tuple[dict, dict]:
-    runtime = assemble(members["A"], admission=admissions["A"], captured_sources=captured)
+def _construct(members: dict, admissions: dict, captured: dict,
+               consumer_digest: str | None) -> tuple[dict, dict]:
+    runtime = assemble(members["A"], admission=admissions["A"], captured_sources=captured,
+                       frozen_sample_consumer_sha256=consumer_digest)
     exemplar = runtime.worker
     frozen = [parameter for parameter in exemplar.bridge.parameters() if not parameter.requires_grad]
     models = {"A": exemplar.bridge}
@@ -167,11 +228,20 @@ def _construct(members: dict, admissions: dict, captured: dict) -> tuple[dict, d
     for group in GROUPS[1:]:
         manifest = members[group]
         workers[group] = TrainingWorker(models[group], exemplar.catalog, exemplar.teachers, exemplar.tokenizer, exemplar.provider,
-                                        CheckpointStore(manifest.run["checkpoint_root"], _checkpoint_identity(manifest, exemplar.catalog)),
+                                        CheckpointStore(manifest.run["checkpoint_root"], _checkpoint_identity(
+                                            manifest, exemplar.catalog,
+                                            frozen_sample_consumer_sha256=consumer_digest)),
                                         group=group, seed=manifest.run["seed"], captured_sources=captured)
     for group in GROUPS:
         workers[group]._verify_formal_admission(admissions[group])
     return models, workers
+
+
+def _validate_model_device(models: dict, device: str) -> None:
+    target = torch.device(device)
+    tensors = [parameter for model in models.values() for parameter in model.parameters()]
+    if not tensors or any(parameter.device != target for parameter in tensors):
+        raise FormalBundleError("formal models do not all reside on the admitted frozen-material device")
 
 
 def _write(path: Path, document: dict) -> None:
@@ -240,6 +310,25 @@ def _queue_progress(update: int, final: bool, boundary: Path, identities: dict) 
                      "committed_path": str(commit.resolve())})
 
 
+def _queue_update(update: int) -> None:
+    """Flush a completed optimizer-update heartbeat before checkpoint cadence."""
+    required = ("NC_RTED_PROGRESS_ROOT", "NC_RTED_PROGRESS_PATH", "NC_RTED_JOB_KEY", "NC_RTED_LEASE_TOKEN")
+    if any(not os.environ.get(key) for key in required):
+        raise FormalBundleError("formal bundle progress requires a queue attempt contract")
+    root = Path(os.environ["NC_RTED_PROGRESS_ROOT"])
+    receipt = root / f"bundle-update-{update:06d}.json"
+    _write(receipt, {"schema": "nc_rted_formal_bundle_update/v1", "job_key": os.environ["NC_RTED_JOB_KEY"],
+                     "lease_token": os.environ["NC_RTED_LEASE_TOKEN"], "counter": update})
+    commit = root / f"bundle-update-commit-{update:06d}.json"
+    _write(commit, {"schema": "nc_rted_progress_commit_v1", "job_key": os.environ["NC_RTED_JOB_KEY"],
+                    "lease_token": os.environ["NC_RTED_LEASE_TOKEN"], "counter": update,
+                    "transaction_type": "formal_bundle_update", "artifact_path": str(receipt.resolve()),
+                    "artifact_sha256": _sha(receipt)})
+    publish_progress(os.environ["NC_RTED_PROGRESS_PATH"], {"update": update,
+                     "job_key": os.environ["NC_RTED_JOB_KEY"], "lease_token": os.environ["NC_RTED_LEASE_TOKEN"],
+                     "committed_path": str(commit.resolve())})
+
+
 def _captured_root(path: str) -> Path:
     root = Path(path).absolute()
     required = {"bundle.json", "bundle-source-manifest.json", "source-map.json"}
@@ -258,7 +347,16 @@ def run(bundle: dict, *, captured_root: Path, resume: bool | None,
     _verify_source_manifest(bundle, captured_root)
     members, admissions, captured = _load_members(bundle, captured_root)
     should_restore = _empty_or_recoverable(bundle, members, resume=resume)
-    models, workers = _construct(members, admissions, captured)
+    catalog_doc = members["A"].document["catalog"]
+    catalog = TrainingCatalog.load(catalog_doc["manifest_directory"], catalog_doc["training_annotations"],
+                                   expected_provenance_sha256=catalog_doc["provenance_sha256"])
+    consumer_contract = _frozen_sample_consumer_config(bundle, captured_root, members, catalog)
+    consumer_config, consumer_digest = consumer_contract if consumer_contract is not None else (None, None)
+    models, workers = _construct(members, admissions, captured, consumer_digest)
+    device = members["A"].run["device"]
+    consumer = _frozen_sample_consumer(consumer_config, workers["A"].catalog, device)
+    if consumer is not None:
+        _validate_model_device(models, device)
     initial_rng = capture_rng()
     bundles = {
         group: Bundle(group, workers[group].trainer,
@@ -269,10 +367,12 @@ def run(bundle: dict, *, captured_root: Path, resume: bool | None,
         for group in GROUPS
     }
     identities = {group: dict(workers[group].store.identity) for group in GROUPS}
-    worker = SameSeedBundleWorker(bundles, workers["A"].material_for_sample,
+    provider = consumer if consumer is not None else workers["A"].material_for_sample
+    worker = SameSeedBundleWorker(bundles, provider,
                                   bundle_checkpoint_root=bundle["bundle_checkpoint_root"],
                                   after_bundle_checkpoint=lambda update, final, boundary:
-                                  _queue_progress(update, final, boundary, identities))
+                                  _queue_progress(update, final, boundary, identities),
+                                  after_update=_queue_update)
     if start_update > 0 and not should_restore:
         raise FormalBundleError("resumed formal bundle segment requires a committed checkpoint")
     if should_restore:
@@ -286,7 +386,11 @@ def run(bundle: dict, *, captured_root: Path, resume: bool | None,
     interval = workers["A"].trainer.recipe.save_interval
     if stop_update != 1000 and stop_update % interval:
         raise FormalBundleError("formal bundle segment stop must be a common checkpoint boundary")
-    worker.run(stop_after=stop_update)
+    try:
+        worker.run(stop_after=stop_update)
+    finally:
+        if consumer is not None:
+            consumer.close()
     if any(item.trainer.completed_updates != stop_update for item in workers.values()):
         raise FormalBundleError("formal bundle did not stop at the requested absolute update")
     boundary_name = "final.json" if stop_update == 1000 else f"update_{stop_update:06d}.json"

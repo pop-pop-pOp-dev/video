@@ -577,7 +577,8 @@ def _validate_formal_admission_before_models(admission: dict, identity: dict, *,
         raise ProductionRuntimeError(str(error)) from error
 
 
-def _checkpoint_identity(manifest: RuntimeManifest, catalog: TrainingCatalog) -> dict[str, str]:
+def _checkpoint_identity(manifest: RuntimeManifest, catalog: TrainingCatalog,
+                         *, frozen_sample_consumer_sha256: str | None = None) -> dict[str, str]:
     """Return the exact immutable identity accepted by ``CheckpointStore``.
 
     The final Stage2 vision snapshot and numerical policy are independently
@@ -586,11 +587,17 @@ def _checkpoint_identity(manifest: RuntimeManifest, catalog: TrainingCatalog) ->
     compare the same persisted contract.
     """
     doc, run = manifest.document, manifest.run
-    return {"run_id": run["run_id"], "group": run["group"], "seed": str(run["seed"]),
-            "code_sha256": doc["hashes"]["code_sha256"], "config_sha256": manifest.config_sha256,
-            "data_sha256": catalog.identity, "teacher_sha256": doc["teacher"]["sha256"],
-            "inherited_weights_sha256": doc["hashes"]["inherited_weights_sha256"],
-            "runtime_sha256": doc["hashes"]["runtime_sha256"]}
+    identity = {"run_id": run["run_id"], "group": run["group"], "seed": str(run["seed"]),
+                "code_sha256": doc["hashes"]["code_sha256"], "config_sha256": manifest.config_sha256,
+                "data_sha256": catalog.identity, "teacher_sha256": doc["teacher"]["sha256"],
+                "inherited_weights_sha256": doc["hashes"]["inherited_weights_sha256"],
+                "runtime_sha256": doc["hashes"]["runtime_sha256"]}
+    if frozen_sample_consumer_sha256 is not None:
+        if (not isinstance(frozen_sample_consumer_sha256, str) or len(frozen_sample_consumer_sha256) != 64 or
+                any(char not in "0123456789abcdef" for char in frozen_sample_consumer_sha256)):
+            raise ProductionRuntimeError("frozen sample consumer digest is invalid")
+        identity["frozen_sample_consumer_sha256"] = frozen_sample_consumer_sha256
+    return identity
 
 
 @dataclass
@@ -619,13 +626,16 @@ def assemble_caption_preparation(manifest: RuntimeManifest) -> ProductionRuntime
 
 
 def assemble(manifest: RuntimeManifest, *, admission: dict | None = None,
-             captured_sources: dict[str, Path] | None = None) -> ProductionRuntime:
+             captured_sources: dict[str, Path] | None = None,
+             frozen_sample_consumer_sha256: str | None = None) -> ProductionRuntime:
     """Load the exact inherited training runtime after ``preflight`` has succeeded."""
-    return _assemble(manifest, admission=admission, caption_preparation=False, captured_sources=captured_sources)
+    return _assemble(manifest, admission=admission, caption_preparation=False, captured_sources=captured_sources,
+                     frozen_sample_consumer_sha256=frozen_sample_consumer_sha256)
 
 
 def _assemble(manifest: RuntimeManifest, *, admission: dict | None = None,
-              caption_preparation: bool, captured_sources: dict[str, Path] | None = None) -> ProductionRuntime:
+              caption_preparation: bool, captured_sources: dict[str, Path] | None = None,
+              frozen_sample_consumer_sha256: str | None = None) -> ProductionRuntime:
     preflight(manifest, caption_preparation=caption_preparation)
     from .numerics import configure_deterministic_algorithms
     numerical_policy = configure_deterministic_algorithms()
@@ -641,7 +651,8 @@ def _assemble(manifest: RuntimeManifest, *, admission: dict | None = None,
         teacher_path = Path(doc["teacher"]["artifact"])
         teachers = (TeacherIndex(build_teachers_from_store(teacher_path), catalog, identity=doc["teacher"]["sha256"])
                     if teacher_path.is_dir() else TeacherIndex.load(teacher_path, catalog, expected_sha256=doc["teacher"]["sha256"]))
-        identity = _checkpoint_identity(manifest, catalog)
+        identity = _checkpoint_identity(manifest, catalog,
+                                        frozen_sample_consumer_sha256=frozen_sample_consumer_sha256)
         if run["mode"] == "formal":
             if admission is None: raise ProductionRuntimeError("formal assembly requires an external formal admission")
             _validate_formal_admission_before_models(admission, identity, captured_sources=captured_sources)

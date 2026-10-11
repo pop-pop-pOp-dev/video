@@ -169,7 +169,9 @@ class CheckpointStore:
     def __init__(self, root: str | Path, identity: dict[str, str], *, min_free_bytes: int = 20 << 30):
         required = {"run_id", "group", "seed", "code_sha256", "config_sha256", "data_sha256",
                     "teacher_sha256", "inherited_weights_sha256", "runtime_sha256"}
-        if set(identity) != required or not all(isinstance(v, str) and v for v in identity.values()):
+        optional = {"frozen_sample_consumer_sha256"}
+        if (set(identity) not in (required, required | optional) or
+                not all(isinstance(v, str) and v for v in identity.values())):
             raise RecoveryError("checkpoint identity is incomplete")
         if identity["group"] not in {"A", "U", "S", "F"}:
             raise RecoveryError("invalid training group")

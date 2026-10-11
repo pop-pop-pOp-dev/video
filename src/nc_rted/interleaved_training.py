@@ -151,7 +151,8 @@ class SameSeedBundleWorker:
     def __init__(self, bundles: Mapping[str, Bundle], frozen_provider: Callable[[str], Any], *,
                  bundle_checkpoint_root: str | Path | None = None,
                  after_checkpoint_publication: Callable[[str, int, bool], None] | None = None,
-                 after_bundle_checkpoint: Callable[[int, bool, Path], None] | None = None):
+                 after_bundle_checkpoint: Callable[[int, bool, Path], None] | None = None,
+                 after_update: Callable[[int], None] | None = None):
         if set(bundles) != {"A", "U", "S", "F"}: raise ValueError("bundles must be A/U/S/F")
         self.bundles, self.frozen_provider = dict(bundles), frozen_provider
         reference = self.bundles["A"].trainer
@@ -186,6 +187,7 @@ class SameSeedBundleWorker:
                 raise ValueError("same-seed bundles need equal initial trainable values")
         self.after_checkpoint_publication = after_checkpoint_publication
         self.after_bundle_checkpoint = after_bundle_checkpoint
+        self.after_update = after_update
         self.bundle_store = (BundleCheckpointStore(bundle_checkpoint_root, self.bundles)
                              if bundle_checkpoint_root is not None else None)
         if any(bundle.store is not None for bundle in self.bundles.values()) and self.bundle_store is None:
@@ -230,7 +232,15 @@ class SameSeedBundleWorker:
         while self.bundles["A"].trainer.completed_updates < target:
             cursor = self.bundles["A"].trainer.cursor
             order = self.bundles["A"].trainer.order[cursor:cursor + self.bundles["A"].trainer.recipe.accumulation]
+            prefetch = getattr(self.frozen_provider, "prefetch", None)
+            if prefetch is not None:
+                # One FIFO consumer must receive the required batch before any
+                # missing speculative record can occupy its only worker.
+                prefetch(order)
             materials = {sample_id: self.frozen_provider(sample_id) for sample_id in order}
+            if prefetch is not None:
+                next_cursor = cursor + self.bundles["A"].trainer.recipe.accumulation
+                prefetch(self.bundles["A"].trainer.order[next_cursor:next_cursor + self.bundles["A"].trainer.recipe.accumulation])
             prepared = {sample_id: self._prepared(material) for sample_id, material in materials.items()}
             reports = {}
             for group in ("A", "U", "S", "F"):
@@ -243,6 +253,10 @@ class SameSeedBundleWorker:
                        for sample_id, fingerprint in prepared.items()):
                     raise RuntimeError("a bundle mutated shared prepared material")
                 reports[group] = report
+            if self.after_update:
+                self.after_update(self.bundles["A"].trainer.completed_updates)
+            for group in ("A", "U", "S", "F"):
+                bundle = self.bundles[group]; trainer = bundle.trainer
                 if bundle.store and (trainer.completed_updates % trainer.recipe.save_interval == 0 or trainer.completed_updates == trainer.recipe.updates):
                     final = trainer.completed_updates == trainer.recipe.updates
                     bundle.store.save_or_verify(trainer, final=final)

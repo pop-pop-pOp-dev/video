@@ -2,7 +2,9 @@ import copy
 import importlib.util
 import json
 import random
+import threading
 import weakref
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 
 import numpy as np
@@ -71,6 +73,55 @@ def test_same_seed_interleaving_matches_four_serial_runs_and_reuses_material():
     frozen_ids = {id(p) for p in models["A"].parameters() if not p.requires_grad}
     assert all({id(p) for p in models[g].parameters() if not p.requires_grad} == frozen_ids for g in "USF")
     assert all(id(models["A"].evidence.weight) != id(models[g].evidence.weight) for g in "USF")
+
+
+def test_current_frozen_records_are_serviced_before_a_missing_future_prefetch():
+    """A one-worker FIFO producer must not let a future miss block this update."""
+    recipe = Recipe(updates=2, accumulation=1, warmup=0, save_interval=1)
+    seed_run(17); baseline = Toy(); frozen = [p for p in baseline.parameters() if not p.requires_grad]
+    models = {group: clone_with_shared_frozen(baseline, frozen) for group in "AUSF"}
+    trainers = {group: IncrementalTrainer(models[group], ["current", "future"], 17, recipe) for group in models}
+    for trainer in trainers.values():
+        trainer.order = ["current", "future"]
+
+    class DelayedFifoProvider:
+        def __init__(self):
+            self.executor = ThreadPoolExecutor(max_workers=1)
+            self.pending, self.future_started, self.release_future = {}, threading.Event(), threading.Event()
+            self.served = []
+
+        def _load(self, sample_id):
+            if sample_id == "future":
+                self.future_started.set()
+                self.release_future.wait(timeout=5)
+            self.served.append(sample_id)
+            return torch.ones(1, 3)
+
+        def prefetch(self, sample_ids):
+            for sample_id in sample_ids:
+                self.pending.setdefault(sample_id, self.executor.submit(self._load, sample_id))
+
+        def __call__(self, sample_id):
+            future = self.pending.pop(sample_id, self.executor.submit(self._load, sample_id))
+            try:
+                return future.result(timeout=.25)
+            except TimeoutError as error:
+                raise AssertionError("a missing future record blocked the ready current record") from error
+
+        def close(self):
+            self.release_future.set()
+            self.executor.shutdown(wait=True)
+
+    provider = DelayedFifoProvider()
+    bundles = {group: Bundle(group, trainers[group],
+                             lambda sample_id, material, group=group: _loss(models[group], group, material),
+                             rng=capture_rng()) for group in "AUSF"}
+    try:
+        SameSeedBundleWorker(bundles, provider).run(stop_after=1)
+        assert provider.future_started.wait(.5)
+        assert provider.served[0] == "current"
+    finally:
+        provider.close()
 
 
 def test_checkpointed_bundle_replay_matches_standalone_and_preserves_independent_state(tmp_path):

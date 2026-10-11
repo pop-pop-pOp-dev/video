@@ -15,13 +15,14 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .resource_attestation import (ResourceAttestationError, resource_lease_expiry,
-                                   verify_attestation, verify_bundle_attestation)
+                                   verify_attestation, verify_bundle_attestation,
+                                   verify_bundle_segment_attestation)
 from .worker_runtime import HeldGpuLock
 
 PENDING, RUNNING, RETRY_WAIT, SUCCEEDED, BLOCKED = "PENDING", "RUNNING", "RETRY_WAIT", "SUCCEEDED", "BLOCKED"
 RETRY_DELAYS = (300, 1200, 3600)
 FORMAL_GROUPS = ("A", "U", "S", "F")
-FORMAL_KINDS = {"formal_train", "formal_bundle"}
+FORMAL_KINDS = {"formal_train", "formal_bundle", "formal_bundle_segment"}
 SEEDS = (17, 42, 2026)
 FORMAL_DEADLINE = 1792724040  # 2026-10-23T02:54:00Z
 
@@ -225,6 +226,29 @@ class JobQueue:
                 verify_bundle_attestation(payload, row["job_key"], evidence)
             except (ResourceAttestationError, OSError, TypeError, ValueError) as error:
                 return f"formal bundle resource attestation rejected: {error}"
+        if row["kind"] == "formal_bundle_segment" and payload.get("command"):
+            entry = str((Path(__file__).resolve().parents[2] / "scripts" / "nc_rted_interleaved_formal.py"))
+            interpreter = payload.get("interpreter", {})
+            start, stop = payload.get("start_update"), payload.get("stop_update")
+            resume = ["--resume", "auto"]
+            required = [interpreter.get("path"), entry, "--bundle", payload.get("bundle_config"),
+                        "--bundle-sha256", payload.get("bundle_config_sha256"), "--captured-root",
+                        "{queue_capture}", "--output", "bundle-segment-report.json", "--start-update",
+                        str(start), "--stop-update", str(stop), *resume]
+            if payload.get("command") != required:
+                return "formal bundle segment command is not the fixed local bundle entrypoint"
+            outputs = payload.get("expected_outputs")
+            terminal = stop == 1000
+            if (not isinstance(outputs, list) or
+                    (not terminal and (len(outputs) != 1 or outputs[0].get("artifact_type") != "report" or outputs[0].get("semantic") != "formal_bundle_segment")) or
+                    (terminal and (len(outputs) != 5 or sum(item.get("semantic") == "formal_training" for item in outputs) != 4 or sum(item.get("semantic") == "formal_bundle" for item in outputs) != 1))):
+                return "formal bundle segment output contract differs from its terminal state"
+            evidence = {item["name"]: (item["path"], item["checksum"])
+                        for item in db.execute("SELECT name,path,checksum FROM evidence WHERE accepted=1")}
+            try:
+                verify_bundle_segment_attestation(payload, row["job_key"], evidence)
+            except (ResourceAttestationError, OSError, TypeError, ValueError) as error:
+                return f"formal bundle segment resource attestation rejected: {error}"
         return None
 
     def claim(self, owner: str, lease_seconds=120):
@@ -370,7 +394,9 @@ class JobQueue:
                         not isinstance(lock_handle, HeldGpuLock) or not _fd_holds_flock(current, os.getpid(), lock_handle.fileno())):
                     raise QueueError("formal launch lost the bound device lock")
                 try:
-                    verifier = verify_attestation if row["kind"] == "formal_train" else verify_bundle_attestation
+                    verifier = (verify_attestation if row["kind"] == "formal_train" else
+                                verify_bundle_attestation if row["kind"] == "formal_bundle" else
+                                verify_bundle_segment_attestation)
                     verifier(json.loads(row["payload"]), job_key, {item["name"]:(item["path"],item["checksum"]) for item in db.execute("SELECT name,path,checksum FROM evidence WHERE accepted=1")}, dict(reservation))
                 except (ResourceAttestationError, OSError, ValueError, TypeError) as error: raise QueueError(f"formal reservation rejected: {error}") from error
 
@@ -559,6 +585,22 @@ class JobQueue:
                         document.get("bundle_checkpoint_root") != expected.get("bundle_checkpoint_root") or
                         document.get("final_checkpoints") != expected.get("final_checkpoints")):
                     raise QueueError("formal bundle result identity contract failed")
+            elif semantic == "formal_bundle_segment":
+                if (document.get("status") != "FORMAL_BUNDLE_SEGMENT_PAUSED" or document.get("complete") is not False or
+                        document.get("shared_material") != "frozen_provider_only" or
+                        document.get("members") != expected.get("member_identities") or
+                        document.get("start_update") != expected.get("start_update") or
+                        type(document.get("resumed_from_update")) is not int or
+                        not expected.get("start_update") <= document["resumed_from_update"] <= expected.get("stop_update") or
+                        document.get("stop_update") != expected.get("stop_update") or
+                        document.get("total_updates") != 1000 or
+                        document.get("bundle_checkpoint_root") != expected.get("bundle_checkpoint_root")):
+                    raise QueueError("formal bundle segment result contract failed")
+                boundary = Path(document.get("bundle_checkpoint", "")); digest = document.get("bundle_checkpoint_sha256")
+                expected_boundary = Path(expected["bundle_checkpoint_root"]) / "commits" / f"update_{expected['stop_update']:06d}.json"
+                if (not boundary.is_file() or boundary.is_symlink() or boundary.resolve() != expected_boundary.resolve() or
+                        not isinstance(digest, str) or hashlib.sha256(boundary.read_bytes()).hexdigest() != digest):
+                    raise QueueError("formal bundle segment common boundary differs")
             elif semantic is not None: raise QueueError("unknown semantic artifact contract")
 
     def running_attempts(self):

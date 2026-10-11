@@ -21,6 +21,7 @@ from .storage_lock import allocation_lock, ensure_directory
 
 SCHEMA = "nc_rted_formal_resource_attestation/v1"
 BUNDLE_SCHEMA = "nc_rted_formal_bundle_resource_attestation/v1"
+BUNDLE_SEGMENT_SCHEMA = "nc_rted_formal_bundle_segment_resource_attestation/v1"
 
 
 class ResourceAttestationError(ValueError):
@@ -87,124 +88,6 @@ FORMAL_PATH = "/root/autodl-tmp/lookaway-wm/.venv-reactvau/bin:/usr/local/sbin:/
 ENVIRONMENT_KEYS = CACHE_KEYS | {"PYTHONPATH", "HF_HOME", "TRANSFORMERS_CACHE",
                                "PYTHONNOUSERSITE", "PYTHONDONTWRITEBYTECODE", "PATH"}
 QUALIFICATION_MAX_AGE = 7 * 24 * 3600
-SOURCE34_APPLICABILITY_SCHEMA = "nc_rted_source34_seed_applicability/v1"
-GROUPS = ("A", "U", "S", "F")
-
-
-def normalized_runtime_for_seed(document: object) -> dict:
-    """Return the immutable runtime contract after removing seed relocation."""
-    if not isinstance(document, dict) or not isinstance(document.get("run"), dict) or not isinstance(document.get("hashes"), dict):
-        raise ResourceAttestationError("source34 runtime document is incomplete")
-    value = json.loads(json.dumps(document))
-    for key in ("run_id", "seed", "checkpoint_root", "progress_path"):
-        value["run"].pop(key, None)
-    for key in ("code_sha256", "runtime_sha256"):
-        value["hashes"].pop(key, None)
-    return value
-
-
-def _manifest_code_sha256(manifest: dict, name: str) -> tuple[dict[str, str], str]:
-    files = manifest.get("files")
-    if (manifest.get("schema") != "nc_rted_interleaved_source_manifest/v1" or not isinstance(files, dict) or
-            not files or any(not isinstance(key, str) or Path(key).is_absolute() or ".." in Path(key).parts or
-                             not isinstance(value, str) or len(value) != 64 for key, value in files.items())):
-        raise ResourceAttestationError(f"{name} differs")
-    code = hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    if manifest.get("code_sha256") != code:
-        raise ResourceAttestationError(f"{name} code identity differs")
-    return files, code
-
-
-def _verify_source34_applicability(document: object, qualification_document: dict, qualification_path: Path,
-                                    qualification_sha256: str, identities: dict, budget: float,
-                                    target_runtimes: dict[str, tuple[dict, dict]] | None = None) -> dict | None:
-    """Accept a conservative source33 measurement projection for seed 42/2026 only."""
-    if document is None:
-        return None
-    if not isinstance(document, dict) or set(document) != {"schema", "status", "measured_qualification", "measured_identities", "target_seed", "target_identities", "source_transition", "invariants", "projection", "measured_runtimes", "target_runtimes"}:
-        raise ResourceAttestationError("source34 applicability schema differs")
-    if document["schema"] != SOURCE34_APPLICABILITY_SCHEMA or document["status"] != "PASS_CONSERVATIVE_SEED_APPLICABILITY":
-        raise ResourceAttestationError("source34 applicability is not accepted")
-    if document["measured_qualification"] != {"path": str(qualification_path), "sha256": qualification_sha256}:
-        raise ResourceAttestationError("source34 applicability binds a different source33 measurement")
-    if type(document["target_seed"]) is not int or document["target_seed"] not in {42, 2026} or document["target_identities"] != identities:
-        raise ResourceAttestationError("source34 applicability target identities differ")
-    if set(document["measured_identities"]) != {"A", "U", "S", "F"} or any(item.get("seed") != "17" for item in document["measured_identities"].values()):
-        raise ResourceAttestationError("source34 applicability measured seed differs")
-    profile_binding = qualification_document.get("qualification_profile")
-    if not isinstance(profile_binding, dict) or set(profile_binding) != {"path", "sha256"}:
-        raise ResourceAttestationError("source33 qualification profile binding differs")
-    _, profile = _bound_file(profile_binding["path"], profile_binding["sha256"], "source33 qualification profile")
-    if (profile.get("schema") != "nc_rted_interleaved_formal_qualification_profile/v1" or
-            profile.get("status") != "NON_ADMITTED_FORMAL_PROFILE" or
-            profile.get("member_identities") != document["measured_identities"] or
-            profile.get("updates") != 1000 or profile.get("accumulation") != 8 or
-            profile.get("shared_preparation") != "frozen_provider_only" or profile.get("common_recovery") is not True):
-        raise ResourceAttestationError("source33 qualification profile invariants differ")
-    if set(document["measured_runtimes"]) != set(GROUPS) or set(document["target_runtimes"]) != set(GROUPS):
-        raise ResourceAttestationError("source34 applicability runtime bindings differ")
-    for group in GROUPS:
-        _, measured_runtime = _bound_file(document["measured_runtimes"][group]["path"], document["measured_runtimes"][group]["sha256"], "measured runtime")
-        expected_measured = {"path": profile["members"][group].get("runtime"), "sha256": profile["members"][group].get("runtime_sha256")}
-        actual_target = None if target_runtimes is None else target_runtimes.get(group)
-        if (document["measured_runtimes"][group] != expected_measured or not isinstance(actual_target, tuple) or
-                document["target_runtimes"][group] != actual_target[1] or
-                normalized_runtime_for_seed(measured_runtime) != normalized_runtime_for_seed(actual_target[0])):
-            raise ResourceAttestationError("source34 applicability runtime normalization differs")
-    if any(item.get("seed") != str(document["target_seed"]) for item in identities.values()):
-        raise ResourceAttestationError("source34 applicability target seed differs")
-    transition = document["source_transition"]
-    if (not isinstance(transition, dict) or set(transition) != {"allowed_changed_files", "unchanged_files", "measured_manifest", "target_manifest"} or
-            transition["allowed_changed_files"] != ["src/nc_rted/resource_attestation.py"] or
-            not isinstance(transition["unchanged_files"], dict) or not transition["unchanged_files"]):
-        raise ResourceAttestationError("source34 applicability source transition differs")
-    _, measured_manifest = _bound_file(transition["measured_manifest"].get("path"), transition["measured_manifest"].get("sha256"), "source33 manifest")
-    _, target_manifest = _bound_file(transition["target_manifest"].get("path"), transition["target_manifest"].get("sha256"), "source34 manifest")
-    measured_files, measured_code = _manifest_code_sha256(measured_manifest, "source33 manifest")
-    target_files, target_code = _manifest_code_sha256(target_manifest, "source34 manifest")
-    changed = {name for name in set(measured_files or ()) | set(target_files or ()) if (measured_files or {}).get(name) != (target_files or {}).get(name)}
-    if changed != {"src/nc_rted/resource_attestation.py"} or transition["unchanged_files"] != {name: value for name, value in measured_files.items() if name != "src/nc_rted/resource_attestation.py"}:
-        raise ResourceAttestationError("source34 applicability source bytes differ")
-    if (qualification_document.get("source_sha256") != measured_code or
-            any(value.get("code_sha256") != measured_code for value in document["measured_identities"].values()) or
-            any(value.get("code_sha256") != target_code for value in identities.values())):
-        raise ResourceAttestationError("source34 applicability source identities differ")
-    invariants = document["invariants"]
-    if invariants != {"samples": 8000, "updates": 1000, "accumulation": 8, "shared_preparation": "frozen_provider_only", "common_recovery": True, "sampler_rng_difference_explicit": True}:
-        raise ResourceAttestationError("source34 applicability runtime invariants differ")
-    projection = document["projection"]
-    if (not isinstance(projection, dict) or set(projection) != {"measured_seconds_per_bundle_update_upper_bound", "measured_setup_checkpoint_seconds_upper_bound", "safety_multiplier", "projected_total_seconds_upper_bound", "is_measured_target_timing"} or
-            projection.get("is_measured_target_timing") is not False or
-            projection.get("measured_seconds_per_bundle_update_upper_bound") != qualification_document.get("measurements", {}).get("seconds_per_bundle_update_upper_bound") or
-            projection.get("measured_setup_checkpoint_seconds_upper_bound") != qualification_document.get("measurements", {}).get("setup_checkpoint_seconds_upper_bound") or
-            _finite_positive(projection.get("safety_multiplier"), "source34 safety multiplier") < 1 or
-            not math.isclose((1000 * _finite_positive(projection.get("measured_seconds_per_bundle_update_upper_bound"), "source33 measured update bound") +
-                              _finite_positive(projection.get("measured_setup_checkpoint_seconds_upper_bound"), "source33 measured setup bound")) * projection["safety_multiplier"],
-                             _finite_positive(projection.get("projected_total_seconds_upper_bound"), "source34 projected target bound"), rel_tol=0, abs_tol=1e-6) or
-            projection["projected_total_seconds_upper_bound"] > budget):
-        raise ResourceAttestationError("source34 applicability projected budget differs")
-    return document
-
-
-def _source34_probe_matches(measured: object, actual: object, measured_environment: dict, target_environment: dict,
-                            measured_manifest: dict, target_manifest: dict) -> bool:
-    """Permit only the proven source-root relocation in the import probe."""
-    if not isinstance(measured, dict) or not isinstance(actual, dict):
-        return False
-    if not isinstance(measured, dict) or not isinstance(actual, dict):
-        return False
-    measured_module, target_module = measured.get("project_module"), actual.get("project_module")
-    if not isinstance(measured_module, str) or not isinstance(target_module, str):
-        return False
-    relative = Path("nc_rted/production_runtime.py")
-    measured_root = Path(measured_environment["PYTHONPATH"]).resolve()
-    target_root = Path(target_environment["PYTHONPATH"]).resolve()
-    if (Path(measured_module).resolve() != measured_root / relative or Path(target_module).resolve() != target_root / relative or
-            measured_manifest.get("files", {}).get("src/nc_rted/production_runtime.py") != target_manifest.get("files", {}).get("src/nc_rted/production_runtime.py")):
-        return False
-    candidate = json.loads(json.dumps(measured))
-    candidate["project_module"] = target_module
-    return candidate == actual
 
 
 def publish_attestation(document: dict, output: str | Path) -> str:
@@ -633,34 +516,13 @@ def verify_bundle_attestation(payload: dict, job_key: str, accepted_evidence: di
     qualification_path, qualification_doc = _bound_file(qualification.get("path"), qualification.get("sha256"), "bundle qualification report")
     if not expected or (qualification.get("path"), qualification.get("sha256")) != expected:
         raise ResourceAttestationError("bundle qualification is not accepted evidence")
-    applicability = None
-    if document.get("source34_applicability") is not None:
-        binding = document["source34_applicability"]
-        if not isinstance(binding, dict) or set(binding) != {"path", "sha256"}:
-            raise ResourceAttestationError("source34 applicability binding differs")
-        _, applicability_doc = _bound_file(binding["path"], binding["sha256"], "source34 applicability")
-        applicability = _verify_source34_applicability(
-            applicability_doc, qualification_doc, qualification_path, qualification["sha256"], identities, budget,
-            {group: (members[group]["runtime"].document,
-                     {"path": bundle["members"][group]["runtime"], "sha256": bundle["members"][group]["runtime_sha256"]})
-             for group in GROUPS},
-        )
-    if applicability is not None:
-        qualified_environment = qualification_doc.get("runtime_environment", {}).get("environment")
-        if (not isinstance(qualified_environment, dict) or qualified_environment.get("PYTHONPATH") == environment.get("PYTHONPATH") or
-                {key: value for key, value in qualified_environment.items() if key != "PYTHONPATH"} != {key: value for key, value in environment.items() if key != "PYTHONPATH"} or
-                qualification_doc.get("runtime_environment", {}).get("interpreter") != interpreter):
-            raise ResourceAttestationError("source34 environment relocation differs outside PYTHONPATH")
     workload = {"member_identities": identities, "updates": 1000, "kind": "formal_bundle",
                 "shared_preparation": "frozen_provider_only", "common_recovery": True}
     measurements, envelope = qualification_doc.get("measurements", {}), qualification_doc.get("resource_envelope", {})
-    if applicability is not None and (applicability["projection"]["measured_seconds_per_bundle_update_upper_bound"] != measurements.get("seconds_per_bundle_update_upper_bound") or applicability["projection"]["measured_setup_checkpoint_seconds_upper_bound"] != measurements.get("setup_checkpoint_seconds_upper_bound")):
-        raise ResourceAttestationError("source34 projection does not preserve measured source33 timing")
     if (qualification_doc.get("schema") != "nc_rted_runtime_qualification/v2" or qualification_doc.get("status") != "PASS_GPU_KERNEL_AND_INHERITED_RUNTIME_IMPORTS" or
             qualification_doc.get("host") != execution["host"] or qualification_doc.get("gpu_uuid") != execution["gpu_uuid"] or
-            qualification_doc.get("source_sha256") != (source if applicability is None else applicability["measured_identities"]["A"]["code_sha256"]) or
-            qualification_doc.get("workload") != (workload if applicability is None else {"member_identities": applicability["measured_identities"], "updates": 1000, "kind": "formal_bundle", "shared_preparation": "frozen_provider_only", "common_recovery": True}) or
-            (applicability is None and qualification_doc.get("runtime_environment") != {"interpreter": interpreter, "environment": environment}) or
+            qualification_doc.get("source_sha256") != source or qualification_doc.get("workload") != workload or
+            qualification_doc.get("runtime_environment") != {"interpreter": interpreter, "environment": environment} or
             measurements.get("forward_backward_completed") is not True or measurements.get("complete_long_input") is not True or
             measurements.get("common_boundary_recovery_completed") is not True or
             type(measurements.get("optimizer_updates")) is not int or measurements["optimizer_updates"] < 1):
@@ -671,17 +533,8 @@ def verify_bundle_attestation(payload: dict, job_key: str, accepted_evidence: di
     if not (start <= measured_at <= now < end and now - measured_at <= QUALIFICATION_MAX_AGE and now + budget <= end):
         raise ResourceAttestationError("bundle qualification is stale, future dated, or expires during the run")
     probe = measurements.get("local_import_probe", {})
-    actual_probe = python_runtime_probe(interpreter, environment)
-    probe_matches = probe.get("runtime_identity") == actual_probe
-    if applicability is not None:
-        transition = applicability["source_transition"]
-        _, measured_manifest = _bound_file(transition["measured_manifest"]["path"], transition["measured_manifest"]["sha256"], "source33 manifest")
-        _, target_manifest = _bound_file(transition["target_manifest"]["path"], transition["target_manifest"]["sha256"], "source34 manifest")
-        probe_matches = _source34_probe_matches(probe.get("runtime_identity"), actual_probe, qualified_environment, environment,
-                                                measured_manifest, target_manifest)
-    if (probe.get("status") != "PASS" or probe.get("interpreter") != interpreter or
-            (applicability is None and probe.get("environment") != environment) or
-            (applicability is not None and probe.get("environment") != qualified_environment) or not probe_matches):
+    if (probe.get("status") != "PASS" or probe.get("interpreter") != interpreter or probe.get("environment") != environment or
+            probe.get("runtime_identity") != python_runtime_probe(interpreter, environment)):
         raise ResourceAttestationError("bundle qualification local imports differ")
     available = _finite_positive(envelope.get("device_memory_bytes"), "qualified device memory")
     required_memory = _finite_positive(envelope.get("required_memory_bytes"), "qualified required memory")
@@ -689,8 +542,7 @@ def verify_bundle_attestation(payload: dict, job_key: str, accepted_evidence: di
     reserved = _finite_positive(measurements.get("peak_cuda_reserved_bytes"), "measured reservation")
     updates = _finite_positive(measurements.get("seconds_per_bundle_update_upper_bound"), "bundle update bound")
     overhead = _finite_positive(measurements.get("setup_checkpoint_seconds_upper_bound"), "measured overhead")
-    projected = applicability["projection"]["projected_total_seconds_upper_bound"] if applicability else 1000 * updates + overhead
-    if not (allocated <= reserved <= required_memory <= available) or projected > budget or available != gpu_memory_bytes(int(payload["physical_gpu"])):
+    if not (allocated <= reserved <= required_memory <= available) or 1000 * updates + overhead > budget or available != gpu_memory_bytes(int(payload["physical_gpu"])):
         raise ResourceAttestationError("bundle measured memory/time envelope does not fit allocation")
     if contract != {key: payload.get(key) for key in ("data_volume", "min_free_bytes", "run_budget_seconds", "deadline_utc_epoch")}:
         raise ResourceAttestationError("formal bundle resource contract differs")
@@ -700,6 +552,206 @@ def verify_bundle_attestation(payload: dict, job_key: str, accepted_evidence: di
         raise ResourceAttestationError("formal bundle resource contract is not currently viable")
     if reservation is not None and (reservation.get("lease_id") != execution["lease_id"] or reservation.get("physical_gpu") != execution["physical_gpu"] or reservation.get("host") != execution["host"]):
         raise ResourceAttestationError("formal bundle reservation is not held by this attempt")
+
+
+def verify_bundle_segment_attestation(payload: dict, job_key: str,
+                                      accepted_evidence: dict[str, tuple[str, str]],
+                                      reservation: dict | None = None) -> None:
+    """Verify one paused interval without changing the fixed 1000-update recipe."""
+    from .formal_bundle import FormalBundleContractError, load_bundle, validate_members
+    _, document = _bound_file(payload.get("resource_attestation"), payload.get("resource_attestation_sha256"),
+                              "formal bundle segment resource attestation")
+    binding, execution, contract = document.get("binding"), document.get("execution"), document.get("contract")
+    qualification, authorization, cumulative = (document.get("qualification"), document.get("authorization"),
+                                                  document.get("cumulative"))
+    if (document.get("schema") != BUNDLE_SEGMENT_SCHEMA or document.get("status") != "PASS" or
+            not all(isinstance(value, dict) for value in (binding, execution, contract, qualification, authorization, cumulative))):
+        raise ResourceAttestationError("formal bundle segment attestation schema or status is invalid")
+    required = ("bundle_config", "bundle_config_sha256", "member_identities", "qualified_member_identities", "frozen_source_sha256",
+                "start_update", "stop_update", "previous_bundle_checkpoint", "source_transition")
+    if binding.get("job_key") != job_key or any(binding.get(key) != payload.get(key) for key in required):
+        raise ResourceAttestationError("resource attestation does not bind this formal bundle segment payload")
+    start, stop = binding["start_update"], binding["stop_update"]
+    if type(start) is not int or type(stop) is not int or not 0 <= start < stop <= 1000:
+        raise ResourceAttestationError("formal bundle segment bounds are invalid")
+    if (start == 0 and binding["previous_bundle_checkpoint"] is not None) or (start > 0 and
+            (not isinstance(binding["previous_bundle_checkpoint"], dict) or
+             set(binding["previous_bundle_checkpoint"]) != {"path", "sha256"})):
+        raise ResourceAttestationError("formal bundle segment checkpoint predecessor differs")
+    try:
+        bundle_path, bundle = load_bundle(binding["bundle_config"], binding["bundle_config_sha256"])
+        members = validate_members(bundle)
+    except FormalBundleContractError as error:
+        raise ResourceAttestationError(str(error)) from error
+    _accepted(payload.get("bundle_evidence"), bundle_path, binding["bundle_config_sha256"], accepted_evidence, "formal bundle")
+    identities = {group: value["identity"] for group, value in members.items()}
+    if binding["member_identities"] != identities or payload.get("member_identities") != identities:
+        raise ResourceAttestationError("formal bundle segment member identities differ")
+    qualified_identities = binding["qualified_member_identities"]
+    preserved_identity_fields = {"group", "seed", "data_sha256", "teacher_sha256", "inherited_weights_sha256"}
+    if (not isinstance(qualified_identities, dict) or set(qualified_identities) != set(identities) or
+            any(not isinstance(qualified_identities[group], dict) or
+                {key: qualified_identities[group].get(key) for key in preserved_identity_fields} !=
+                {key: identities[group].get(key) for key in preserved_identity_fields}
+                for group in identities)):
+        raise ResourceAttestationError("formal bundle segment does not preserve the qualified scientific identities")
+    if binding["frozen_source_sha256"] != next(iter(identities.values()))["code_sha256"]:
+        raise ResourceAttestationError("formal bundle segment source identity differs")
+    transition = binding["source_transition"]
+    if not isinstance(transition, dict) or set(transition) != {"qualified_source_manifest", "successor_source_manifest", "allowed_changed_files", "admitted_source_root", "admitted_source_files_sha256"}:
+        raise ResourceAttestationError("formal bundle segment source transition differs")
+    def manifest_identity(item: object, label: str) -> tuple[dict, str]:
+        if not isinstance(item, dict) or set(item) != {"path", "sha256"}:
+            raise ResourceAttestationError(f"{label} source manifest binding differs")
+        _, manifest = _bound_file(item["path"], item["sha256"], label)
+        files = manifest.get("files")
+        code = hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest() if isinstance(files, dict) else None
+        if manifest.get("schema") != "nc_rted_interleaved_source_manifest/v1" or manifest.get("code_sha256") != code:
+            raise ResourceAttestationError(f"{label} source manifest differs")
+        return files, code
+    qualified_files, qualified_source = manifest_identity(transition["qualified_source_manifest"], "qualified")
+    successor_files, successor_source = manifest_identity(transition["successor_source_manifest"], "successor")
+    changed = sorted(name for name in set(qualified_files) | set(successor_files) if qualified_files.get(name) != successor_files.get(name))
+    allowed = transition["allowed_changed_files"]
+    if not isinstance(allowed, list) or not allowed or changed != sorted(allowed):
+        raise ResourceAttestationError("formal bundle segment successor source transition differs")
+    admitted_root = _contained(PROJECT_VOLUME.resolve(), transition["admitted_source_root"], "admitted source root")
+    admitted_files = {}
+    for relative, expected in successor_files.items():
+        candidate = admitted_root / relative
+        if (not isinstance(relative, str) or Path(relative).is_absolute() or ".." in Path(relative).parts or
+                not isinstance(expected, str) or len(expected) != 64 or not candidate.is_file() or
+                sha256_file(candidate) != expected):
+            raise ResourceAttestationError("formal bundle segment admitted source closure differs")
+        admitted_files[str(candidate)] = expected
+    admitted_source = hashlib.sha256(json.dumps(admitted_files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if (transition["admitted_source_files_sha256"] != admitted_source or
+            any(members[group]["admission"].get("source_files") != admitted_files or
+                identities[group]["code_sha256"] != admitted_source for group in identities) or
+            binding["frozen_source_sha256"] != admitted_source):
+        raise ResourceAttestationError("formal bundle segment admitted source identity differs")
+    # The accepted formal recipe fixes common checkpoints every 50 updates.
+    if stop != 1000 and stop % 50:
+        raise ResourceAttestationError("formal bundle segment stop is not a common checkpoint boundary")
+    if start > 0:
+        previous = binding["previous_bundle_checkpoint"]
+        path = Path(previous["path"])
+        if (not path.is_absolute() or not path.is_file() or sha256_file(path) != previous["sha256"]):
+            raise ResourceAttestationError("formal bundle segment predecessor differs")
+        try:
+            boundary = json.loads(path.read_text())
+        except (OSError, ValueError) as error:
+            raise ResourceAttestationError("formal bundle segment predecessor is invalid") from error
+        if (boundary.get("schema") != "nc_rted_bundle_checkpoint_v1" or boundary.get("completed_updates") != start or
+                boundary.get("final") is not False or boundary.get("members") != identities):
+            raise ResourceAttestationError("formal bundle segment predecessor does not bind the requested start")
+    checkpoint_root = str(Path(bundle["bundle_checkpoint_root"]).resolve())
+    checkpoints = {group: str((Path(members[group]["runtime"].run["checkpoint_root"]) / "final" / "manifest.json").resolve())
+                   for group in ("A", "U", "S", "F")}
+    if stop == 1000:
+        outputs = [{"path": checkpoints[group], "artifact_type": "checkpoint", "semantic": "formal_training",
+                    "run_identity": identities[group]} for group in ("A", "U", "S", "F")]
+        outputs.append({"path": "bundle-segment-report.json", "artifact_type": "report", "semantic": "formal_bundle",
+                        "member_identities": identities, "final_checkpoints": checkpoints,
+                        "bundle_checkpoint_root": checkpoint_root})
+    else:
+        outputs = [{"path": "bundle-segment-report.json", "artifact_type": "report", "semantic": "formal_bundle_segment",
+                    "member_identities": identities, "start_update": start, "stop_update": stop,
+                    "bundle_checkpoint_root": checkpoint_root}]
+    if payload.get("expected_outputs") != outputs:
+        raise ResourceAttestationError("formal bundle segment output contract differs")
+    execution_inputs = {key: payload.get(key) for key in ("command", "execution_environment", "interpreter", "run_dir",
+                                                            "progress_path", "checkpoint_roots", "bundle_checkpoint_root",
+                                                            "expected_outputs", "start_update", "stop_update", "previous_bundle_checkpoint")}
+    if binding.get("execution_inputs") != execution_inputs:
+        raise ResourceAttestationError("formal bundle segment execution contract differs")
+    if execution.get("host") != socket.gethostname() or execution.get("physical_gpu") != payload.get("physical_gpu"):
+        raise ResourceAttestationError("formal bundle segment attestation is for a different execution host/device")
+    now = time.time(); budget = _finite_positive(payload.get("run_budget_seconds"), "run budget")
+    lease_expiry = _finite_positive(execution.get("lease_expires_utc_epoch"), "resource lease expiry")
+    if not isinstance(execution.get("lease_id"), str) or not execution["lease_id"] or lease_expiry <= now:
+        raise ResourceAttestationError("formal bundle segment lease is absent or expired")
+    environment, interpreter = payload.get("execution_environment"), payload.get("interpreter")
+    validate_environment(environment, PROJECT_VOLUME.resolve())
+    if (execution.get("environment") != environment or execution.get("interpreter") != interpreter or
+            execution.get("gpu_uuid") != gpu_uuid(int(payload["physical_gpu"])) or
+            not isinstance(interpreter, dict) or not isinstance(interpreter.get("path"), str) or
+            sha256_file(Path(interpreter["path"])) != interpreter.get("launcher_sha256") or
+            sha256_file(Path(interpreter["path"]).resolve()) != interpreter.get("target_sha256")):
+        raise ResourceAttestationError("formal bundle segment execution environment differs")
+    authorization_path, authorization_doc = _bound_file(authorization.get("path"), authorization.get("sha256"), "resource authorization")
+    _accepted(payload.get("resource_authorization_evidence"), authorization_path, authorization.get("sha256"), accepted_evidence, "resource authorization")
+    if (authorization_doc.get("schema") != "nc_rted_resource_authorization/v1" or authorization_doc.get("status") != "PASS" or
+            authorization_doc.get("lease_id") != execution["lease_id"] or authorization_doc.get("host") != execution["host"] or
+            authorization_doc.get("gpu_uuid") != execution["gpu_uuid"] or authorization_doc.get("project_volume") != contract.get("data_volume") or
+            _finite_positive(authorization_doc.get("max_budget_seconds"), "authorized budget") < budget or
+            _finite_positive(authorization_doc.get("min_free_bytes"), "authorized reserve") > float(contract.get("min_free_bytes", 0)) or
+            _finite_positive(authorization_doc.get("deadline_utc_epoch"), "authorized deadline") < float(contract.get("deadline_utc_epoch", 0)) or
+            _finite_positive(authorization_doc.get("lease_expires_utc_epoch"), "authorized lease") < lease_expiry):
+        raise ResourceAttestationError("resource authorization differs from the formal bundle segment")
+    name = qualification.get("accepted_evidence_name")
+    qualification_path, qualification_doc = _bound_file(qualification.get("path"), qualification.get("sha256"), "bundle qualification report")
+    if not isinstance(name, str) or accepted_evidence.get(name) != (str(qualification_path), qualification["sha256"]):
+        raise ResourceAttestationError("bundle qualification is not accepted evidence")
+    workload = {"member_identities": qualified_identities, "updates": 1000, "kind": "formal_bundle",
+                "shared_preparation": "frozen_provider_only", "common_recovery": True}
+    measurements = qualification_doc.get("measurements", {})
+    if (qualification_doc.get("schema") != "nc_rted_runtime_qualification/v2" or
+            qualification_doc.get("status") != "PASS_GPU_KERNEL_AND_INHERITED_RUNTIME_IMPORTS" or
+            qualification_doc.get("host") != execution["host"] or qualification_doc.get("gpu_uuid") != execution["gpu_uuid"] or
+            qualification_doc.get("workload") != workload or qualification_doc.get("source_sha256") != qualified_source or
+            measurements.get("forward_backward_completed") is not True or
+            measurements.get("complete_long_input") is not True or
+            measurements.get("common_boundary_recovery_completed") is not True or
+            type(measurements.get("optimizer_updates")) is not int or measurements["optimizer_updates"] < 1):
+        raise ResourceAttestationError("bundle qualification does not measure this fixed formal workload")
+    start_time = _finite_positive(qualification_doc.get("valid_from_utc_epoch"), "qualification start")
+    end_time = _finite_positive(qualification_doc.get("valid_until_utc_epoch"), "qualification expiry")
+    measured_at = _finite_positive(measurements.get("measured_at_utc_epoch"), "measurement time")
+    if not (start_time <= measured_at <= now < end_time and now - measured_at <= QUALIFICATION_MAX_AGE and now + budget <= end_time):
+        raise ResourceAttestationError("bundle qualification is stale, future dated, or expires during the segment")
+    qualified_runtime = qualification_doc.get("runtime_environment", {})
+    qualified_environment = qualified_runtime.get("environment") if isinstance(qualified_runtime, dict) else None
+    probe = measurements.get("local_import_probe", {})
+    actual_probe = python_runtime_probe(interpreter, environment)
+    if (not isinstance(qualified_environment, dict) or qualified_runtime.get("interpreter") != interpreter or
+            {key: value for key, value in qualified_environment.items() if key != "PYTHONPATH"} !=
+            {key: value for key, value in environment.items() if key != "PYTHONPATH"} or
+            probe.get("status") != "PASS" or probe.get("interpreter") != interpreter or
+            probe.get("environment") != qualified_environment or not isinstance(probe.get("runtime_identity"), dict)):
+        raise ResourceAttestationError("bundle qualification runtime environment differs")
+    qualified_probe = dict(probe["runtime_identity"])
+    qualified_probe["project_module"] = actual_probe.get("project_module")
+    if qualified_probe != actual_probe:
+        raise ResourceAttestationError("bundle qualification local imports differ")
+    envelope = qualification_doc.get("resource_envelope", {})
+    available = _finite_positive(envelope.get("device_memory_bytes"), "qualified device memory")
+    required_memory = _finite_positive(envelope.get("required_memory_bytes"), "qualified required memory")
+    allocated = _finite_positive(measurements.get("peak_cuda_allocated_bytes"), "measured allocation")
+    reserved = _finite_positive(measurements.get("peak_cuda_reserved_bytes"), "measured reservation")
+    if not (allocated <= reserved <= required_memory <= available) or available != gpu_memory_bytes(int(payload["physical_gpu"])):
+        raise ResourceAttestationError("bundle segment measured memory envelope differs")
+    update_bound = _finite_positive(measurements.get("seconds_per_bundle_update_upper_bound"), "bundle update bound")
+    recovery = _finite_positive(measurements.get("setup_checkpoint_seconds_upper_bound"), "setup/recovery reserve")
+    required_budget = math.ceil((stop - start) * update_bound + recovery)
+    spent = cumulative.get("approved_seconds_before", 0.0)
+    if type(spent) not in (int, float) or not math.isfinite(spent) or spent < 0:
+        raise ResourceAttestationError("prior cumulative spend must be finite and nonnegative")
+    spent = float(spent)
+    limit = _finite_positive(cumulative.get("lease_total_seconds"), "lease cumulative limit")
+    if (cumulative.get("lease_id") != execution["lease_id"] or cumulative.get("approved_seconds_after") != spent + budget or
+            budget < required_budget or spent + budget > limit or now + budget > lease_expiry):
+        raise ResourceAttestationError("formal bundle segment budget or cumulative lease accounting differs")
+    if contract != {key: payload.get(key) for key in ("data_volume", "min_free_bytes", "run_budget_seconds", "deadline_utc_epoch")}:
+        raise ResourceAttestationError("formal bundle segment resource contract differs")
+    if (contract.get("data_volume") != str(PROJECT_VOLUME.resolve()) or
+            _finite_positive(contract.get("min_free_bytes"), "disk reserve") < MIN_FREE_BYTES or
+            _finite_positive(contract.get("deadline_utc_epoch"), "deadline") != FORMAL_DEADLINE or now + budget > _finite_positive(contract.get("deadline_utc_epoch"), "deadline") or
+            lease_expiry > RENTAL_CUTOFF or
+            shutil.disk_usage(PROJECT_VOLUME).free < contract["min_free_bytes"]):
+        raise ResourceAttestationError("formal bundle segment resource contract is not currently viable")
+    if reservation is not None and (reservation.get("lease_id") != execution["lease_id"] or reservation.get("physical_gpu") != execution["physical_gpu"] or reservation.get("host") != execution["host"]):
+        raise ResourceAttestationError("formal bundle segment reservation is not held by this attempt")
 
 
 def resource_lease_expiry(payload: dict) -> float:

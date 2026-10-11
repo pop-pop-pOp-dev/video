@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-10-11T00:07:41.150067+00:00",
+  "created_at": "2026-10-11T03:02:04.635592+00:00",
   "files": [
     {
       "bytes": 334,
@@ -557,14 +557,24 @@
       "sha256": "f7188415c3a0c1f648885688bfadc74b4a9e6d1415a513747eeb875dd5ed2439"
     },
     {
-      "bytes": 16429,
+      "bytes": 19385,
       "path": "scripts/nc_rted_interleaved_formal.py",
-      "sha256": "24597c1ab7fed6f0faf6fdfe950427641bd6d27dadefca7f930431f583a56a71"
+      "sha256": "ac03fa1d923079b55ffd848b80004707c792a30cb6abdb757f8940af3256f98c"
     },
     {
       "bytes": 26367,
       "path": "scripts/nc_rted_interleaved_gpu_diagnostic.py",
       "sha256": "d448b654884005f04bff2aee4332f345f7ffe34991bbd2dce9b45b4d63d3df06"
+    },
+    {
+      "bytes": 6077,
+      "path": "scripts/nc_rted_launch_source39_segmented_formal_v1.py",
+      "sha256": "9f24785f0b158816f35f33fc022c2d97883471c6835eef567e8cb60ef880ccbb"
+    },
+    {
+      "bytes": 1452,
+      "path": "scripts/nc_rted_launch_source39_segmented_formal_v2.py",
+      "sha256": "a9652c1dfad0c3177c9d77fd3cd60eafabba5965223f3cdfafe4fba8f2acfd3b"
     },
     {
       "bytes": 4674,
@@ -617,9 +627,9 @@
       "sha256": "a5f262eb30b9a617bb689befa292e1ef075c411faa202c2c02f97389f518ba4f"
     },
     {
-      "bytes": 71050,
+      "bytes": 71360,
       "path": "scripts/nc_rted_queue.py",
-      "sha256": "467a497451cbf56ae99d3b86d4dfc8447b293300679e8938bc49ff0b070ad10a"
+      "sha256": "f7b7067fb10c4dad71147da8ea16d3d5dbf8e473fb1b92aab74c65708804f5cf"
     },
     {
       "bytes": 11366,
@@ -640,6 +650,21 @@
       "bytes": 1262,
       "path": "scripts/nc_rted_seed_observation_prefix.py",
       "sha256": "9703a11a0c3a522dfd5da5b223b5f64c7da4b438421763df7f49b8cd41809fde"
+    },
+    {
+      "bytes": 10924,
+      "path": "scripts/nc_rted_segmented_materialization.py",
+      "sha256": "e3933c55f6d7fa94fdb2e32db6db69801ceb024ada82ee90251743165ad4bdf5"
+    },
+    {
+      "bytes": 15484,
+      "path": "scripts/nc_rted_source39_segmented_formal_v1.py",
+      "sha256": "b116d6a089396c134e3b8ddd8b257903a5311f9637b6378acc92a44e2f8f5658"
+    },
+    {
+      "bytes": 3146,
+      "path": "scripts/nc_rted_stage_segmented_source_v2.sh",
+      "sha256": "d0b33c0e64dcea4c0f9571987518cd3462874d9008888937e8cd905b66f0c81a"
     },
     {
       "bytes": 7010,
@@ -867,9 +892,9 @@
       "sha256": "d6f825dc2b3f03f64d8bf3950aa818d57fd8b7df0dafd316f528209db7e9f9fa"
     },
     {
-      "bytes": 49398,
+      "bytes": 53151,
       "path": "src/nc_rted/queue.py",
-      "sha256": "43575920dc0037f90d837ae57dc91076a7c60148869ba5fddac88f88acf7e3d2"
+      "sha256": "3148140da2fc6cb195c4943213699cdfd37b7e8b1306691a5d4bc2d4c47b7c5d"
     },
     {
       "bytes": 30019,
@@ -877,9 +902,9 @@
       "sha256": "52218fde5985b24714b298a69f2d2baf0c88cbf977e09b0f9148f5cc6dec0446"
     },
     {
-      "bytes": 53583,
+      "bytes": 58520,
       "path": "src/nc_rted/resource_attestation.py",
-      "sha256": "784f995b6a1cc10d0ed652f2aae518e4cbf2ebf00fdaf831f2b523a67429b0ef"
+      "sha256": "397b19822915c7f22eed1213d2e710b7a4e8831bd31368868f164f05eb0b2f68"
     },
     {
       "bytes": 13700,
@@ -1283,35 +1308,49 @@
     }
   ],
   "formal_execution_allowed": false,
-  "previous_published_commit": "52c39a2fbe7fe6f29d9e4232434491950143d8a3",
+  "previous_published_commit": "1e068ddfe1c139e33d3842fa4994a39961595a14",
   "scientific_results": "not_available",
-  "snapshot_format": 40,
+  "snapshot_format": 41,
   "source_base_commit": "e35e088f94d5f68a01261987ade2f08a406c3868",
-  "source_commit": "52c39a2fbe7fe6f29d9e4232434491950143d8a3",
+  "source_commit": "1e068ddfe1c139e33d3842fa4994a39961595a14",
   "source_whitelist": {
-    "accepted_v39_plus_reviewed_reproduction_docs_delta": {
-      "README.md": "72a166272fad741b8e055a2dd6ac94a2de927e7e5cf4b2a77c10c89e617e30c2",
-      "docs/NC_RTED_REPRODUCTION_RUNBOOK.md": "54e7e635c6542e9240a3f998b448dd7ee9a6963f92c635e52b950868ec4f7812"
+    "accepted_v40_plus_reviewed_segmented_formal_delta": {
+      "scripts/nc_rted_interleaved_formal.py": "ac03fa1d923079b55ffd848b80004707c792a30cb6abdb757f8940af3256f98c",
+      "scripts/nc_rted_launch_source39_segmented_formal_v1.py": "9f24785f0b158816f35f33fc022c2d97883471c6835eef567e8cb60ef880ccbb",
+      "scripts/nc_rted_launch_source39_segmented_formal_v2.py": "a9652c1dfad0c3177c9d77fd3cd60eafabba5965223f3cdfafe4fba8f2acfd3b",
+      "scripts/nc_rted_queue.py": "f7b7067fb10c4dad71147da8ea16d3d5dbf8e473fb1b92aab74c65708804f5cf",
+      "scripts/nc_rted_segmented_materialization.py": "e3933c55f6d7fa94fdb2e32db6db69801ceb024ada82ee90251743165ad4bdf5",
+      "scripts/nc_rted_source39_segmented_formal_v1.py": "b116d6a089396c134e3b8ddd8b257903a5311f9637b6378acc92a44e2f8f5658",
+      "scripts/nc_rted_stage_segmented_source_v2.sh": "d0b33c0e64dcea4c0f9571987518cd3462874d9008888937e8cd905b66f0c81a",
+      "src/nc_rted/queue.py": "3148140da2fc6cb195c4943213699cdfd37b7e8b1306691a5d4bc2d4c47b7c5d",
+      "src/nc_rted/resource_attestation.py": "397b19822915c7f22eed1213d2e710b7a4e8831bd31368868f164f05eb0b2f68"
     },
-    "published_v39_commit": "52c39a2fbe7fe6f29d9e4232434491950143d8a3",
-    "v39_snapshot_sha256": "e35507ce78a9543f7baed822f0d1f1b9df513f64e0e12555a1484ba98756fba4"
+    "published_v40_commit": "1e068ddfe1c139e33d3842fa4994a39961595a14",
+    "v40_snapshot_sha256": "2f1248fe132c2b5bc560539052f79fe4e163ecefac18221625f300a54874f08d"
   },
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
   "validation": {
     "accepted_evidence": [
       {
-        "path": "reports/nc_rted/doc02_v39_native_review_v1.json",
-        "required_status": "PASS_STATIC_EXACT_TWO_DOCUMENT_OVERLAY",
-        "sha256": "5a46a0041af4887b2386424c41228c2870072f38394caf09f5518fb06b5605c6"
+        "path": "reports/nc_rted/source39_segmented_whole_path_native_review_v1.json",
+        "required_status": "PASS_STATIC_DIRECT_GUARDED_LAUNCH_ACCEPTED",
+        "sha256": "80c2e276f102800e1025ee94e4a060bc17c15dd2e30ed3d718cce699f6f7a3c7"
       }
     ],
     "formal_execution_allowed": false,
     "full_suite_repeated": false,
-    "publication_scope": "accepted v39 source plus two reviewed reproduction documentation files; runtime code and scientific protocol unchanged",
+    "publication_scope": "accepted v40 source plus nine reviewed segmented formal execution and operator files; scientific targets unchanged; runtime execution requires its own admission",
     "secrets_scan": {
       "scoped_paths": [
-        "README.md",
-        "docs/NC_RTED_REPRODUCTION_RUNBOOK.md"
+        "scripts/nc_rted_interleaved_formal.py",
+        "scripts/nc_rted_launch_source39_segmented_formal_v1.py",
+        "scripts/nc_rted_launch_source39_segmented_formal_v2.py",
+        "scripts/nc_rted_queue.py",
+        "scripts/nc_rted_segmented_materialization.py",
+        "scripts/nc_rted_source39_segmented_formal_v1.py",
+        "scripts/nc_rted_stage_segmented_source_v2.sh",
+        "src/nc_rted/queue.py",
+        "src/nc_rted/resource_attestation.py"
       ],
       "status": "PENDING_LOCAL_PUBLISHER_VALIDATE_ONLY"
     }

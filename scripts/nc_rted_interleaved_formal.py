@@ -201,11 +201,18 @@ def _publish_completion(report: Path, result: dict) -> None:
     if any(not os.environ.get(key) for key in required):
         raise FormalBundleError("formal bundle requires a queue attempt contract")
     artifacts = []
-    for group in GROUPS:
-        path = Path(result["final_checkpoints"][group])
-        if not path.is_file():
-            raise FormalBundleError("formal bundle final checkpoint is missing")
-        artifacts.append({"path": str(path.resolve()), "checksum": _sha(path)})
+    if result["status"] == "FORMAL_BUNDLE_COMPLETE":
+        for group in GROUPS:
+            path = Path(result["final_checkpoints"][group])
+            if not path.is_file():
+                raise FormalBundleError("formal bundle final checkpoint is missing")
+            artifacts.append({"path": str(path.resolve()), "checksum": _sha(path)})
+    elif result["status"] == "FORMAL_BUNDLE_SEGMENT_PAUSED":
+        path = Path(result["bundle_checkpoint"])
+        if not path.is_file() or _sha(path) != result["bundle_checkpoint_sha256"]:
+            raise FormalBundleError("formal bundle segment boundary is missing or differs")
+    else:
+        raise FormalBundleError("formal bundle result status is invalid")
     artifacts.append({"path": str(report.resolve()), "checksum": _sha(report)})
     _write(Path(os.environ["NC_RTED_PRODUCER_COMPLETION"]), {
         "job_key": os.environ["NC_RTED_JOB_KEY"], "lease_token": os.environ["NC_RTED_LEASE_TOKEN"],
@@ -244,7 +251,10 @@ def _captured_root(path: str) -> Path:
     return root
 
 
-def run(bundle: dict, *, captured_root: Path, resume: bool | None) -> dict:
+def run(bundle: dict, *, captured_root: Path, resume: bool | None,
+        start_update: int = 0, stop_update: int = 1000) -> dict:
+    if type(start_update) is not int or type(stop_update) is not int or not 0 <= start_update < stop_update <= 1000:
+        raise FormalBundleError("formal bundle segment updates are invalid")
     _verify_source_manifest(bundle, captured_root)
     members, admissions, captured = _load_members(bundle, captured_root)
     should_restore = _empty_or_recoverable(bundle, members, resume=resume)
@@ -263,11 +273,34 @@ def run(bundle: dict, *, captured_root: Path, resume: bool | None) -> dict:
                                   bundle_checkpoint_root=bundle["bundle_checkpoint_root"],
                                   after_bundle_checkpoint=lambda update, final, boundary:
                                   _queue_progress(update, final, boundary, identities))
+    if start_update > 0 and not should_restore:
+        raise FormalBundleError("resumed formal bundle segment requires a committed checkpoint")
     if should_restore:
         worker.restore()
-    worker.run()
-    if any(item.trainer.completed_updates != 1000 for item in workers.values()):
-        raise FormalBundleError("formal bundle did not complete the fixed 1000-update recipe")
+    restored = {group: item.trainer.completed_updates for group, item in workers.items()}
+    if len(set(restored.values())) != 1:
+        raise FormalBundleError("formal bundle restore diverges across groups")
+    resumed_from = next(iter(restored.values()))
+    if not start_update <= resumed_from <= stop_update:
+        raise FormalBundleError("formal bundle restore is outside the admitted segment interval")
+    interval = workers["A"].trainer.recipe.save_interval
+    if stop_update != 1000 and stop_update % interval:
+        raise FormalBundleError("formal bundle segment stop must be a common checkpoint boundary")
+    worker.run(stop_after=stop_update)
+    if any(item.trainer.completed_updates != stop_update for item in workers.values()):
+        raise FormalBundleError("formal bundle did not stop at the requested absolute update")
+    boundary_name = "final.json" if stop_update == 1000 else f"update_{stop_update:06d}.json"
+    boundary = Path(bundle["bundle_checkpoint_root"]) / "commits" / boundary_name
+    if not boundary.is_file():
+        raise FormalBundleError("formal bundle did not durably publish the requested common boundary")
+    if stop_update < 1000:
+        return {"status": "FORMAL_BUNDLE_SEGMENT_PAUSED", "complete": False,
+                "start_update": start_update, "resumed_from_update": resumed_from,
+                "stop_update": stop_update, "total_updates": 1000,
+                "members": {group: dict(workers[group].store.identity) for group in GROUPS},
+                "bundle_checkpoint_root": bundle["bundle_checkpoint_root"],
+                "bundle_checkpoint": str(boundary.resolve()), "bundle_checkpoint_sha256": _sha(boundary),
+                "shared_material": "frozen_provider_only"}
     return {"status": "FORMAL_BUNDLE_COMPLETE", "members": {group: dict(workers[group].store.identity) for group in GROUPS},
             "final_checkpoints": {group: str((Path(members[group].run["checkpoint_root"]) / "final" / "manifest.json").resolve()) for group in GROUPS},
             "bundle_checkpoint_root": bundle["bundle_checkpoint_root"], "shared_material": "frozen_provider_only"}
@@ -282,6 +315,8 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     parser.add_argument("--resume", choices=("required", "auto"),
                         help="queue retries use auto; direct invocations must name required")
+    parser.add_argument("--start-update", type=int, default=0)
+    parser.add_argument("--stop-update", type=int, default=1000)
     args = parser.parse_args()
     try:
         captured_root = _captured_root(args.captured_root)
@@ -289,8 +324,13 @@ def main() -> None:
         if Path(args.bundle).absolute() != bundle_path:
             raise FormalBundleError("formal bundle must be read from the queue input capture")
         bundle = _load_bundle(bundle_path, args.bundle_sha256)
+        if args.start_update == 0 and args.resume not in (None, "auto"):
+            raise FormalBundleError("initial formal bundle segment only permits an automatic durable retry")
+        if args.start_update > 0 and args.resume not in ("required", "auto"):
+            raise FormalBundleError("resumed formal bundle segment requires --resume required")
         resume = {None: False, "required": True, "auto": None}[args.resume]
-        result = run(bundle, captured_root=captured_root, resume=resume)
+        result = run(bundle, captured_root=captured_root, resume=resume,
+                     start_update=args.start_update, stop_update=args.stop_update)
         report = Path(args.output).absolute()
         _write(report, result)
         _publish_completion(report, result)

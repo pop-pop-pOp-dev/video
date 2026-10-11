@@ -564,7 +564,7 @@ def ensure_formal_directory(payload, path, label):
 def ensure_attempt_directory(payload, job):
     """Create a formal attempt only through non-symlink components on its volume."""
     path=attempt_directory(payload,job)
-    if job.get("kind") not in {"formal_train", "formal_bundle"}:
+    if job.get("kind") not in {"formal_train", "formal_bundle", "formal_bundle_segment"}:
         path.mkdir(parents=True,exist_ok=True); return path
     return ensure_formal_directory(payload,path,"formal attempt path")
 
@@ -603,7 +603,7 @@ def output_records(payload, job):
     for expected in payload["expected_outputs"]:
         try: raw=Path(expected["path"])
         except (OSError, TypeError) as exc: raise PublicationUncertain("cannot resolve declared output path") from exc
-        is_formal_checkpoint = (job.get("kind") in {"formal_train", "formal_bundle"} and
+        is_formal_checkpoint = (job.get("kind") in {"formal_train", "formal_bundle", "formal_bundle_segment"} and
                                 expected.get("artifact_type") == "checkpoint" and
                                 expected.get("semantic") == "formal_training")
         if raw.is_absolute() and not is_formal_checkpoint:
@@ -660,7 +660,7 @@ def commit_outputs(queue, job, payload, owner=None):
                 outputs[0].get("semantic") != "formal_training" or outputs[0].get("run_identity") != payload.get("run_identity")):
             raise ConclusiveOutputFailure("formal training lacks the admitted final checkpoint contract")
         ensure_checkpoint_directory(payload)
-    if job.get("kind") == "formal_bundle":
+    if job.get("kind") in {"formal_bundle", "formal_bundle_segment"}:
         ensure_bundle_checkpoint_directories(payload)
     run_dir=ensure_attempt_directory(payload, job)
     try: run_dir.mkdir(parents=True,exist_ok=True)
@@ -676,7 +676,7 @@ def commit_outputs(queue, job, payload, owner=None):
     if (produced.get("job_key") != job["job_key"] or produced.get("lease_token") != job["lease_token"] or
             produced.get("input_hash") != job.get("input_hash") or produced.get("artifacts") != records):
         raise ConclusiveOutputFailure("producer completion does not bind this attempt and inputs")
-    if job.get("kind") in {"formal_train", "formal_bundle"}:
+    if job.get("kind") in {"formal_train", "formal_bundle", "formal_bundle_segment"}:
         queue.completion_guard(job["job_key"],job["lease_token"])
     try:
         with completion.open("rb") as handle: os.fsync(handle.fileno())
@@ -690,7 +690,7 @@ def commit_outputs(queue, job, payload, owner=None):
                 try: payload_records.append({"path":str(state),"checksum":hashlib.sha256(state.read_bytes()).hexdigest()})
                 except OSError as exc: raise PublicationUncertain("cannot read checkpoint payload for publication") from exc
     checkpoint_roots = (payload.get("checkpoint_root") if job.get("kind") == "formal_train" else
-                        payload.get("checkpoint_roots") if job.get("kind") == "formal_bundle" else None)
+                        payload.get("checkpoint_roots") if job.get("kind") in {"formal_bundle", "formal_bundle_segment"} else None)
     try: sync_attempt_publication(run_dir, payload_records, completion, checkpoint_roots)
     except OSError as exc: raise PublicationUncertain("cannot durably sync attempt publication") from exc
     durable = temporary if temporary.exists() else final if final.exists() else None
@@ -775,7 +775,7 @@ def adopt_live(queue, owner):
                 (state == "live" and process_starttime(job["pid"]) != leader_before) or
                 (state == "group_live" and not set(current.items()) <= set(known.items()))): lock.close(); continue
         known.update(current)
-        if job.get("kind") in {"formal_train", "formal_bundle"}:
+        if job.get("kind") in {"formal_train", "formal_bundle", "formal_bundle_segment"}:
             candidates=([job["pid"]] if state == "live" else list(current))
             inherited_lock=False
             for pid in candidates:
@@ -884,7 +884,7 @@ def worker(queue, owner, once):
                 if once: return 1
                 continue
             process.lock.close()
-            if job.get("kind") in {"formal_train", "formal_bundle"} and group_state(process.pid) == "gone":
+            if job.get("kind") in {"formal_train", "formal_bundle", "formal_bundle_segment"} and group_state(process.pid) == "gone":
                 try: queue.record_terminal_evidence(job["job_key"],job["lease_token"],process.pid,job["process_starttime"])
                 except (QueueError, HardLimit):
                     return 1
@@ -901,7 +901,7 @@ def worker(queue, owner, once):
         if "run_dir" not in payload: raise QueueError("worker payload requires data-volume run_dir")
         run_dir = ensure_attempt_directory(payload, job)
         if job.get("kind") == "formal_train": ensure_checkpoint_directory(payload)
-        if job.get("kind") == "formal_bundle": ensure_bundle_checkpoint_directories(payload)
+        if job.get("kind") in {"formal_bundle", "formal_bundle_segment"}: ensure_bundle_checkpoint_directories(payload)
         temporary = run_dir / "result.tmp"; final = run_dir / "result.json"
         process = None; supervisor = None; journal_path = run_dir / f"attempt-{job['attempts']}.json"
         try:
@@ -918,12 +918,12 @@ def worker(queue, owner, once):
                 queue.launch_guard(job["job_key"], job["lease_token"], lock_handle)
                 if job.get("kind") == "formal_train":
                     command, captured_environment, cuda_device=capture_formal_inputs(payload, run_dir)
-                elif job.get("kind") == "formal_bundle":
+                elif job.get("kind") in {"formal_bundle", "formal_bundle_segment"}:
                     command, captured_environment, cuda_device=capture_formal_bundle_inputs(payload, run_dir)
                 # This durable intent closes the crash window before Popen. A
                 # restarted worker protects it rather than risking a duplicate.
                 queue.start_attempt_journal(job["job_key"], job["lease_token"], None, None, str(payload.get("physical_gpu")), journal_path, state="LAUNCHING")
-                if job.get("kind") in {"formal_train", "formal_bundle"}:
+                if job.get("kind") in {"formal_train", "formal_bundle", "formal_bundle_segment"}:
                     environment=captured_environment
                 else:
                     environment=dict(os.environ)
@@ -931,7 +931,7 @@ def worker(queue, owner, once):
                 environment["CUDA_VISIBLE_DEVICES"]=cuda_device
                 environment["NC_RTED_PRODUCER_COMPLETION"]=str(run_dir / "producer_completion.json")
                 environment["NC_RTED_JOB_KEY"]=job["job_key"]; environment["NC_RTED_LEASE_TOKEN"]=job["lease_token"]; environment["NC_RTED_INPUT_HASH"]=job["input_hash"]
-                if job.get("kind") == "formal_bundle":
+                if job.get("kind") in {"formal_bundle", "formal_bundle_segment"}:
                     environment["NC_RTED_PROGRESS_ROOT"]=str(run_dir)
                     environment["NC_RTED_PROGRESS_PATH"]=payload["progress_path"]
                 process = subprocess.Popen(command, cwd=run_dir, start_new_session=True, env=environment, pass_fds=(() if lock_handle is None else (lock_handle.fileno(),)))
@@ -947,7 +947,7 @@ def worker(queue, owner, once):
                 state=group_state(process.pid)
                 if state != "gone":
                     raise QueueError("process group remains live" if state == "live" else "process group observation unknown")
-                if job.get("kind") in {"formal_train", "formal_bundle"}:
+                if job.get("kind") in {"formal_train", "formal_bundle", "formal_bundle_segment"}:
                     queue.record_terminal_evidence(job["job_key"],job["lease_token"],process.pid,job["process_starttime"])
                 commit_outputs(queue,job,payload,owner)
         except Exception as exc:

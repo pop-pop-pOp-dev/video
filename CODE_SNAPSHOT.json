@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-10-10T23:08:37.181707+00:00",
+  "created_at": "2026-10-11T00:07:41.150067+00:00",
   "files": [
     {
       "bytes": 334,
@@ -17,9 +17,9 @@
       "sha256": "d397e5b125154cd5a8273f0a273a5c235422f19004794706261eb4f75218d461"
     },
     {
-      "bytes": 2363,
+      "bytes": 4387,
       "path": "README.md",
-      "sha256": "98efd22bc9b5d7669ccef67c2635ab74fe7a98dd2872cd2ae4ad9051321c48da"
+      "sha256": "72a166272fad741b8e055a2dd6ac94a2de927e7e5cf4b2a77c10c89e617e30c2"
     },
     {
       "bytes": 569,
@@ -122,9 +122,9 @@
       "sha256": "ab15d348fe581cc669a7735e433e9def4e6f001b6c7994098f5f167e3589119b"
     },
     {
-      "bytes": 8808,
+      "bytes": 6199,
       "path": "docs/NC_RTED_REPRODUCTION_RUNBOOK.md",
-      "sha256": "8f32c9f1fcbcf6ecb5e31280bd0fb3560af37669956ae64bf4e2e2557124e902"
+      "sha256": "54e7e635c6542e9240a3f998b448dd7ee9a6963f92c635e52b950868ec4f7812"
     },
     {
       "bytes": 3173,
@@ -1283,90 +1283,35 @@
     }
   ],
   "formal_execution_allowed": false,
-  "previous_published_commit": "9f5095082269b361886cf74b2ade11f7dc2a1705",
+  "previous_published_commit": "52c39a2fbe7fe6f29d9e4232434491950143d8a3",
   "scientific_results": "not_available",
-  "snapshot_format": 39,
+  "snapshot_format": 40,
   "source_base_commit": "e35e088f94d5f68a01261987ade2f08a406c3868",
-  "source_commit": "9f5095082269b361886cf74b2ade11f7dc2a1705",
+  "source_commit": "52c39a2fbe7fe6f29d9e4232434491950143d8a3",
   "source_whitelist": {
-    "accepted_v38_plus_reviewed_code05_and_cuda_order_delta": {
-      "scripts/nc_rted_diagnose_mechanism.py": "764319eec5c6b5c5253701f93d3921683a24c9776867cc912da83e8ba3c86d2a",
-      "scripts/nc_rted_evaluate.py": "d1e9cc5466f0ed4eac9dc6380f66ee066196798babab5e0311f92980417652be",
-      "scripts/nc_rted_interleaved_gpu_diagnostic.py": "d448b654884005f04bff2aee4332f345f7ffe34991bbd2dce9b45b4d63d3df06",
-      "scripts/nc_rted_run_mechanism.py": "73e2244bab1d0431668a57b771f920f893816cf277c6bf32c7aeb27992af34f4",
-      "src/nc_rted/detector.py": "a96921a1bfcd2d27b0817b91dc8888e245bf5a3cb6bd6d77902ec40411fd47d8",
-      "src/nc_rted/development_teacher.py": "1e26daad2cd89d4f6c1e86503b27cd4c8b6cb33768d56e37dfc29b30a953bf91",
-      "src/nc_rted/development_teacher_targets.py": "e40e8af9e59392a5aab526a2a14e91f681f9fbac50c820cdf6f1bb2ea7564d4a",
-      "src/nc_rted/evaluation.py": "5c9cc1ae08eed0fbd21e7097e40e7dee9759bad18f628bb60bed63b04878fd6b",
-      "src/nc_rted/mechanism_background.py": "151ca88329b0e64f72996a50c110c337225df39a9721bb03f5320fec3fe2d79d",
-      "src/nc_rted/mechanism_diagnostics.py": "d196661870e856c2892d7efb3f76e774435dfa7707ad65de6bcbeda9e1c571d2",
-      "src/nc_rted/mechanism_posteval.py": "2c7622693b3fd2cb49af2a1b58a971a10181f511116d562862c71079ee694a72",
-      "src/nc_rted/mechanism_runtime.py": "8bee5fc6f7de9193f163226ed50a2eb63dec4a8533a016077c7a3879203a9434",
-      "src/nc_rted/mechanism_spec9.py": "fb35aa7fb29d584a548200f9fc92e91d750fa4a462c644f96a395e9514e9bcef",
-      "src/nc_rted/prediction_adapters.py": "153f57d04b39212518932b2ba13c1af1fafee3c39240f820659d9218bd970b62",
-      "src/nc_rted/prediction_worker.py": "bb7983579b9243db05addb3f0fc73b0d411776caf83eb26c965d94403621100c",
-      "tests/test_nc_rted_detector.py": "88c214969906c9cee07ebaab8abc9f82b66794527460ab165bbc8483b0d45bb6",
-      "tests/test_nc_rted_development_teacher.py": "1355df3fcdd10e2f1a18799d449bb09a7ef16bd6999c0907cee243b77ebee4d2",
-      "tests/test_nc_rted_development_teacher_targets.py": "f3e5b64e5d2ac8cbb29539db9488c46e1a20368fa4db186e1020a9574da37962",
-      "tests/test_nc_rted_evaluation.py": "dd66236998ab26879d131058d788223398512d792b79d25d250dfa3a38a3cd5a",
-      "tests/test_nc_rted_formal_bundle_qualification.py": "f602aa494cbf8031dbb6c4099edc7d6748c66aa18b99a5a98c1942d2be6145e1",
-      "tests/test_nc_rted_mechanism_background.py": "7c206f995b2fd3609110b47c013d3e95846ad3e69db46cd2b14b5e2a74924365",
-      "tests/test_nc_rted_mechanism_diagnostics.py": "7c647ff8a912cbbbac8ee953d02106ed214b0ef69b1c23b1ff7941d55d393951",
-      "tests/test_nc_rted_mechanism_posteval.py": "88a086b0d0bc169c3d0fd587e4449c2a0740de7ef410326b3dc22e7516290b03",
-      "tests/test_nc_rted_mechanism_runtime.py": "8b539507b5240d709b77de062c81bdbaad1b7cec0295fec83063b49263631319",
-      "tests/test_nc_rted_mechanism_spec9.py": "dd6fe9831f4e2f416bd9b42e8f56c915555f6e72e6bb2e231a3a2352301840ff",
-      "tests/test_nc_rted_prediction.py": "47d65c2ecc215772ba817845eda02d316e225cac2fc7815844beb566277b0765",
-      "tests/test_nc_rted_probe_geometry.py": "f3b6538dd7bb466b78ee98168358b687312d2ac0df96db019fa5a7b52d984fdb"
+    "accepted_v39_plus_reviewed_reproduction_docs_delta": {
+      "README.md": "72a166272fad741b8e055a2dd6ac94a2de927e7e5cf4b2a77c10c89e617e30c2",
+      "docs/NC_RTED_REPRODUCTION_RUNBOOK.md": "54e7e635c6542e9240a3f998b448dd7ee9a6963f92c635e52b950868ec4f7812"
     },
-    "published_v38_commit": "9f5095082269b361886cf74b2ade11f7dc2a1705",
-    "v38_snapshot_sha256": "069228fbf8b376170ff05a8740b72e07bcbdc627cb4529c8db515749190592c9"
+    "published_v39_commit": "52c39a2fbe7fe6f29d9e4232434491950143d8a3",
+    "v39_snapshot_sha256": "e35507ce78a9543f7baed822f0d1f1b9df513f64e0e12555a1484ba98756fba4"
   },
   "status": "REVIEWED_DEVELOPMENT_SNAPSHOT",
   "validation": {
     "accepted_evidence": [
       {
-        "path": "reports/nc_rted/code05_publication_overlay_native_review_v1.json",
-        "required_status": "PASS_STATIC_EXACT_PUBLICATION_OVERLAY",
-        "sha256": "b5b4dff1786d812ce748301532678fdf5a7a28905ba0f36124853553fc6bb392"
-      },
-      {
-        "path": "reports/nc_rted/source37_cuda_policy_order_native_review_v1.json",
-        "required_status": "PASS_STATIC_CUDA_POLICY_ORDER_REPAIR",
-        "sha256": "43a340646716be4f374aa13d111d1d5493a44a03c88aeefc3d9925883a049f11"
+        "path": "reports/nc_rted/doc02_v39_native_review_v1.json",
+        "required_status": "PASS_STATIC_EXACT_TWO_DOCUMENT_OVERLAY",
+        "sha256": "5a46a0041af4887b2386424c41228c2870072f38394caf09f5518fb06b5605c6"
       }
     ],
     "formal_execution_allowed": false,
     "full_suite_repeated": false,
-    "publication_scope": "accepted v38 source plus CODE05 development teacher and mechanism diagnostics, inference metadata and post-evaluation entry; accepted CUDA policy-order repair",
+    "publication_scope": "accepted v39 source plus two reviewed reproduction documentation files; runtime code and scientific protocol unchanged",
     "secrets_scan": {
       "scoped_paths": [
-        "scripts/nc_rted_diagnose_mechanism.py",
-        "scripts/nc_rted_evaluate.py",
-        "scripts/nc_rted_interleaved_gpu_diagnostic.py",
-        "scripts/nc_rted_run_mechanism.py",
-        "src/nc_rted/detector.py",
-        "src/nc_rted/development_teacher.py",
-        "src/nc_rted/development_teacher_targets.py",
-        "src/nc_rted/evaluation.py",
-        "src/nc_rted/mechanism_background.py",
-        "src/nc_rted/mechanism_diagnostics.py",
-        "src/nc_rted/mechanism_posteval.py",
-        "src/nc_rted/mechanism_runtime.py",
-        "src/nc_rted/mechanism_spec9.py",
-        "src/nc_rted/prediction_adapters.py",
-        "src/nc_rted/prediction_worker.py",
-        "tests/test_nc_rted_detector.py",
-        "tests/test_nc_rted_development_teacher.py",
-        "tests/test_nc_rted_development_teacher_targets.py",
-        "tests/test_nc_rted_evaluation.py",
-        "tests/test_nc_rted_formal_bundle_qualification.py",
-        "tests/test_nc_rted_mechanism_background.py",
-        "tests/test_nc_rted_mechanism_diagnostics.py",
-        "tests/test_nc_rted_mechanism_posteval.py",
-        "tests/test_nc_rted_mechanism_runtime.py",
-        "tests/test_nc_rted_mechanism_spec9.py",
-        "tests/test_nc_rted_prediction.py",
-        "tests/test_nc_rted_probe_geometry.py"
+        "README.md",
+        "docs/NC_RTED_REPRODUCTION_RUNBOOK.md"
       ],
       "status": "PENDING_LOCAL_PUBLISHER_VALIDATE_ONLY"
     }

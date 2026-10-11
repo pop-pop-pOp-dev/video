@@ -1,18 +1,42 @@
 # NC-RTED / ReactVAU
 
-当前唯一研究与实验主线是 [NC-RTED：正常参照校准的关系—时间证据蒸馏](docs/EXPERIMENT_SPEC.md)。该文件按用户本次附件原样写入，替代全部旧研究方案；本次变更完成文档采用与入口清理，尚不代表 NC-RTED 已实现、验收或开始正式训练。
+Normally referenced relation-time evidence distillation. The scientific contract is [EXPERIMENT_SPEC](docs/EXPERIMENT_SPEC.md); implementation boundaries are described by the accepted source and artifact bindings, not by a workspace `HEAD`.
 
-研究复用现有 ReactVAU Stage1 Fast、最终 Stage2 Slow、LoRA 与 projector，正式矩阵为 R0 + A/U/S/F 三种子，共 12 次增量训练、13 个评测模型。绝对截止、资源上限、训练与评测协议以实验规格为准。此前 97,140/97,158 的训练覆盖说明和原复现未完成项继续保留。
+The accepted public baseline is GitHub `main` commit `52c39a2fbe7fe6f29d9e4232434491950143d8a3`, verified by snapshot `e35507ce78a9543f7baed822f0d1f1b9df513f64e0e12555a1484ba98756fba4`. It reuses the original ReactVAU Stage1 Fast, final Stage2 Slow, LoRA, and projector. NC-RTED does not retrain those two stages.
 
-- [实验规格](docs/EXPERIMENT_SPEC.md)：唯一活动方案。
-- [复现实验说明](docs/NC_RTED_REPRODUCTION_RUNBOOK.md)：已验收入口、完整实验矩阵与产物交付要求。
-- [执行规则](AGENTS.md)：操作、数据权限、审查与资源边界。
-- [项目状态](PROJECT_STATE.md)与[ReactVAU 状态](docs/REACTVAU_STATE.md)：读取文末最新追加记录；较早的“当前/最新”标题只代表历史时点。
-- [旧方案归档](archive/research_plans/superseded_by_nc_rted_20261009/README.md)：旧文件已移出活动目录，原路径、归档位置和 SHA-256 见[清单](archive/research_plans/superseded_by_nc_rted_20261009/manifest.json)。
-- [文献综述](docs/LITERATURE_2025_2026_CROSSDOMAIN_ROOT.md)：保留已核查文献依据；其中的旧候选路线排序不构成当前执行指令。
+Formal training is currently `0/12`; full official evaluation is `0/13`. R0 blind prediction is running, which is neither a completed evaluation nor evidence of a result. This repository makes no effectiveness or significance claim.
 
-现有模型和数据位于 `models/reactvau/`、`artifacts/reactvau/`、`data/reactvau/`；历史报告、代码、预测、权重和失败证据继续保留。新增实现及其冻结产物的位置按实验规格登记，不能将推荐目录当作已完成产物。
+## Fixed Contract
 
-ReactVAU 使用 `.venv-reactvau/`。下载、安装、构建及运行前加载 `configs/reactvau/download_environment.sh`，缓存与临时文件放在项目数据卷，至少保留 20 GiB 空闲。额外 H100 和存储的实际就绪状态须核验。
+The formal matrix is R0 plus A/U/S/F at seeds 17, 42, and 2026. The 12 trained members use 8,000 fixed samples, 1,000 optimizer updates, and accumulation 8. A removes auxiliary distillation, U is the strength-matched control, S distills calibrated quality only, and F distills quality plus relation-time distribution.
 
-每项操作写入追加日志 `logs/OPERATIONS.jsonl`。命令通过 `python3 scripts/run_logged.py --name DESCRIPTION -- COMMAND ARG...` 执行；其他操作使用 `scripts/log_operation.py`。日志规则见 [docs/LOGGING.md](docs/LOGGING.md)。官方测试标签不得用于训练、教师生成、阈值调整或模型选择。
+Full evaluation is fixed at 251 UCF-Crime videos, 800 XD-Violence videos, and 3,339 HIVAU questions, with a generation cap of 512. The historical training coverage remains 97,140 / 97,158. Teacher coverage remains limited to 265/6,000 auxiliary-valid rows, 12 positive F rows, and 15 rows where U and F differ.
+
+## Accepted Paths
+
+Source39 and source40 are the accepted formal-training roots. Their actual postqualification sequence is governed by `reports/nc_rted/source39_source40_postqualification_runbook_v1.md`; a profile, review, or prepared wrapper does not authorize a formal run. The required qualification evidence, resource scope, GPU and environment identity, lease, budget, deadline, and 20 GiB reserve must be bound before execution.
+
+Prediction uses the dedicated v39 prediction source, distinct from source39/source40. Its canonical implementation manifest is `artifacts/nc_rted/prediction_implementation_v39/implementation_manifest.json` with SHA-256 `06a8d1238225c6b90a4f2a7034511b3ff55a2eb7477cd2a931828ae5c061cd21`; the inherited prediction source manifest is SHA-256 `7b36f3f377a4d14e8f33ac5850d19e7757e6b3e29fddc67b4c62ae54c215723a`.
+
+The accepted evaluator is the v36 metric-locked implementation. Blind prediction precedes official metrics, and official labels, answers, metrics, and test outcomes cannot enter training, teacher generation, threshold fitting, configuration changes, or seed selection.
+
+## First-Time Local Setup
+
+For a first-time source checkout, install a PyTorch build matched to the local device and driver, then use Python 3.10 or later:
+
+```bash
+pip install -e '.[test]'
+python -m pytest -q tests/test_nc_rted*.py
+```
+
+These are local setup and CPU-check examples only. They do not establish admission, replace accepted evidence, or authorize a formal run. A real ReactVAU run also requires the complete local dependency set in `external/ReactVAU-paper/requirements.txt` and the bound local artifacts. `configs/nc_rted/environment_4090_reference.json` records a prior measured environment; it is not a compatibility guarantee for another device.
+
+## Reproduction Boundary
+
+The public repository contains source, configuration, specifications, interfaces, and tests. Local models, media, sealed run-specific manifests, credentials, and machine logs require their approved artifact bundle and are not public-source substitutes. Reuse sealed preparation, long-input evidence, and accepted implementation bindings; do not repeat preparation or passing tests without a changed input or a concrete failure.
+
+Final checkpoints are retained on the user-approved persistent remote data disk for later retrieval. Preserve final checkpoints, blind outputs, failures, and provenance records.
+
+`external/ReactVAU-paper` contains the fixed upstream source and local adaptation used by this project. Its source and file hashes are recorded in `THIRD_PARTY.md` and `CODE_SNAPSHOT.json`; the upstream directory remains subject to its original noncommercial research license.
+
+For the complete operational sequence and completion criteria, use [NC_RTED_REPRODUCTION_RUNBOOK.md](docs/NC_RTED_REPRODUCTION_RUNBOOK.md). Do not put credentials, private endpoints, or secrets in repository documentation or logs.
